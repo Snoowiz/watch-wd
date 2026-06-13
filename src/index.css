@@ -1,0 +1,132 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f5f5f5;
+  --color-slate-200: #e5e5e5;
+  --color-slate-300: #d4d4d4;
+  --color-slate-400: #a3a3a3;
+  --color-slate-500: #737373;
+  --color-slate-600: #525252;
+  --color-slate-700: #262626;
+  --color-slate-800: #141414;
+  --color-slate-900: #0a0a0a;
+  --color-slate-950: #050505;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Hide scrollbar globally */
+* {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ReactQuill Dark Mode Customization */
+.dark .prose-editor .ql-toolbar {
+  background-color: var(--color-slate-800);
+  border-color: var(--color-slate-700);
+}
+.dark .prose-editor .ql-container {
+  border-color: var(--color-slate-700);
+}
+.dark .prose-editor .ql-editor {
+  color: white;
+  min-height: 200px;
+}
+.dark .prose-editor .ql-stroke {
+  stroke: var(--color-slate-300);
+}
+.dark .prose-editor .ql-fill {
+  fill: var(--color-slate-300);
+}
+.dark .prose-editor .ql-picker {
+  color: var(--color-slate-300);
+}
+.dark .prose-editor .ql-picker-options {
+  background-color: var(--color-slate-800);
+  border-color: var(--color-slate-700);
+}
+
+.prose-editor .ql-editor {
+  min-height: 200px;
+}
+
+@keyframes border-spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.rotating-border-effect {
+  position: relative;
+  display: inline-flex;
+  overflow: hidden;
+}
+
+.rotating-border-effect::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    #eab308 0deg,
+    #22c55e 120deg,
+    #eab308 240deg,
+    #22c55e 360deg
+  );
+  animation: border-spin 3s linear infinite;
+}
+
+/* For buttons */
+.btn-rotating-border {
+  padding: 3px;
+  border-radius: 0.75rem; /* rounded-xl */
+}
+.btn-rotating-border-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 0.6rem; /* inset radius */
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* For play icon overlay */
+.play-rotating-border {
+  padding: 3px;
+  border-radius: 9999px; /* rounded-full */
+}
+.play-rotating-border-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+div#root:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(5) {
+  display: none !important;
+}
