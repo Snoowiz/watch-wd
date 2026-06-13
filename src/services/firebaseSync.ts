@@ -12,7 +12,7 @@ import {
 } from '../store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
-import { getBrandingSettings, saveBrandingSettings } from './settingsService';
+import { getBrandingSettings, saveBrandingSettings, getGoogleAuthSettings, saveGoogleAuthSettings } from './settingsService';
 
 export function initializeFirebaseSync() {
   
@@ -196,31 +196,53 @@ export function initializeFirebaseSync() {
     console.error('Failed to load branding settings at startup', err);
   });
 
+  // Sync Google Auth Settings
+  getGoogleAuthSettings().then(googleAuth => {
+    const store = useSettingsStore.getState();
+    if (googleAuth) {
+      store.setGoogleAuthSettings(googleAuth);
+    }
+  }).catch(err => {
+    console.error('Failed to load Google Auth settings at startup', err);
+  });
+
   let previousBranding = {
     platformName: useSettingsStore.getState().platformName,
     favicon: useSettingsStore.getState().favicon,
     preloaderEnabled: useSettingsStore.getState().preloaderEnabled,
+    googleAuthSettings: useSettingsStore.getState().googleAuthSettings,
   };
 
   useSettingsStore.subscribe(async (state) => {
-    if (
+    const brandingChanged = 
       state.platformName !== previousBranding.platformName ||
       state.favicon !== previousBranding.favicon ||
-      state.preloaderEnabled !== previousBranding.preloaderEnabled
-    ) {
+      state.preloaderEnabled !== previousBranding.preloaderEnabled;
+
+    const googleAuthChanged = 
+      JSON.stringify(state.googleAuthSettings) !== JSON.stringify(previousBranding.googleAuthSettings);
+
+    if (brandingChanged || googleAuthChanged) {
       previousBranding = {
         platformName: state.platformName,
         favicon: state.favicon,
         preloaderEnabled: state.preloaderEnabled,
+        googleAuthSettings: state.googleAuthSettings,
       };
+
       try {
-        await saveBrandingSettings({
-          platformName: state.platformName,
-          favicon: state.favicon,
-          preloaderEnabled: state.preloaderEnabled,
-        });
+        if (brandingChanged) {
+          await saveBrandingSettings({
+            platformName: state.platformName,
+            favicon: state.favicon,
+            preloaderEnabled: state.preloaderEnabled,
+          });
+        }
+        if (googleAuthChanged) {
+          await saveGoogleAuthSettings(state.googleAuthSettings);
+        }
       } catch (err) {
-        console.error('Failed to sync branding settings to Firestore', err);
+        console.error('Failed to sync settings to Firestore', err);
       }
     }
   });

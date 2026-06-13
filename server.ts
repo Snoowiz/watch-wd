@@ -339,6 +339,48 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  app.post("/api/auth/google/validate-credentials", authenticate, async (req: any, res) => {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only administrators can validate Google credentials" });
+    }
+    try {
+      const { clientId, clientSecret } = req.body;
+      const errors: string[] = [];
+
+      if (!clientId) {
+        errors.push("Google Client ID is required.");
+      } else if (!/^[0-9a-zA-Z._-]+.apps.googleusercontent.com$/.test(clientId)) {
+        errors.push("Invalid Client ID format. It should end with '.apps.googleusercontent.com'.");
+      }
+
+      if (!clientSecret) {
+        errors.push("Google Client Secret is required.");
+      } else if (clientSecret.length < 10) {
+        errors.push("Google Client Secret is too short to be valid.");
+      }
+
+      if (errors.length > 0) {
+        return res.status(400).json({ success: false, errors });
+      }
+
+      try {
+        const response = await fetch("https://accounts.google.com/.well-known/openid-configuration");
+        if (!response.ok) {
+          throw new Error("Unable to connect to Google OAuth discovery services.");
+        }
+      } catch (connErr) {
+        return res.status(502).json({ 
+          success: false, 
+          errors: ["Connectivity Warning: Could not reach Google's authentication discovery endpoints. Please verify your server's network connection."] 
+        });
+      }
+
+      res.json({ success: true, message: "Credentials format and connection checks completed successfully." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/auth/me", authenticate, async (req: any, res) => {
     try {
       const doc = await db.collection("users").doc(req.user.id).get();

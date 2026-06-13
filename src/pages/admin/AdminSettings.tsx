@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Search, Globe, Image as ImageIcon, FileText, Share2, Cookie } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Search, Globe, Image as ImageIcon, FileText, Share2, Cookie, Chrome } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
 import { AdminCookieSettings } from './AdminCookieSettings';
+import { AdminGoogleAuthSettings } from './AdminGoogleAuthSettings';
 import { MediaPicker } from '../../components/MediaPicker';
 
 export function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie'>('seo');
+  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie' | 'google-auth'>('seo');
   
   // Payment States
   const { 
@@ -180,6 +181,17 @@ export function AdminSettings() {
         >
           <Cookie className="w-4 h-4" />
           Cookie Banner
+        </button>
+        <button
+          onClick={() => setActiveTab('google-auth')}
+          className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
+            activeTab === 'google-auth'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+          }`}
+        >
+          <Chrome className="w-4 h-4 text-red-500" />
+          Google Login
         </button>
       </div>
 
@@ -780,6 +792,18 @@ export function AdminSettings() {
               Cookie Consent Banner
             </h2>
             <AdminCookieSettings />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'google-auth' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-4">
+              <Chrome className="w-6 h-6 text-indigo-500" />
+              Google Sign-In Integration
+            </h2>
+            <AdminGoogleAuthSettings />
           </div>
         </div>
       )}

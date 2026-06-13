@@ -135,3 +135,39 @@ export const saveBrandingSettings = async (settings: BrandingSettings): Promise<
   await setDoc(docRef, settings, { merge: true });
 };
 
+export interface GoogleAuthSettings {
+  enabled: boolean;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
+const defaultGoogleAuth: GoogleAuthSettings = {
+  enabled: false,
+  clientId: '',
+  clientSecret: '',
+  redirectUri: typeof window !== 'undefined' ? `${window.location.origin}/api/auth/google/callback` : 'https://watchwds.com/api/auth/google/callback'
+};
+
+export const getGoogleAuthSettings = async (): Promise<GoogleAuthSettings> => {
+  try {
+    const docRef = doc(db, 'settings', 'google_auth');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        ...defaultGoogleAuth,
+        ...data
+      } as GoogleAuthSettings;
+    }
+  } catch (error) {
+    console.error("Error fetching Google Auth settings:", error);
+  }
+  return defaultGoogleAuth;
+};
+
+export const saveGoogleAuthSettings = async (settings: GoogleAuthSettings): Promise<void> => {
+  const docRef = doc(db, 'settings', 'google_auth');
+  await setDoc(docRef, settings, { merge: true });
+};
+

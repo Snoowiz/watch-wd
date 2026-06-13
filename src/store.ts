@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { GoogleAuthSettings } from './services/settingsService';
 
 export interface User {
   id: number;
@@ -457,6 +458,8 @@ interface SettingsState {
   setFavicon: (favicon: string) => void;
   preloaderEnabled: boolean;
   setPreloaderEnabled: (enabled: boolean) => void;
+  googleAuthSettings: GoogleAuthSettings;
+  setGoogleAuthSettings: (settings: GoogleAuthSettings) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -500,6 +503,13 @@ export const useSettingsStore = create<SettingsState>()(
       setFavicon: (favicon) => set({ favicon: favicon }),
       preloaderEnabled: true,
       setPreloaderEnabled: (enabled) => set({ preloaderEnabled: enabled }),
+      googleAuthSettings: {
+        enabled: false,
+        clientId: '',
+        clientSecret: '',
+        redirectUri: ''
+      },
+      setGoogleAuthSettings: (settings) => set({ googleAuthSettings: settings }),
     }),
     {
       name: 'settings-storage',
