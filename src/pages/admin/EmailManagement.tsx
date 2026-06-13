@@ -103,13 +103,13 @@ export function EmailManagement() {
     port: 465,
     auth_user: '',
     auth_pass: '',
-    from_email: 'noreply@wdsportz.com',
-    from_name: 'WDSportz Team',
+    from_email: 'noreply@watchwds.com',
+    from_name: 'WatchWDS Team',
     secure: true,
     is_active: false,
     provider: 'smtp',
     api_key: '',
-    reply_to: 'support@wdsportz.com'
+    reply_to: 'support@watchwds.com'
   });
 
   const [branding, setBranding] = useState<EmailBranding>({
@@ -117,13 +117,13 @@ export function EmailManagement() {
     primary_color: '#fbbf24',
     secondary_color: '#0f172a',
     button_style: 'rounded-lg',
-    footer_content: 'Thank you for being part of the WDSportz community. Keep playing, keep watching, and stay connected!',
-    social_twitter: 'https://twitter.com/wdsportz',
-    social_facebook: 'https://facebook.com/wdsportz',
-    social_instagram: 'https://instagram.com/wdsportz',
-    social_youtube: 'https://youtube.com/wdsportz',
-    contact_info: '123 Sports Arena Blvd, Chicago, IL 60601 | support@wdsportz.com',
-    copyright_text: '© 2026 WDSportz Inc. All rights reserved.'
+    footer_content: 'Thank you for being part of the WatchWDS community. Keep playing, keep watching, and stay connected!',
+    social_twitter: 'https://twitter.com/watchwds',
+    social_facebook: 'https://facebook.com/watchwds',
+    social_instagram: 'https://instagram.com/watchwds',
+    social_youtube: 'https://youtube.com/watchwds',
+    contact_info: '123 Sports Arena Blvd, Chicago, IL 60601 | support@watchwds.com',
+    copyright_text: '© 2026 WatchWDS Inc. All rights reserved.'
   });
 
   // Templates & Editing
@@ -503,8 +503,8 @@ export function EmailManagement() {
       purchase_amount: '14.99',
       transaction_id: 'TXN-908271AOB',
       invoice_number: 'INV-2026-4402',
-      support_email: 'support@wdsportz.com',
-      company_name: 'WDSportz Live',
+      support_email: 'support@watchwds.com',
+      company_name: 'WatchWDS Live',
       website_url: '#',
       reset_password_link: '#',
       verification_link: '#',
@@ -543,7 +543,7 @@ export function EmailManagement() {
 <body>
   <div class="email-container">
     <div class="email-header" style="background-color: ${branding.secondary_color};">
-      <img src="${branding.logo_url}" alt="WDSportz" class="email-logo" />
+      <img src="${branding.logo_url}" alt="WatchWDS" class="email-logo" />
     </div>
     <div class="email-body">
       ${body}
@@ -1347,7 +1347,7 @@ export function EmailManagement() {
                       type="text"
                       value={settings.from_name}
                       onChange={(e) => setSettings({...settings, from_name: e.target.value})}
-                      placeholder="WDSportz Support"
+                      placeholder="WatchWDS Support"
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
                     />
                   </div>
@@ -1357,7 +1357,7 @@ export function EmailManagement() {
                       type="email"
                       value={settings.from_email}
                       onChange={(e) => setSettings({...settings, from_email: e.target.value})}
-                      placeholder="info@wdsportz.com"
+                      placeholder="info@watchwds.com"
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
                     />
                   </div>
@@ -1367,7 +1367,7 @@ export function EmailManagement() {
                       type="email"
                       value={settings.reply_to || ''}
                       onChange={(e) => setSettings({...settings, reply_to: e.target.value})}
-                      placeholder="support@wdsportz.com"
+                      placeholder="support@watchwds.com"
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
                     />
                   </div>
@@ -1575,7 +1575,7 @@ export function EmailManagement() {
                 {
                   step: '01',
                   title: 'Navigate to Google Firebase Console',
-                  desc: 'Visit your authorized Firebase web management console portal (https://console.firebase.google.com), and click to open the WDSportz Firebase app cluster.'
+                  desc: 'Visit your authorized Firebase web management console portal (https://console.firebase.google.com), and click to open the WatchWDS Firebase app cluster.'
                 },
                 {
                   step: '02',
@@ -1612,7 +1612,7 @@ export function EmailManagement() {
             </div>
 
             <div className="pt-6 border-t border-slate-100 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <span className="text-2xs text-slate-400 font-bold">WDSportz Firebase SDK identity verification model v5</span>
+              <span className="text-2xs text-slate-400 font-bold">WatchWDS Firebase SDK identity verification model v5</span>
               <a 
                 href="https://console.firebase.google.com" 
                 target="_blank" 

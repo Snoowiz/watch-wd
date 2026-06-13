@@ -47,7 +47,7 @@ export default function App() {
   const { token, setAuth, logout, user, originalUser, revertLoginAs } = useAuthStore();
   const { theme, setDarkMode } = useThemeStore();
   const { seoSettings, platformName: storedPlatformName } = useSettingsStore();
-  const platformName = storedPlatformName || 'WDSportz';
+  const platformName = storedPlatformName || 'WatchWDS';
 
   const { setFeatures } = useFeatureStore();
   const [profileModalDismissed, setProfileModalDismissed] = useState(
@@ -79,8 +79,8 @@ export default function App() {
   useEffect(() => {
     // Apply global SEO Settings
     if (seoSettings) {
-      const baseTitle = seoSettings.metaTitle || 'WD Sportz - Live Sports Streaming';
-      document.title = baseTitle.replace(/WD\s*Sportz|WDSportz/gi, platformName);
+      const baseTitle = seoSettings.metaTitle || 'Watch WDS - Live Sports Streaming';
+      document.title = baseTitle.replace(/WD\s*Sportz|WatchWDS/gi, platformName);
       
       const updateMeta = (name: string, content: string, isProperty = false) => {
         let el = document.querySelector(isProperty ? `meta[property="${name}"]` : `meta[name="${name}"]`);

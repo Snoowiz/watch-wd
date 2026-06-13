@@ -12,7 +12,7 @@ export function CookieBanner() {
 
   useEffect(() => {
     const checkCookies = async () => {
-      const consent = localStorage.getItem('wdsportz-cookie-consent');
+      const consent = localStorage.getItem('watchwds-cookie-consent');
       if (!consent) {
         const s = await getCookieSettings();
         setSettings(s);
@@ -25,7 +25,7 @@ export function CookieBanner() {
   }, []);
 
   const handleAccept = async () => {
-    localStorage.setItem('wdsportz-cookie-consent', 'accepted');
+    localStorage.setItem('watchwds-cookie-consent', 'accepted');
     setIsVisible(false);
     
     // Attempt push notification permission silently
@@ -39,7 +39,7 @@ export function CookieBanner() {
   };
 
   const handleReject = () => {
-    localStorage.setItem('wdsportz-cookie-consent', 'rejected');
+    localStorage.setItem('watchwds-cookie-consent', 'rejected');
     setIsVisible(false);
   };
 

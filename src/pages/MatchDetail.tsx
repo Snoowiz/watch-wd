@@ -379,7 +379,7 @@ export function MatchDetail() {
         amount: match.embedPrice,
         type: 'embed',
         date: new Date().toISOString(),
-        code: `<iframe src="https://wdsportz.com/embed/${match.slug}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`
+        code: `<iframe src="https://watchwds.com/embed/${match.slug}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`
       });
       setError('');
     } catch(e) {
@@ -464,7 +464,7 @@ export function MatchDetail() {
                     className="bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2 sm:px-10 sm:py-4 rounded-xl transition-all backdrop-blur-md flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-lg border border-white/10 flex-1 sm:flex-auto"
                   >
                     <UserPlus className="w-4 h-4" />
-                    <span className="hidden sm:inline">Join WDSportz</span>
+                    <span className="hidden sm:inline">Join WatchWDS</span>
                     <span className="sm:hidden">Join</span>
                   </button>
                 )}

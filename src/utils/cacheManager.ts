@@ -1,5 +1,5 @@
 /**
- * Multi-layer Caching Engine for WDSportz
+ * Multi-layer Caching Engine for WatchWDS
  * Implements Query Caching, API Fragment Caching, CDN Proxy Simulation, Cache Invalidation,
  * Cache Warming, and Real-time Monitoring.
  */

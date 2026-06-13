@@ -1,5 +1,5 @@
 const Database = require('better-sqlite3');
-const db = new Database('wdsportz.db');
+const db = new Database('watchwds.db');
 
 try {
   db.exec('ALTER TABLE users ADD COLUMN phone TEXT');

@@ -12,42 +12,42 @@ export const defaultBranding = {
   primary_color: "#fbbf24",
   secondary_color: "#0f172a",
   button_style: "rounded-lg",
-  footer_content: "Thank you for being part of the WDSportz community. Keep playing, keep watching, and stay connected!",
-  social_twitter: "https://twitter.com/wdsportz",
-  social_facebook: "https://facebook.com/wdsportz",
-  social_instagram: "https://instagram.com/wdsportz",
-  social_youtube: "https://youtube.com/wdsportz",
-  social_linkedin: "https://linkedin.com/company/wdsportz",
-  contact_info: "123 Sports Arena Blvd, Suite 400, Chicago, IL 60601 | support@wdsportz.com",
-  copyright_text: "© 2026 WDSportz Inc. All rights reserved."
+  footer_content: "Thank you for being part of the WatchWDS community. Keep playing, keep watching, and stay connected!",
+  social_twitter: "https://twitter.com/watchwds",
+  social_facebook: "https://facebook.com/watchwds",
+  social_instagram: "https://instagram.com/watchwds",
+  social_youtube: "https://youtube.com/watchwds",
+  social_linkedin: "https://linkedin.com/company/watchwds",
+  contact_info: "123 Sports Arena Blvd, Suite 400, Chicago, IL 60601 | support@watchwds.com",
+  copyright_text: "© 2026 WatchWDS Inc. All rights reserved."
 };
 
 export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "welcome_email",
     name: "Welcome Email",
-    subject: "Welcome to WDSportz, {{first_name}}!",
+    subject: "Welcome to WatchWDS, {{first_name}}!",
     category: "Welcome",
     variables_hint: "first_name, last_name, user_name, user_email, website_url, support_email",
-    body: `<h2>Welcome to WDSportz!</h2>
+    body: `<h2>Welcome to WatchWDS!</h2>
 <p>Hello {{first_name}},</p>
-<p>We are absolutely thrilled to welcome you to the WDSportz family! Your account has been successfully created under the username <strong>{{user_name}}</strong>.</p>
-<p>At WDSportz, we bring the passion of live sports directly to your screen. You can browse live matches, follow elite creators, participate in leagues, and share your support with fellow sports fans.</p>
+<p>We are absolutely thrilled to welcome you to the WatchWDS family! Your account has been successfully created under the username <strong>{{user_name}}</strong>.</p>
+<p>At WatchWDS, we bring the passion of live sports directly to your screen. You can browse live matches, follow elite creators, participate in leagues, and share your support with fellow sports fans.</p>
 <div style="text-align: center;">
   <a href="{{website_url}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Explore Live Matches</a>
 </div>
 <p>If you have any questions or need assistence, don't hesitate to reply directly to this email or contact us at <a href="mailto:{{support_email}}">{{support_email}}</a>.</p>
-<p>Best regards,<br>The WDSportz Team</p>`
+<p>Best regards,<br>The WatchWDS Team</p>`
   },
   {
     slug: "email_verification",
     name: "Email Verification",
-    subject: "Verify your email address - WDSportz",
+    subject: "Verify your email address - WatchWDS",
     category: "Authentication",
     variables_hint: "first_name, verification_link, website_url, support_email",
     body: `<h2>Verify Your Email</h2>
 <p>Hello {{first_name}},</p>
-<p>Thank you for signing up for WDSportz. To complete your registration and unlock full access to all matches, channels, and features, please verify your email address by clicking the button below:</p>
+<p>Thank you for signing up for WatchWDS. To complete your registration and unlock full access to all matches, channels, and features, please verify your email address by clicking the button below:</p>
 <div style="text-align: center;">
   <a href="{{verification_link}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Verify My Email Address</a>
 </div>
@@ -59,12 +59,12 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "password_reset_branding",
     name: "Password Reset Branding",
-    subject: "Reset your WDSportz account password",
+    subject: "Reset your WatchWDS account password",
     category: "Authentication",
     variables_hint: "first_name, reset_password_link, support_email",
     body: `<h2>Password Reset Request</h2>
 <p>Hello {{first_name}},</p>
-<p>We received a request to reset the password for your WDSportz account. Click the button below to choose a new password:</p>
+<p>We received a request to reset the password for your WatchWDS account. Click the button below to choose a new password:</p>
 <div style="text-align: center;">
   <a href="{{reset_password_link}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Reset Password</a>
 </div>
@@ -74,12 +74,12 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "account_activated",
     name: "Account Activated",
-    subject: "Your WDSportz Account is Activated",
+    subject: "Your WatchWDS Account is Activated",
     category: "Authentication",
     variables_hint: "first_name, last_name, website_url",
     body: `<h2>Account Activated!</h2>
 <p>Hi {{first_name}},</p>
-<p>We are pleased to inform you that your WDSportz account has been successfully verified and fully activated. You now have unrestricted access to our live streaming catalog, creators, stats, and clubs!</p>
+<p>We are pleased to inform you that your WatchWDS account has been successfully verified and fully activated. You now have unrestricted access to our live streaming catalog, creators, stats, and clubs!</p>
 <div style="text-align: center;">
   <a href="{{website_url}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Go to Dashboard</a>
 </div>
@@ -88,15 +88,15 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "account_suspended",
     name: "Account Suspended",
-    subject: "URGENT: Your WDSportz account has been suspended",
+    subject: "URGENT: Your WatchWDS account has been suspended",
     category: "Authentication",
     variables_hint: "first_name, last_name, support_email",
     body: `<h2>Account Suspension Notice</h2>
 <p>Dear {{first_name}} {{last_name}},</p>
-<p>We regret to inform you that your WDSportz account has been suspended due to a violation of our Terms of Service or community guidelines.</p>
+<p>We regret to inform you that your WatchWDS account has been suspended due to a violation of our Terms of Service or community guidelines.</p>
 <p>While suspended, you will not be able to log in, view live matches, chat, or access purchased content.</p>
 <p>If you believe this suspension is a mistake or wish to appeal, please contact our support team immediately at <a href="mailto:{{support_email}}">{{support_email}}</a> with your account username or registered email.</p>
-<p>Sincerely,<br>WDSportz Abuse & Mod team</p>`
+<p>Sincerely,<br>WatchWDS Abuse & Mod team</p>`
   },
   {
     slug: "subscription_purchased",
@@ -132,12 +132,12 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">Charged Amount:</td><td class="value" style="color: #1e293b; font-weight: 500; padding: 8px;">\${{purchase_amount}}</td></tr>
   <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">Invoice ID:</td><td class="value" style="color: #1e293b; font-weight: 500; padding: 8px;">{{invoice_number}}</td></tr>
 </table>
-<p>Your statement will reflect a charge from WDSportz. Thank you for your continued loyalty.</p>`
+<p>Your statement will reflect a charge from WatchWDS. Thank you for your continued loyalty.</p>`
   },
   {
     slug: "subscription_expiring_7d",
     name: "Subscription Expiring - 7 Days",
-    subject: "Your WDSportz subscription is expiring in 7 days",
+    subject: "Your WatchWDS subscription is expiring in 7 days",
     category: "Subscription",
     variables_hint: "first_name, subscription_name, website_url, support_email",
     body: `<h2>Subscription Expiring Soon</h2>
@@ -179,7 +179,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "subscription_expired",
     name: "Subscription Expired",
-    subject: "Your WDSportz subscription has expired",
+    subject: "Your WatchWDS subscription has expired",
     category: "Subscription",
     variables_hint: "first_name, subscription_name, website_url",
     body: `<h2>Premium Subscription Expired</h2>
@@ -320,7 +320,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "payment_successful",
     name: "Payment Successful",
-    subject: "WDSportz Payment Succeeded: Invoice {{invoice_number}}",
+    subject: "WatchWDS Payment Succeeded: Invoice {{invoice_number}}",
     category: "Billing/Payment",
     variables_hint: "first_name, purchase_amount, transaction_id, invoice_number, support_email",
     body: `<h2>We Recieved Your Payment</h2>
@@ -350,7 +350,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "refund_issued",
     name: "Refund Issued",
-    subject: "Refund processed: WDSportz transaction {{transaction_id}}",
+    subject: "Refund processed: WatchWDS transaction {{transaction_id}}",
     category: "Billing/Payment",
     variables_hint: "first_name, purchase_amount, transaction_id, support_email",
     body: `<h2>Your Refund is Processed</h2>
@@ -361,7 +361,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "invoice_generated",
     name: "Invoice Generated",
-    subject: "New WDSportz Invoice {{invoice_number}} is ready",
+    subject: "New WatchWDS Invoice {{invoice_number}} is ready",
     category: "Billing/Payment",
     variables_hint: "first_name, purchase_amount, invoice_number, website_url",
     body: `<h2>Invoice Ready for Settlement</h2>
@@ -375,7 +375,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "receipt_email",
     name: "Receipt Email",
-    subject: "Your WDSportz Purchase Receipt",
+    subject: "Your WatchWDS Purchase Receipt",
     category: "Billing/Payment",
     variables_hint: "first_name, purchase_amount, transaction_id, invoice_number",
     body: `<h2>Official Receipt Of Purchase</h2>
@@ -390,23 +390,23 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "creator_application_received",
     name: "Creator Application Received",
-    subject: "Creator application received - WDSportz",
+    subject: "Creator application received - WatchWDS",
     category: "Creator Updates",
     variables_hint: "first_name, user_email, website_url",
     body: `<h2>Creator Status Application</h2>
 <p>Hello {{first_name}},</p>
-<p>Thank you for applying to become a content creator at WDSportz! Our administrators have received your request and channel details.</p>
+<p>Thank you for applying to become a content creator at WatchWDS! Our administrators have received your request and channel details.</p>
 <p>Our standard review period takes up to 48 hours. Once approved, you'll be able to create custom stream links, sell match access, get paid by fans, and post exclusive comments.</p>`
   },
   {
     slug: "creator_approved",
     name: "Creator Approved",
-    subject: "CONGRATS: Your WDSportz Creator Application has been APPROVED!",
+    subject: "CONGRATS: Your WatchWDS Creator Application has been APPROVED!",
     category: "Creator Updates",
     variables_hint: "first_name, website_url",
     body: `<h2>Welcome to the Creator Guild!</h2>
 <p>Fantastic news, {{first_name}}!</p>
-<p>Your application to become a verified WDSportz Creator has been officially **Approved** by our staff.</p>
+<p>Your application to become a verified WatchWDS Creator has been officially **Approved** by our staff.</p>
 <p>Your account possesses full creator capabilities. Log in today to visit your newly unlocked Studio Dashboard, define your channels, configure subscriber content, and map out matches!</p>
 <div style="text-align: center;">
   <a href="{{website_url}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Launch My Creator Portal</a>
@@ -415,12 +415,12 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "creator_rejected",
     name: "Creator Rejected",
-    subject: "WDSportz Creator Application Status Update",
+    subject: "WatchWDS Creator Application Status Update",
     category: "Creator Updates",
     variables_hint: "first_name, support_email",
     body: `<h2>Creator Application Decision</h2>
 <p>Dear {{first_name}},</p>
-<p>Thank you for your interest in the WDSportz Creator Program. At this time, our review board has decided to reject your application due to incomplete profile credentials, inadequate social profiles, or platform saturation.</p>
+<p>Thank you for your interest in the WatchWDS Creator Program. At this time, our review board has decided to reject your application due to incomplete profile credentials, inadequate social profiles, or platform saturation.</p>
 <p>You can re-apply in 30 days. Feel free to address the requirements or ask about rejection details by shooting an email to <a href="mailto:{{support_email}}">{{support_email}}</a>.</p>`
   },
   {
@@ -528,7 +528,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "club_invitation",
     name: "Club Invitation",
-    subject: "Invitation: Join the club '{{club_name}}' on WDSportz",
+    subject: "Invitation: Join the club '{{club_name}}' on WatchWDS",
     category: "Team/League",
     variables_hint: "first_name, club_name, website_url",
     body: `<h2>Club Membership Invitation</h2>
@@ -558,7 +558,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
     variables_hint: "first_name, league_name, website_url",
     body: `<h2>Join the Tournament League</h2>
 <p>Hi {{first_name}},</p>
-<p>Your team/channel has been invited to compete inside the prestigious tournament league: <strong>{{league_name}}</strong> on the WDSportz scheduler system!</p>
+<p>Your team/channel has been invited to compete inside the prestigious tournament league: <strong>{{league_name}}</strong> on the WatchWDS scheduler system!</p>
 <p>Confirm your team roster, coordinate event schedules, and list custom stream ticket prices.</p>
 <div style="text-align: center;">
   <a href="{{website_url}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Review League Agreement</a>
@@ -577,10 +577,10 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "newsletter",
     name: "Newsletter",
-    subject: "WDSportz Recap: Weekly highlights, matches, and creator news",
+    subject: "WatchWDS Recap: Weekly highlights, matches, and creator news",
     category: "Marketing/Promo",
     variables_hint: "first_name, website_url, company_name",
-    body: `<h2>WDSportz Weekly Highlights</h2>
+    body: `<h2>WatchWDS Weekly Highlights</h2>
 <p>Hello {{first_name}},</p>
 <p>Here's what happened on the field and in our creator studios this past week! From buzzer-beater matches to elite player commentary, we've compiled the finest moments just for you.</p>
 <p>Check the schedule on our homepage to make sure you never miss another kick-off.</p>
@@ -607,7 +607,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
   {
     slug: "new_feature_announcement",
     name: "New Feature Announcement",
-    subject: "Unveiling WDSportz Live Chat Replay & Bento Boards!",
+    subject: "Unveiling WatchWDS Live Chat Replay & Bento Boards!",
     category: "Marketing/Promo",
     variables_hint: "first_name, website_url",
     body: `<h2>We've Upgraded the Experience</h2>
@@ -631,7 +631,7 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
     subject: "The Summer Games are on! Kickoff inside the app",
     category: "Marketing/Promo",
     variables_hint: "first_name, website_url",
-    body: `<h2>Summer on WDSportz</h2>
+    body: `<h2>Summer on WatchWDS</h2>
 <p>Hello {{first_name}},</p>
 <p>The Summer Season is heating up with over 150 live championship match events scheduled over the next 45 days. Log in now and reserve your championship match seating early!</p>`
   }

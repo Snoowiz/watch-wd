@@ -24,7 +24,7 @@ try {
 const currentFilename = _filename;
 const currentDirname = _dirname;
 
-const JWT_SECRET = process.env.JWT_SECRET || "wdsportz-super-secret-key-2026";
+const JWT_SECRET = process.env.JWT_SECRET || "watchwds-super-secret-key-2026";
 
 const fbConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
 const appAdmin = initializeApp(fbConfig);
@@ -763,9 +763,9 @@ async function startServer() {
       if (categoriesSnap.empty) {
         console.log("[FORUM SEEDER] Seeding default forum categories...");
         const defaultForumCategories = [
-          { id: "1", name: "General Discussion", description: "Talk about anything related to WDSportz or sports in general." },
+          { id: "1", name: "General Discussion", description: "Talk about anything related to WatchWDS or sports in general." },
           { id: "2", name: "Match Chat", description: "Discuss live streamed games, past matches, and highlights." },
-          { id: "3", name: "Suggestions & Feedback", description: "Help us improve WDSportz! Share your feature requests and ideas." },
+          { id: "3", name: "Suggestions & Feedback", description: "Help us improve WatchWDS! Share your feature requests and ideas." },
         ];
         for (const cat of defaultForumCategories) {
           await db.collection("forum_categories").doc(cat.id).set(cat);
@@ -775,7 +775,7 @@ async function startServer() {
         await db.collection("forum_topics").doc("101").set({
           id: 101,
           category_id: "1",
-          title: "Welcome to the WDSportz Fan Forum!",
+          title: "Welcome to the WatchWDS Fan Forum!",
           content: "<p>We are thrilled to launch our new community hub! Introduce yourselves here and let us know what teams you support.</p>",
           author_name: "Admin Support",
           author_id: 1,
@@ -804,7 +804,7 @@ async function startServer() {
           {
             id: "kb1",
             title: "How to add funds to my wallet?",
-            content: "You can add virtual funds to your WDSportz wallet by clicking on 'Add Funds' in the user dropdown menu, entering the desired amount, and completing the payment transaction safely. Once completed, your balance will reflect in points instantly.",
+            content: "You can add virtual funds to your WatchWDS wallet by clicking on 'Add Funds' in the user dropdown menu, entering the desired amount, and completing the payment transaction safely. Once completed, your balance will reflect in points instantly.",
             tags: ["wallet", "funds", "payment", "points"],
             category: "Billing & Wallet",
             createdAt: new Date().toISOString()
@@ -819,7 +819,7 @@ async function startServer() {
           },
           {
             id: "kb3",
-            title: "How to become a creator on WDSportz?",
+            title: "How to become a creator on WatchWDS?",
             content: "Go to your Profile settings, click on 'Become Creator', fill out your channel name and description, and submit. An admin will review your application soon. Once approved, you can schedule matches and earn points from subscriptions.",
             tags: ["creator", "become creator", "channel", "apply"],
             category: "Creators",
@@ -836,7 +836,7 @@ async function startServer() {
           {
             id: "kb5",
             title: "What is the refund policy?",
-            content: "All transactions on WDSportz are final. Points unlocked for Pay-Per-View matches or active subscriptions cannot be refunded to your standard financial accounts, owing to support of direct local sports creators.",
+            content: "All transactions on WatchWDS are final. Points unlocked for Pay-Per-View matches or active subscriptions cannot be refunded to your standard financial accounts, owing to support of direct local sports creators.",
             tags: ["refund", "policy", "billing", "cancel"],
             category: "Billing & Wallet",
             createdAt: new Date().toISOString()
@@ -917,9 +917,9 @@ async function startServer() {
           auth_pass: "",
           secure: true,
           is_active: false,
-          from_name: "WDSportz Support",
-          from_email: "noreply@wdsportz.com",
-          reply_to: "support@wdsportz.com",
+          from_name: "WatchWDS Support",
+          from_email: "noreply@watchwds.com",
+          reply_to: "support@watchwds.com",
           provider: "smtp"
         });
         console.log("[EMAIL SEEDER] Seeded default SMTP configuration.");
@@ -978,8 +978,8 @@ async function startServer() {
       purchase_amount: "49.99",
       transaction_id: "TXN_78291039",
       invoice_number: "INV-2026-908",
-      support_email: "support@wdsportz.com",
-      company_name: "WDSportz",
+      support_email: "support@watchwds.com",
+      company_name: "WatchWDS",
       website_url: "http://localhost:3000",
       reset_password_link: "http://localhost:3000/auth/reset?token=abc",
       verification_link: "http://localhost:3000/auth/verify?token=xyz",
@@ -1024,7 +1024,7 @@ async function startServer() {
 <body>
   <div class="email-container">
     <div class="email-header" style="background-color: ${branding.secondary_color || "#0f172a"}; text-align: center;">
-      <img src="${branding.logo_url}" alt="WDSportz" class="email-logo" style="max-height: 48px;" />
+      <img src="${branding.logo_url}" alt="WatchWDS" class="email-logo" style="max-height: 48px;" />
     </div>
     <div class="email-body">
       ${body}
@@ -1079,7 +1079,7 @@ async function startServer() {
         to,
         subject,
         html,
-        text: text || "WDSportz Email Support"
+        text: text || "WatchWDS Email Support"
       });
       return { success: true, provider: "smtp", messageId: info.messageId };
     } else {
@@ -1180,9 +1180,9 @@ async function startServer() {
       const { to } = req.body;
       if (!to) return res.status(400).json({ error: "Recipient email is required" });
 
-      const testSubject = "WDSportz SMTP Connection Verification";
+      const testSubject = "WatchWDS SMTP Connection Verification";
       const testHtml = `<h2>SMTP Server Connected!</h2>
-<p>Success! This email verifies that your SMTP server configuration on WDSportz is active and dispatching emails correctly.</p>
+<p>Success! This email verifies that your SMTP server configuration on WatchWDS is active and dispatching emails correctly.</p>
 <p>Timestamp: <strong>${new Date().toLocaleString()}</strong></p>
 <p>If you received this message, your mail relay configurations are fully operational!</p>`;
 
@@ -1634,7 +1634,7 @@ async function startServer() {
     try {
       const { gateway, type, amount, metadata, currency = "GBP" } = req.body;
       const userId = req.user.id.toString();
-      const origin = req.headers.origin || "https://wdsportz.com";
+      const origin = req.headers.origin || "https://watchwds.com";
 
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
@@ -1751,7 +1751,7 @@ async function startServer() {
 
         const userRef = db.collection("users").doc(userId);
         const userDoc = await userRef.get();
-        const email = userDoc.exists ? userDoc.data()?.email : "customer@wdsportz.com";
+        const email = userDoc.exists ? userDoc.data()?.email : "customer@watchwds.com";
 
         const resp = await fetch("https://api.paystack.co/transaction/initialize", {
           method: "POST",
@@ -1890,7 +1890,7 @@ async function startServer() {
           date: new Date().toISOString()
         };
         if (type === "embed") {
-          (purchaseData as any).code = `<iframe src="https://wdsportz.com/embed/${metadata.matchId}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`;
+          (purchaseData as any).code = `<iframe src="https://watchwds.com/embed/${metadata.matchId}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`;
         }
         await db.collection("purchases").doc(purchaseId).set(purchaseData);
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
@@ -2031,7 +2031,7 @@ async function startServer() {
         amount: deductAmount,
         type: 'embed',
         date: new Date().toISOString(),
-        code: `<iframe src="https://wdsportz.com/embed/${match_id}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`
+        code: `<iframe src="https://watchwds.com/embed/${match_id}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`
       };
       
       // Save purchase in root collection for admin dashboard to load

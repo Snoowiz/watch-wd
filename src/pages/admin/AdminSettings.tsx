@@ -572,7 +572,7 @@ export function AdminSettings() {
                   value={localSeoSettings.metaTitle}
                   onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, metaTitle: e.target.value }); setIsSeoSaved(false); }}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                  placeholder="e.g., WD Sportz - Live Sports Streaming"
+                  placeholder="e.g., Watch WDS - Live Sports Streaming"
                 />
               </div>
               <div>
@@ -618,7 +618,7 @@ export function AdminSettings() {
                   value={localSeoSettings.twitterHandle}
                   onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, twitterHandle: e.target.value }); setIsSeoSaved(false); }}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                  placeholder="e.g., @wdsportz"
+                  placeholder="e.g., @watchwds"
                 />
               </div>
               <div className="md:col-span-2">
@@ -849,7 +849,7 @@ function AppearanceSettings() {
 
 function PlatformBrandingSettings() {
   const { platformName, setPlatformName, favicon, setFavicon } = useSettingsStore();
-  const [localName, setLocalName] = useState(platformName || 'WDSportz');
+  const [localName, setLocalName] = useState(platformName || 'WatchWDS');
   const [showPicker, setShowPicker] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 

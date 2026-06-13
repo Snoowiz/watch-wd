@@ -99,7 +99,7 @@ export function Register() {
             <UserPlus className="w-8 h-8 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Create an account</h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">Join the WDSportz community</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-2">Join the WatchWDS community</p>
         </div>
 
         <AnimatePresence>

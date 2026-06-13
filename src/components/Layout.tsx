@@ -12,7 +12,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, setLogoutModalOpen } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
   const { currencySymbol, platformName: storedPlatformName, favicon } = useSettingsStore();
-  const platformName = storedPlatformName || 'WDSportz';
+  const platformName = storedPlatformName || 'WatchWDS';
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useThemeStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -39,9 +39,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [favicon]);
 
-  // Compute initials from platform name (e.g., "WD" for "WDSportz" or "S" / "SP" for custom names)
+  // Compute initials from platform name (e.g., "WD" for "WatchWDS" or "S" / "SP" for custom names)
   const platformInitials = (() => {
-    const cleanName = typeof platformName === 'string' ? platformName.trim() : 'WDSportz';
+    const cleanName = typeof platformName === 'string' ? platformName.trim() : 'WatchWDS';
     if (!cleanName) return 'WD';
     // If name contains space or uppercase letters, get first letters of major words/syllables
     const parts = cleanName.split(/[\s_-]+/);

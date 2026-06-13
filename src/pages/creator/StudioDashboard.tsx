@@ -178,7 +178,7 @@ export function StudioDashboard() {
                 <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 px-4 py-2 rounded-lg border border-slate-100 dark:border-slate-700">
                   <Globe className="w-4 h-4" />
                   <span>Permalink:</span>
-                  <span className="text-slate-400">https://wdsportz.com/matches/</span>
+                  <span className="text-slate-400">https://watchwds.com/matches/</span>
                   <input 
                     type="text"
                     value={formData.slug}

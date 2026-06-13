@@ -218,7 +218,7 @@ export function SearchPage() {
           {query.trim().length < 2 ? (
             <div className="text-center py-16 bg-white dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800/50 p-6">
               <Search className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700 mb-4" />
-              <p className="text-slate-600 dark:text-slate-400 font-bold text-lg">Start typing to search WDSportz</p>
+              <p className="text-slate-600 dark:text-slate-400 font-bold text-lg">Start typing to search WatchWDS</p>
               <p className="text-slate-400 dark:text-slate-500 text-xs sm:text-sm mt-1 max-w-sm mx-auto">
                 Discover live streams, operational matches, blog insights, and support guides effortlessly.
               </p>

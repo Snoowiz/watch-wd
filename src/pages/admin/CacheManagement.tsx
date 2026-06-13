@@ -199,7 +199,7 @@ export function CacheManagement() {
             Performance & Multi-Layer Cache Panel
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Real-time visual tuning, monitoring, warming, and invalidation for WDSportz static and dynamic APIs.
+            Real-time visual tuning, monitoring, warming, and invalidation for WatchWDS static and dynamic APIs.
           </p>
         </div>
         <div className="flex gap-3">

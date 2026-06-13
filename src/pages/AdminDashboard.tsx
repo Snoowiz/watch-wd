@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuthStore, useFeatureStore, useSettingsStore, useThemeStore, useUsersStore, useMatchStore, usePurchaseStore, useBlogStore, useCommentStore, useCreatorStore } from '../store';
 import { Navigate, Link, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell, 
-  Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase, 
+import {
+  Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
+  Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
   UserPlus, Award, PlayCircle, Ban, Trash2
 } from 'lucide-react';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area
 } from 'recharts';
@@ -54,13 +54,13 @@ export function AdminDashboard() {
             'Authorization': `Bearer ${token}`
           }
         })
-        .then(res => res.json())
-        .then(data => {
-          if (!data.error) {
-            setUsers(data);
-          }
-        })
-        .catch(console.error);
+          .then(res => res.json())
+          .then(data => {
+            if (!data.error) {
+              setUsers(data);
+            }
+          })
+          .catch(console.error);
       }
     }
   }, [user]);
@@ -80,8 +80,8 @@ export function AdminDashboard() {
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
-  const filteredResults = searchData.filter(item => 
-    (item.title || '').toLowerCase().includes((searchQuery || '').toLowerCase()) || 
+  const filteredResults = searchData.filter(item =>
+    (item.title || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
     (item.subtitle || '').toLowerCase().includes((searchQuery || '').toLowerCase())
   );
 
@@ -127,8 +127,8 @@ export function AdminDashboard() {
         <div className="h-20 flex items-center px-8 border-b border-slate-200 dark:border-slate-700 shrink-0 justify-between">
           <div>
             <div className="text-2xl font-black tracking-tighter">
-              <span className="text-slate-900 dark:text-white">WD</span>
-              <span className="text-yellow-500">Sportz</span>
+              <span className="text-slate-900 dark:text-white">Watch</span>
+              <span className="text-yellow-500">WDS</span>
             </div>
             <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase mt-0.5">Admin Console</div>
           </div>
@@ -138,7 +138,7 @@ export function AdminDashboard() {
         </div>
 
         <div className="p-4 shrink-0">
-          <button 
+          <button
             onClick={() => navigate('/admin/matches/new')}
             className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
           >
@@ -156,11 +156,10 @@ export function AdminDashboard() {
               <Link
                 key={item.label}
                 to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-                  isActive 
-                    ? 'bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-white shadow-sm relative before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-yellow-500 before:rounded-r-full' 
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${isActive
+                    ? 'bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-white shadow-sm relative before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-yellow-500 before:rounded-r-full'
                     : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                  }`}
               >
                 <Icon className={`w-5 h-5 ${isActive ? 'text-yellow-500' : ''}`} />
                 {item.label}
@@ -187,16 +186,16 @@ export function AdminDashboard() {
             </button>
             <div className="relative hidden sm:block w-48 md:w-96 z-50">
               <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-              <input 
-                type="text" 
-                placeholder="Search matches, users, or data..." 
+              <input
+                type="text"
+                placeholder="Search matches, users, or data..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
               />
-              
+
               {/* Search Results Dropdown */}
               {isSearchFocused && searchQuery && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden">
@@ -205,7 +204,7 @@ export function AdminDashboard() {
                       {filteredResults.map((result) => {
                         const Icon = result.icon;
                         return (
-                          <Link 
+                          <Link
                             key={`${result.type}-${result.id}`}
                             to={result.path}
                             className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
@@ -246,9 +245,9 @@ export function AdminDashboard() {
               <NotificationDropdown />
             </div>
             <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
-            
+
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setIsAdminDropdownOpen(!isAdminDropdownOpen)}
                 className="flex items-center gap-3 hover:opacity-80 transition-opacity"
               >
@@ -264,7 +263,7 @@ export function AdminDashboard() {
                   )}
                 </div>
               </button>
-              
+
               {/* Dropdown Menu */}
               {isAdminDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-2 z-50 animate-in fade-in slide-in-from-top-2">
@@ -367,9 +366,9 @@ function AdminOverview() {
     role: u.role.toUpperCase(),
     time: 'Just now',
     roleColor: u.role === 'admin' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
-               u.role === 'creator' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
-               u.role === 'operator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
-               'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+      u.role === 'creator' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
+        u.role === 'operator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+          'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
   }));
 
   // Top Performing Content Calculators
@@ -415,7 +414,7 @@ function AdminOverview() {
             </span>
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">
-            Welcome back to WD Sportz base of operations. Here is a real-time summary of today's engagement metrics.
+            Welcome back to Watch WDS base of operations. Here is a real-time summary of today's engagement metrics.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-400">
@@ -429,8 +428,8 @@ function AdminOverview() {
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
-            <div 
-              key={i} 
+            <div
+              key={i}
               className={`bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm border-l-4 ${stat.color} hover:shadow-md transition-all duration-300 hover:translate-y-[-1px]`}
             >
               <div className="flex items-center justify-between mb-4">
@@ -451,7 +450,7 @@ function AdminOverview() {
 
       {/* Analytics Visualization + Spotlights Bento */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
-        
+
         {/* CHARTS CONTAINER (Left Column) */}
         <div className="lg:col-span-2 space-y-6 sm:space-y-8">
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/60 shadow-sm">
@@ -465,29 +464,29 @@ function AdminOverview() {
                 <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-purple-500 rounded-sm" /> Blog Journalism</span>
               </div>
             </div>
-            
+
             <div className="h-80 w-full font-mono text-xs">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={viewsChartData}>
                   <defs>
                     <linearGradient id="matchesGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="blogsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} />
-                  <Tooltip 
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <Tooltip
                     contentStyle={{
-                      borderRadius: '1rem', 
-                      border: 'none', 
-                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', 
-                      background: '#1e293b', 
+                      borderRadius: '1rem',
+                      border: 'none',
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      background: '#1e293b',
                       color: '#f8fafc',
                       fontSize: '12px',
                       fontFamily: 'monospace'
@@ -565,7 +564,7 @@ function AdminOverview() {
 
         {/* CONTENT SPOTLIGHT BEN-TO GRID (Right Column) */}
         <div className="space-y-6 sm:space-y-8">
-          
+
           {/* Top Video Match */}
           <div className="bg-indigo-600 dark:bg-indigo-950/40 rounded-2xl p-6 border border-indigo-500/35 text-white shadow-sm flex flex-col justify-between h-[155px] hover:scale-[1.01] transition-transform">
             <h3 className="font-bold text-indigo-100 text-xs uppercase tracking-wider flex items-center gap-2">
@@ -667,7 +666,7 @@ function AdminOverview() {
 
       {/* Auditing and Feed Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 border-t border-slate-200 dark:border-slate-800 pt-8">
-        
+
         {/* Recent Signup Actions */}
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm p-4 sm:p-6">
@@ -763,7 +762,7 @@ function AdminUsers() {
   const [editingUser, setEditingUser] = useState<any>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  const [userToConfirmAction, setUserToConfirmAction] = useState<{user: any, action: 'ban' | 'unban' | 'delete'} | null>(null);
+  const [userToConfirmAction, setUserToConfirmAction] = useState<{ user: any, action: 'ban' | 'unban' | 'delete' } | null>(null);
 
   const handleToggleBan = async (user: any) => {
     setUserToConfirmAction({
@@ -779,7 +778,7 @@ function AdminUsers() {
   const confirmAction = async () => {
     if (!userToConfirmAction) return;
     const { user, action } = userToConfirmAction;
-    
+
     if (action === 'ban' || action === 'unban') {
       try {
         const token = localStorage.getItem('token');
@@ -803,20 +802,20 @@ function AdminUsers() {
         }
       } catch (e) { console.error('Failed to delete user'); }
     }
-    
+
     setUserToConfirmAction(null);
   };
 
 
   const handleExportData = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
+    const csvContent = "data:text/csv;charset=utf-8,"
       + "ID,Name,Email,Role,Status,Points\n"
       + users.map(u => `${u.id},${u.name},${u.email},${u.role},${u.status},${u.points}`).join("\n");
-    
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "wdsportz_users.csv");
+    link.setAttribute("download", "watchwds_users.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -871,7 +870,7 @@ function AdminUsers() {
     <div className="space-y-6 relative">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Manage Users</h1>
-        <button 
+        <button
           onClick={handleExportData}
           className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-2 px-4 rounded-xl transition-colors self-start sm:self-auto"
         >
@@ -911,34 +910,31 @@ function AdminUsers() {
                     </div>
                   </td>
                   <td className="p-4">
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase ${
-                      u.role === 'admin' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
-                      u.role === 'creator' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
-                      u.role === 'operator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
-                      'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
-                    }`}>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase ${u.role === 'admin' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
+                        u.role === 'creator' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
+                          u.role === 'operator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                            'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                      }`}>
                       {u.role}
                     </span>
                   </td>
                   <td className="p-4">
-                    <span className={`flex items-center gap-1.5 text-xs font-medium ${
-                      u.status === 'active' ? 'text-green-600 dark:text-green-400' : 
-                      u.status === 'suspended' ? 'text-orange-600 dark:text-orange-400' :
-                      u.status === 'banned' ? 'text-red-600 dark:text-red-400' :
-                      'text-slate-500 dark:text-slate-400'
-                    }`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${
-                        u.status === 'active' ? 'bg-green-500' : 
-                        u.status === 'suspended' ? 'bg-orange-500' :
-                        u.status === 'banned' ? 'bg-red-500' :
-                        'bg-slate-400'
-                      }`}></div> 
+                    <span className={`flex items-center gap-1.5 text-xs font-medium ${u.status === 'active' ? 'text-green-600 dark:text-green-400' :
+                        u.status === 'suspended' ? 'text-orange-600 dark:text-orange-400' :
+                          u.status === 'banned' ? 'text-red-600 dark:text-red-400' :
+                            'text-slate-500 dark:text-slate-400'
+                      }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'active' ? 'bg-green-500' :
+                          u.status === 'suspended' ? 'bg-orange-500' :
+                            u.status === 'banned' ? 'bg-red-500' :
+                              'bg-slate-400'
+                        }`}></div>
                       {u.status ? u.status.charAt(0).toUpperCase() + u.status.slice(1) : ''}
                     </span>
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end items-center gap-3">
-                      <button 
+                      <button
                         onClick={() => setEditingUser(u)}
                         className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 font-medium text-sm"
                       >
@@ -976,10 +972,10 @@ function AdminUsers() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto space-y-6">
               <div className="flex items-center gap-6">
-                <div 
+                <div
                   onClick={() => avatarInputRef.current?.click()}
                   className="w-20 h-20 bg-slate-200 dark:bg-slate-700 rounded-xl flex items-center justify-center overflow-hidden shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
                 >
@@ -989,31 +985,31 @@ function AdminUsers() {
                     <User className="w-10 h-10 text-slate-400" />
                   )}
                 </div>
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   ref={avatarInputRef}
                   onChange={handleAvatarChange}
-                  className="hidden" 
+                  className="hidden"
                   accept="image/*"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Name</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editingUser.name}
-                  onChange={(e) => setEditingUser({...editingUser, name: e.target.value})}
+                  onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Email</label>
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   value={editingUser.email}
-                  onChange={(e) => setEditingUser({...editingUser, email: e.target.value})}
+                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                 />
               </div>
@@ -1021,9 +1017,9 @@ function AdminUsers() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Role</label>
-                  <select 
+                  <select
                     value={editingUser.role}
-                    onChange={(e) => setEditingUser({...editingUser, role: e.target.value})}
+                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                   >
                     <option value="user">User</option>
@@ -1032,12 +1028,12 @@ function AdminUsers() {
                     <option value="admin">Admin</option>
                   </select>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Status</label>
-                  <select 
+                  <select
                     value={editingUser.status}
-                    onChange={(e) => setEditingUser({...editingUser, status: e.target.value})}
+                    onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                   >
                     <option value="active">Active</option>
@@ -1050,29 +1046,29 @@ function AdminUsers() {
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Wallet Balance</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={editingUser.points}
-                  onChange={(e) => setEditingUser({...editingUser, points: parseInt(e.target.value) || 0})}
+                  onChange={(e) => setEditingUser({ ...editingUser, points: parseInt(e.target.value) || 0 })}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                 />
               </div>
 
               <div className="flex items-center gap-2 pt-2">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="verified"
                   checked={editingUser.verified || false}
-                  onChange={(e) => setEditingUser({...editingUser, verified: e.target.checked})}
+                  onChange={(e) => setEditingUser({ ...editingUser, verified: e.target.checked })}
                   className="w-4 h-4 text-yellow-500 border-slate-300 rounded focus:ring-yellow-500"
                 />
                 <label htmlFor="verified" className="text-sm font-bold text-slate-700 dark:text-slate-300">
                   Verified User
                 </label>
               </div>
-              
+
               <div className="pt-2">
-                <button 
+                <button
                   onClick={() => alert(`Message sent to ${editingUser.email}`)}
                   className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold py-3 px-4 rounded-xl transition-colors border border-slate-200 dark:border-slate-700"
                 >
@@ -1082,13 +1078,13 @@ function AdminUsers() {
             </div>
 
             <div className="p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex gap-3 shrink-0">
-              <button 
+              <button
                 onClick={() => setEditingUser(null)}
                 className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold py-3 px-4 rounded-xl transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleSave}
                 className="flex-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-3 px-4 rounded-xl transition-colors"
               >
@@ -1107,8 +1103,8 @@ function AdminUsers() {
                 {userToConfirmAction.action === 'delete' ? <Trash2 className="w-6 h-6" /> : <Ban className="w-6 h-6" />}
               </div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
-                {userToConfirmAction.action === 'delete' ? 'Delete User?' : 
-                 userToConfirmAction.action === 'ban' ? 'Ban User?' : 'Unban User?'}
+                {userToConfirmAction.action === 'delete' ? 'Delete User?' :
+                  userToConfirmAction.action === 'ban' ? 'Ban User?' : 'Unban User?'}
               </h2>
               <p className="text-slate-600 dark:text-slate-400 text-sm">
                 Are you sure you want to {userToConfirmAction.action} <strong>{userToConfirmAction.user.name}</strong>?
@@ -1116,13 +1112,13 @@ function AdminUsers() {
               </p>
             </div>
             <div className="p-6 pt-4 flex justify-end gap-3 shrink-0">
-              <button 
+              <button
                 onClick={() => setUserToConfirmAction(null)}
                 className="px-4 py-2 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={confirmAction}
                 className={`px-4 py-2 font-bold rounded-xl transition-colors text-white ${userToConfirmAction.action === 'delete' ? 'bg-red-500 hover:bg-red-600' : 'bg-orange-500 hover:bg-orange-600'}`}
               >
@@ -1156,14 +1152,12 @@ function AdminFeatures() {
               </div>
               <button
                 onClick={() => toggleFeature(feature.slug)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-                  feature.is_active === 1 ? 'bg-green-500' : 'bg-slate-200 dark:bg-slate-700'
-                }`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${feature.is_active === 1 ? 'bg-green-500' : 'bg-slate-200 dark:bg-slate-700'
+                  }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    feature.is_active === 1 ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${feature.is_active === 1 ? 'translate-x-6' : 'translate-x-1'
+                    }`}
                 />
               </button>
             </div>

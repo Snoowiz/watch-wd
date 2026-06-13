@@ -90,7 +90,7 @@ export function Login() {
       <div className="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Welcome back</h2>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">Log in to your WDSportz account</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-2">Log in to your WatchWDS account</p>
         </div>
 
         <AnimatePresence>

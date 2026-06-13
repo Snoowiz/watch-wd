@@ -59,7 +59,7 @@ const SocialLinks = ({ social }: { social?: SocialSettings | null }) => {
 export function Footer() {
   const [socialSettings, setSocialSettings] = useState<SocialSettings | null>(null);
   const { platformName: storedPlatformName } = useSettingsStore();
-  const platformName = storedPlatformName || 'WDSportz';
+  const platformName = storedPlatformName || 'WatchWDS';
 
   useEffect(() => {
     getSocialSettings().then(d => setSocialSettings(d));
