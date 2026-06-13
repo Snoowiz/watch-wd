@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { WifiOff, Loader2 } from 'lucide-react';
 import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore } from './store';
+import { Preloader } from './components/Preloader';
 import { Layout } from './components/Layout';
 import { UIFeedbackProvider } from './components/UIFeedbackProvider';
 import { Home } from './pages/Home';
@@ -46,10 +47,11 @@ import { SearchPage } from './pages/SearchPage';
 export default function App() {
   const { token, setAuth, logout, user, originalUser, revertLoginAs } = useAuthStore();
   const { theme, setDarkMode } = useThemeStore();
-  const { seoSettings, platformName: storedPlatformName } = useSettingsStore();
+  const { seoSettings, platformName: storedPlatformName, preloaderEnabled } = useSettingsStore();
   const platformName = storedPlatformName || 'WatchWDS';
 
   const { setFeatures } = useFeatureStore();
+  const [initialLoading, setInitialLoading] = useState(true);
   const [profileModalDismissed, setProfileModalDismissed] = useState(
     () => localStorage.getItem('profileModalDismissed') === 'true'
   );
@@ -164,19 +166,38 @@ export default function App() {
   }, [theme, setDarkMode]);
 
   useEffect(() => {
-    // Fetch features
+    let featuresLoaded = false;
+    let authChecked = false;
+    let timeoutCompleted = false;
+
+    const checkFinished = () => {
+      if (featuresLoaded && authChecked && timeoutCompleted) {
+        setInitialLoading(false);
+      }
+    };
+
+    // 1. Minimum 1.5s duration timer
+    const timer = setTimeout(() => {
+      timeoutCompleted = true;
+      checkFinished();
+    }, 1500);
+
+    // 2. Fetch features
     fetch('/api/features')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
           setFeatures(data);
-        } else {
-          console.error("Failed to load features:", data);
         }
+        featuresLoaded = true;
+        checkFinished();
       })
-      .catch(console.error);
+      .catch(() => {
+        featuresLoaded = true;
+        checkFinished();
+      });
 
-    // Fetch user if token exists
+    // 3. Fetch user if token exists
     if (token) {
       fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
@@ -189,10 +210,27 @@ export default function App() {
           }
           return res.json();
         })
-        .then(data => setAuth(data.user, token))
-        .catch(() => logout());
+        .then(data => {
+          setAuth(data.user, token);
+          authChecked = true;
+          checkFinished();
+        })
+        .catch(() => {
+          logout();
+          authChecked = true;
+          checkFinished();
+        });
+    } else {
+      authChecked = true;
+      checkFinished();
     }
+
+    return () => clearTimeout(timer);
   }, [token, setAuth, logout, setFeatures]);
+
+  if (preloaderEnabled !== false && initialLoading) {
+    return <Preloader />;
+  }
 
   return (
     <Router>

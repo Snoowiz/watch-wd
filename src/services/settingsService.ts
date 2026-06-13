@@ -104,11 +104,13 @@ export const saveCookieSettings = async (settings: CookieSettings): Promise<void
 export interface BrandingSettings {
   platformName: string;
   favicon: string;
+  preloaderEnabled: boolean;
 }
 
 const defaultBranding: BrandingSettings = {
   platformName: 'WatchWDS',
-  favicon: '/favicon.ico'
+  favicon: '/favicon.ico',
+  preloaderEnabled: true
 };
 
 export const getBrandingSettings = async (): Promise<BrandingSettings> => {
@@ -116,7 +118,11 @@ export const getBrandingSettings = async (): Promise<BrandingSettings> => {
     const docRef = doc(db, 'settings', 'branding');
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return docSnap.data() as BrandingSettings;
+      const data = docSnap.data();
+      return {
+        ...defaultBranding,
+        ...data
+      } as BrandingSettings;
     }
   } catch (error) {
     console.error("Error fetching branding settings:", error);

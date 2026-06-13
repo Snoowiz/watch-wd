@@ -455,6 +455,8 @@ interface SettingsState {
   setPlatformName: (name: string) => void;
   favicon: string;
   setFavicon: (favicon: string) => void;
+  preloaderEnabled: boolean;
+  setPreloaderEnabled: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -496,6 +498,8 @@ export const useSettingsStore = create<SettingsState>()(
       setPlatformName: (name) => set({ platformName: name }),
       favicon: '/favicon.ico',
       setFavicon: (favicon) => set({ favicon: favicon }),
+      preloaderEnabled: true,
+      setPreloaderEnabled: (enabled) => set({ preloaderEnabled: enabled }),
     }),
     {
       name: 'settings-storage',

@@ -189,6 +189,9 @@ export function initializeFirebaseSync() {
     if (branding.favicon && branding.favicon !== store.favicon) {
       store.setFavicon(branding.favicon);
     }
+    if (branding.preloaderEnabled !== undefined && branding.preloaderEnabled !== store.preloaderEnabled) {
+      store.setPreloaderEnabled(branding.preloaderEnabled);
+    }
   }).catch(err => {
     console.error('Failed to load branding settings at startup', err);
   });
@@ -196,21 +199,25 @@ export function initializeFirebaseSync() {
   let previousBranding = {
     platformName: useSettingsStore.getState().platformName,
     favicon: useSettingsStore.getState().favicon,
+    preloaderEnabled: useSettingsStore.getState().preloaderEnabled,
   };
 
   useSettingsStore.subscribe(async (state) => {
     if (
       state.platformName !== previousBranding.platformName ||
-      state.favicon !== previousBranding.favicon
+      state.favicon !== previousBranding.favicon ||
+      state.preloaderEnabled !== previousBranding.preloaderEnabled
     ) {
       previousBranding = {
         platformName: state.platformName,
         favicon: state.favicon,
+        preloaderEnabled: state.preloaderEnabled,
       };
       try {
         await saveBrandingSettings({
           platformName: state.platformName,
           favicon: state.favicon,
+          preloaderEnabled: state.preloaderEnabled,
         });
       } catch (err) {
         console.error('Failed to sync branding settings to Firestore', err);

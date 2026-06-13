@@ -848,13 +848,20 @@ function AppearanceSettings() {
 }
 
 function PlatformBrandingSettings() {
-  const { platformName, setPlatformName, favicon, setFavicon } = useSettingsStore();
+  const { platformName, setPlatformName, favicon, setFavicon, preloaderEnabled, setPreloaderEnabled } = useSettingsStore();
   const [localName, setLocalName] = useState(platformName || 'WatchWDS');
+  const [localPreloaderEnabled, setLocalPreloaderEnabled] = useState(preloaderEnabled !== false);
   const [showPicker, setShowPicker] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
+  useEffect(() => {
+    setLocalName(platformName || 'WatchWDS');
+    setLocalPreloaderEnabled(preloaderEnabled !== false);
+  }, [platformName, preloaderEnabled]);
+
   const handleSave = () => {
     setPlatformName(localName);
+    setPreloaderEnabled(localPreloaderEnabled);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
@@ -923,6 +930,31 @@ function PlatformBrandingSettings() {
             </div>
           </div>
         </div>
+
+        {/* Preloader Control */}
+        <div className="space-y-2 md:col-span-2 border-t border-slate-100 dark:border-slate-800 pt-5">
+          <label className="flex items-center cursor-pointer justify-between">
+            <div>
+              <span className="block text-sm font-bold text-slate-700 dark:text-slate-300">Enable Site Preloader</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Show an animated football bouncing effect when the site loads or performs routing.
+              </span>
+            </div>
+            <div className="relative">
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={localPreloaderEnabled}
+                onChange={(e) => {
+                  setLocalPreloaderEnabled(e.target.checked);
+                  setIsSaved(false);
+                }}
+              />
+              <div className={`block w-10 h-6 rounded-full transition-colors ${localPreloaderEnabled ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
+              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${localPreloaderEnabled ? 'transform translate-x-4' : ''}`}></div>
+            </div>
+          </label>
+        </div>
       </div>
 
       <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -943,6 +975,7 @@ function PlatformBrandingSettings() {
           onSelect={(url) => {
             setFavicon(url);
             setShowPicker(false);
+            setIsSaved(false);
           }}
           onClose={() => setShowPicker(false)}
         />
