@@ -1638,10 +1638,35 @@ async function startServer() {
     }
   });
 
+  // Helper functions for masking sensitive secrets in the admin configuration panel
+  function maskSecret(val: string): string {
+    if (!val) return "";
+    if (val.length <= 10) return "••••••••";
+    return val.substring(0, 8) + "••••••••" + val.substring(val.length - 4);
+  }
+
+  function isMasked(val: string): boolean {
+    return typeof val === "string" && val.includes("••••");
+  }
+
   app.get("/api/admin/payment/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const doc = await db.collection("payment_settings").doc("gateway").get();
-      res.json(doc.exists ? doc.data() : {});
+      if (!doc.exists) return res.json({});
+      const data = doc.data() as any;
+      
+      const maskedData = { ...data };
+      if (maskedData.stripe && maskedData.stripe.secretKey) {
+        maskedData.stripe.secretKey = maskSecret(maskedData.stripe.secretKey);
+      }
+      if (maskedData.paypal && maskedData.paypal.secretKey) {
+        maskedData.paypal.secretKey = maskSecret(maskedData.paypal.secretKey);
+      }
+      if (maskedData.paystack && maskedData.paystack.secretKey) {
+        maskedData.paystack.secretKey = maskSecret(maskedData.paystack.secretKey);
+      }
+      
+      res.json(maskedData);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -1649,8 +1674,77 @@ async function startServer() {
 
   app.put("/api/admin/payment/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      await db.collection("payment_settings").doc("gateway").set(req.body);
+      const incoming = req.body;
+      const docRef = db.collection("payment_settings").doc("gateway");
+      const existingDoc = await docRef.get();
+      const existing = existingDoc.exists ? existingDoc.data() : {};
+      
+      const merged = { ...incoming };
+      
+      const mergeSecret = (provider: string) => {
+        if (merged[provider] && existing[provider]) {
+          if (isMasked(merged[provider].secretKey)) {
+            merged[provider].secretKey = existing[provider].secretKey;
+          }
+        }
+      };
+      
+      mergeSecret("stripe");
+      mergeSecret("paypal");
+      mergeSecret("paystack");
+      
+      await docRef.set(merged);
       res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/admin/google-auth/settings", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const doc = await db.collection("settings").doc("google_auth").get();
+      if (!doc.exists) return res.json({});
+      const data = doc.data() as any;
+      
+      const maskedData = { ...data };
+      if (maskedData.clientSecret) {
+        maskedData.clientSecret = maskSecret(maskedData.clientSecret);
+      }
+      
+      res.json(maskedData);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/admin/google-auth/settings", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const incoming = req.body;
+      const docRef = db.collection("settings").doc("google_auth");
+      const existingDoc = await docRef.get();
+      const existing = existingDoc.exists ? existingDoc.data() : {};
+      
+      const merged = { ...incoming };
+      if (isMasked(merged.clientSecret) && existing.clientSecret) {
+        merged.clientSecret = existing.clientSecret;
+      }
+      
+      await docRef.set(merged);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/auth/google/config", async (req, res) => {
+    try {
+      const doc = await db.collection("settings").doc("google_auth").get();
+      if (!doc.exists) return res.json({ enabled: false, clientId: "" });
+      const data = doc.data() as any;
+      res.json({
+        enabled: data.enabled || false,
+        clientId: data.clientId || ""
+      });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

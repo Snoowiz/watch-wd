@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../../store';
+import { getGoogleAuthSettings, saveGoogleAuthSettings } from '../../services/settingsService';
 import { 
   Chrome, Key, Copy, Check, ExternalLink, 
   ShieldCheck, AlertCircle, Eye, EyeOff, 
@@ -27,15 +28,17 @@ export function AdminGoogleAuthSettings() {
     : 'https://watchwds.com/api/auth/google/callback';
 
   useEffect(() => {
-    if (googleAuthSettings) {
-      setLocalSettings({
-        enabled: googleAuthSettings.enabled || false,
-        clientId: googleAuthSettings.clientId || '',
-        clientSecret: googleAuthSettings.clientSecret || '',
-        redirectUri: googleAuthSettings.redirectUri || currentRedirectUri
-      });
-    }
-  }, [googleAuthSettings, currentRedirectUri]);
+    getGoogleAuthSettings().then(fullSettings => {
+      if (fullSettings) {
+        setLocalSettings({
+          enabled: fullSettings.enabled || false,
+          clientId: fullSettings.clientId || '',
+          clientSecret: fullSettings.clientSecret || '',
+          redirectUri: fullSettings.redirectUri || currentRedirectUri
+        });
+      }
+    });
+  }, [currentRedirectUri]);
 
   const handleCopyUri = () => {
     navigator.clipboard.writeText(localSettings.redirectUri || currentRedirectUri);
@@ -91,11 +94,13 @@ export function AdminGoogleAuthSettings() {
         throw new Error(data.errors ? data.errors.join('\n') : (data.error || 'Validation failed.'));
       }
 
-      // If valid, commit to the global settings store
-      setGoogleAuthSettings({
+      // If valid, save via settings service API and commit to global settings store
+      const updatedSettings = {
         ...localSettings,
         redirectUri: localSettings.redirectUri || currentRedirectUri
-      });
+      };
+      await saveGoogleAuthSettings(updatedSettings);
+      setGoogleAuthSettings(updatedSettings);
 
       setValidationSuccess("Google Sign-In configuration validated and saved successfully.");
     } catch (err: any) {

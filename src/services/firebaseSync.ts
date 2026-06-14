@@ -12,7 +12,7 @@ import {
 } from '../store';
 import { db } from '../lib/firebase';
 import { doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
-import { getBrandingSettings, saveBrandingSettings, getGoogleAuthSettings, saveGoogleAuthSettings } from './settingsService';
+import { getBrandingSettings, saveBrandingSettings, getPublicGoogleAuthConfig } from './settingsService';
 
 export function initializeFirebaseSync() {
   
@@ -197,10 +197,15 @@ export function initializeFirebaseSync() {
   });
 
   // Sync Google Auth Settings
-  getGoogleAuthSettings().then(googleAuth => {
+  getPublicGoogleAuthConfig().then(config => {
     const store = useSettingsStore.getState();
-    if (googleAuth) {
-      store.setGoogleAuthSettings(googleAuth);
+    if (config) {
+      store.setGoogleAuthSettings({
+        enabled: config.enabled,
+        clientId: config.clientId,
+        clientSecret: '',
+        redirectUri: ''
+      });
     }
   }).catch(err => {
     console.error('Failed to load Google Auth settings at startup', err);
@@ -210,7 +215,6 @@ export function initializeFirebaseSync() {
     platformName: useSettingsStore.getState().platformName,
     favicon: useSettingsStore.getState().favicon,
     preloaderEnabled: useSettingsStore.getState().preloaderEnabled,
-    googleAuthSettings: useSettingsStore.getState().googleAuthSettings,
   };
 
   useSettingsStore.subscribe(async (state) => {
@@ -219,15 +223,11 @@ export function initializeFirebaseSync() {
       state.favicon !== previousBranding.favicon ||
       state.preloaderEnabled !== previousBranding.preloaderEnabled;
 
-    const googleAuthChanged = 
-      JSON.stringify(state.googleAuthSettings) !== JSON.stringify(previousBranding.googleAuthSettings);
-
-    if (brandingChanged || googleAuthChanged) {
+    if (brandingChanged) {
       previousBranding = {
         platformName: state.platformName,
         favicon: state.favicon,
         preloaderEnabled: state.preloaderEnabled,
-        googleAuthSettings: state.googleAuthSettings,
       };
 
       try {
@@ -237,9 +237,6 @@ export function initializeFirebaseSync() {
             favicon: state.favicon,
             preloaderEnabled: state.preloaderEnabled,
           });
-        }
-        if (googleAuthChanged) {
-          await saveGoogleAuthSettings(state.googleAuthSettings);
         }
       } catch (err) {
         console.error('Failed to sync settings to Firestore', err);

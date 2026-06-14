@@ -151,10 +151,12 @@ const defaultGoogleAuth: GoogleAuthSettings = {
 
 export const getGoogleAuthSettings = async (): Promise<GoogleAuthSettings> => {
   try {
-    const docRef = doc(db, 'settings', 'google_auth');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data();
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/admin/google-auth/settings', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
       return {
         ...defaultGoogleAuth,
         ...data
@@ -167,7 +169,30 @@ export const getGoogleAuthSettings = async (): Promise<GoogleAuthSettings> => {
 };
 
 export const saveGoogleAuthSettings = async (settings: GoogleAuthSettings): Promise<void> => {
-  const docRef = doc(db, 'settings', 'google_auth');
-  await setDoc(docRef, settings, { merge: true });
+  try {
+    const token = localStorage.getItem('token');
+    await fetch('/api/admin/google-auth/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(settings)
+    });
+  } catch (error) {
+    console.error("Error saving Google Auth settings:", error);
+  }
+};
+
+export const getPublicGoogleAuthConfig = async (): Promise<{ enabled: boolean; clientId: string }> => {
+  try {
+    const res = await fetch('/api/auth/google/config');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (error) {
+    console.error("Error fetching public Google Auth config:", error);
+  }
+  return { enabled: false, clientId: '' };
 };
 
