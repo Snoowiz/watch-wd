@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore, useSettingsStore } from '../store';
 import { UserPlus, AlertCircle } from 'lucide-react';
@@ -22,7 +23,7 @@ export function Register() {
       setError('');
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
-      
+
       let device_id = localStorage.getItem('device_id');
       if (!device_id) {
         device_id = Math.random().toString(36).substring(2, 15);
@@ -32,18 +33,18 @@ export function Register() {
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: user.email, 
+        body: JSON.stringify({
+          email: user.email,
           name: user.displayName || 'User',
           avatar: user.photoURL,
           device_id
         })
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Google Signup failed');
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
-      
+
       setAuth(data.user, data.token);
       navigate('/');
     } catch (err: any) {
@@ -56,7 +57,7 @@ export function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     try {
       let device_id = localStorage.getItem('device_id');
       if (!device_id) {
@@ -69,12 +70,12 @@ export function Register() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, device_id })
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
-      
+
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
-      
+
       setAuth(data.user, data.token);
       navigate('/profile');
     } catch (err: any) {
@@ -105,7 +106,7 @@ export function Register() {
 
         <AnimatePresence>
           {error && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
@@ -126,7 +127,7 @@ export function Register() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none transition-all"
-              placeholder="John Doe"
+              placeholder="Adam Snoow"
             />
           </div>
           <div>

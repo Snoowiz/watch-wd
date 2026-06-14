@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { useSettingsStore } from '../../store';
 import { getGoogleAuthSettings, saveGoogleAuthSettings } from '../../services/settingsService';
 import { 
