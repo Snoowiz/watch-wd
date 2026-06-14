@@ -219,12 +219,12 @@ export function AdminSettings() {
                 <button
                   onClick={handleSave}
                   disabled={localCurrency === currency && !isSaved}
-                  className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
+                  className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all border flex items-center gap-2 ${
                     isSaved 
-                      ? 'bg-green-500 text-white' 
+                      ? 'border-transparent bg-green-500 text-white' 
                       : localCurrency !== currency
-                        ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-900'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                        ? 'border-transparent bg-yellow-500 hover:bg-yellow-400 text-slate-900'
+                        : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                   }`}
                 >
                   {isSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save'}
@@ -555,12 +555,12 @@ export function AdminSettings() {
                   JSON.stringify(localPaymentSettings) === JSON.stringify(paymentSettings) &&
                   !isPaymentSaved
                 }
-                className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
+                className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all border flex items-center gap-2 ${
                   isPaymentSaved
-                    ? 'bg-green-500 text-white'
+                    ? 'border-transparent bg-green-500 text-white'
                     : JSON.stringify(localPaymentSettings) !== JSON.stringify(paymentSettings)
-                      ? 'bg-yellow-500 hover:bg-yellow-400 text-slate-900'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                      ? 'border-transparent bg-yellow-500 hover:bg-yellow-400 text-slate-900'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                 }`}
               >
                 {isPaymentSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save Payment Settings'}
@@ -716,12 +716,12 @@ export function AdminSettings() {
             <button
               onClick={handleSeoSave}
               disabled={JSON.stringify(localSeoSettings) === JSON.stringify(seoSettings) && !isSeoSaved}
-              className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
+              className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all border flex items-center gap-2 ${
                 isSeoSaved 
-                  ? 'bg-green-500 text-white' 
+                  ? 'border-transparent bg-green-500 text-white' 
                   : JSON.stringify(localSeoSettings) !== JSON.stringify(seoSettings)
-                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                    ? 'border-transparent bg-indigo-600 hover:bg-indigo-700 text-white'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
               }`}
             >
               {isSeoSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save SEO Configuration'}
