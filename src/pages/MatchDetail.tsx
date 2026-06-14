@@ -36,6 +36,7 @@ export function MatchDetail() {
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
   const [showChatArchive, setShowChatArchive] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<{days: number, hours: number, minutes: number, seconds: number} | null>(null);
+  const [isProcessingPurchase, setIsProcessingPurchase] = useState(false);
 
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
   const [mobileVideoStarted, setMobileVideoStarted] = useState(false);
@@ -296,7 +297,7 @@ export function MatchDetail() {
   };
 
   const confirmUnlock = async () => {
-    if (!user) return;
+    if (!user || isProcessingPurchase) return;
     
     const priceToPay = match.ppv_price || match.price;
     if (user.points < priceToPay) {
@@ -305,6 +306,7 @@ export function MatchDetail() {
       return;
     }
     
+    setIsProcessingPurchase(true);
     try {
       const res = await fetch('/api/checkout/ppv', {
         method: 'POST',
@@ -339,6 +341,8 @@ export function MatchDetail() {
     } catch(e) {
       console.error(e);
       setError('Failed to process purchase');
+    } finally {
+      setIsProcessingPurchase(false);
     }
   };
 
@@ -347,11 +351,13 @@ export function MatchDetail() {
       navigate('/login', { state: { from: `/matches/${match.slug}` } });
       return;
     }
+    if (isProcessingPurchase) return;
     if (user.points < match.embedPrice) {
       setShowTopUpModal(true);
       return;
     }
     
+    setIsProcessingPurchase(true);
     try {
       const res = await fetch('/api/checkout/embed', {
         method: 'POST',
@@ -385,6 +391,8 @@ export function MatchDetail() {
     } catch(e) {
       console.error(e);
       setError('Failed to process embed purchase');
+    } finally {
+      setIsProcessingPurchase(false);
     }
   };
 
@@ -736,9 +744,14 @@ export function MatchDetail() {
               <div className="flex flex-col gap-3">
                 <button 
                   onClick={confirmUnlock}
-                  className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-4 rounded-xl transition-all shadow-lg shadow-yellow-500/20"
+                  disabled={isProcessingPurchase}
+                  className={`w-full font-bold py-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${isProcessingPurchase ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-yellow-500/20'}`}
                 >
-                  Confirm & Unlock
+                  {isProcessingPurchase ? (
+                    <><div className="w-5 h-5 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div> Processing...</>
+                  ) : (
+                    'Confirm & Unlock'
+                  )}
                 </button>
                 <button 
                   onClick={() => setShowConfirmModal(false)}

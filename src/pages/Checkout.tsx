@@ -9,7 +9,7 @@ export function Checkout() {
   const state = location.state as { amount: number; paymentMethod: string; returnUrl: string; description?: string; type?: string; metadata?: any; } | null;
   const { user, updateUser } = useAuthStore();
   const { addTransaction } = usePurchaseStore();
-  const { currencySymbol } = useSettingsStore();
+  const { currencySymbol, currency: platformCurrency } = useSettingsStore();
   
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -29,7 +29,7 @@ export function Checkout() {
       const payload: any = { 
         amount: state.amount, 
         gateway: state.paymentMethod,
-        currency: 'GBP'
+        currency: platformCurrency || 'GBP'
       };
 
       if (state.type === 'plan') {

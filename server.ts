@@ -2089,6 +2089,17 @@ async function startServer() {
       const { match_id, amount } = req.body;
       const userId = req.user.id.toString();
       
+      // Prevent duplicate purchase for the same match
+      const existingPurchases = await db.collection("purchases")
+        .where("userId", "==", Number(userId))
+        .where("matchId", "==", Number(match_id))
+        .where("type", "==", "watch")
+        .get();
+      
+      if (!existingPurchases.empty) {
+        return res.status(409).json({ error: "You have already purchased access to this match" });
+      }
+      
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
       if (!userDoc.exists) {
@@ -2141,6 +2152,17 @@ async function startServer() {
     try {
       const { match_id, amount } = req.body;
       const userId = req.user.id.toString();
+      
+      // Prevent duplicate embed purchase for the same match
+      const existingEmbeds = await db.collection("purchases")
+        .where("userId", "==", Number(userId))
+        .where("matchId", "==", Number(match_id))
+        .where("type", "==", "embed")
+        .get();
+      
+      if (!existingEmbeds.empty) {
+        return res.status(409).json({ error: "You have already purchased embed access to this match" });
+      }
       
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
