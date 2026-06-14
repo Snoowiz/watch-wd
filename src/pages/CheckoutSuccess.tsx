@@ -53,7 +53,7 @@ export function CheckoutSuccess() {
         
         if (data.success || data.alreadyCompleted) {
           // Re-fetch user details to get new plan/balance
-          const meRes = await fetch('/api/user/me', {
+          const meRes = await fetch('/api/auth/me', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
           });
           if (meRes.ok) {

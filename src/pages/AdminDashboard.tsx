@@ -312,9 +312,28 @@ function AdminOverview() {
   const { currency, currencySymbol } = useSettingsStore();
   const { users = [] } = useUsersStore();
   const { matches = [] } = useMatchStore();
-  const { purchases = [] } = usePurchaseStore();
   const { posts = [] } = useBlogStore();
   const { comments = [] } = useCommentStore();
+
+  const [transactions, setTransactions] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchTxns = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/admin/transactions', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTransactions(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin dashboard overview transactions:', err);
+      }
+    };
+    fetchTxns();
+  }, []);
 
   const getCurrencySymbol = (curr: string) => {
     switch (curr) {
@@ -340,10 +359,14 @@ function AdminOverview() {
   const upcomingCount = matches.filter(m => m.status === 'upcoming').length;
   const activeMatchesCount = matches.length;
 
-  // Revenue starts at 0 and adds any actual purchases recorded dynamically on the platform
-  const baseRevenue = 0;
-  const purchasesTotal = purchases.reduce((acc, p) => acc + p.amount, 0);
-  const totalRevenue = baseRevenue + purchasesTotal;
+  // Revenue calculates the total amount of completed gateway transactions on the platform
+  const completedTxns = transactions.filter(t => t.status === 'completed' || t.status === 'success');
+  const totalRevenue = completedTxns
+    .filter(t => ['top_up', 'watch', 'embed', 'plan'].includes(t.type))
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
+
+  const contentPurchases = completedTxns.filter(t => ['watch', 'embed', 'plan'].includes(t.type));
+  const purchasesCount = contentPurchases.length;
 
   // Engagement starts at 84 and scales with the number of matches views and registered users
   const totalMatchViews = matches.reduce((acc, m) => acc + (m.views || 0), 0);
@@ -356,7 +379,7 @@ function AdminOverview() {
   const stats = [
     { label: 'Total Users', value: totalUsers.toLocaleString(), trend: '+12%', icon: Users, color: 'border-l-yellow-500', subtitle: `${newUsersCount} logged this week` },
     { label: 'Active Matches', value: activeMatchesCount.toString(), trend: '+5%', icon: Video, color: 'border-l-green-500', subtitle: `${liveCount} broadcasting now` },
-    { label: 'Total Revenue', value: `${getCurrencySymbol(currency)}${totalRevenue.toLocaleString()}`, trend: '+18%', icon: getCurrencyIcon(currency), color: 'border-l-yellow-500', subtitle: `${purchases.length} live purchase(s)` },
+    { label: 'Total Revenue', value: `${getCurrencySymbol(currency)}${totalRevenue.toLocaleString()}`, trend: '+18%', icon: getCurrencyIcon(currency), color: 'border-l-yellow-500', subtitle: `${purchasesCount} live purchase(s)` },
     { label: 'Engagement Index', value: `${engagementValue}%`, trend: '+2%', icon: Activity, color: 'border-l-blue-500', subtitle: `${totalViews.toLocaleString()} platform views` },
   ];
 

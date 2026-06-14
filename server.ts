@@ -2076,7 +2076,7 @@ async function startServer() {
       
       await db.collection("transactions").doc(transactionId).set(transactionData);
       
-      res.json({ success: true, newPoints });
+      res.json({ success: true, newBalance, newPoints: newBalance });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -2140,7 +2140,7 @@ async function startServer() {
       };
       await db.collection("transactions").doc(transactionId).set(transactionData);
       
-      res.json({ success: true, newPoints });
+      res.json({ success: true, newBalance, newPoints: newBalance });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -2205,7 +2205,7 @@ async function startServer() {
       };
       await db.collection("transactions").doc(transactionId).set(transactionData);
       
-      res.json({ success: true, newPoints });
+      res.json({ success: true, newBalance, newPoints: newBalance });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
