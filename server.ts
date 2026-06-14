@@ -230,7 +230,7 @@ const requireRole = (roles: string[]) => {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.APP_PORT || 3000;
+  const PORT = process.env.APP_PORT || process.env.PORT || 3000;
   fs.writeFileSync('server-pid.txt', process.pid.toString());
 
   app.use(express.json({ limit: "50mb" }));
@@ -2407,7 +2407,8 @@ async function startServer() {
   app.use('/api', (req, res) => res.json({ success: true }));
 
   // Vite Integration
-  if (process.env.NODE_ENV !== "production") {
+  const isProduction = process.env.NODE_ENV === "production" || !fs.existsSync(path.join(currentDirname, "vite.config.ts")) || currentFilename.endsWith('.cjs');
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: process.env.DISABLE_HMR === 'true' ? false : undefined },
       appType: "spa",
