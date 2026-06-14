@@ -26,7 +26,19 @@ const currentDirname = _dirname;
 
 const JWT_SECRET = process.env.JWT_SECRET || "watchwds-super-secret-key-2026";
 
-const fbConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'utf8'));
+let fbConfigPath = './firebase-applet-config.json';
+if (!fs.existsSync(fbConfigPath)) {
+  const possiblePath = path.join(currentDirname, 'firebase-applet-config.json');
+  if (fs.existsSync(possiblePath)) {
+    fbConfigPath = possiblePath;
+  } else {
+    const parentPath = path.join(currentDirname, '..', 'firebase-applet-config.json');
+    if (fs.existsSync(parentPath)) {
+      fbConfigPath = parentPath;
+    }
+  }
+}
+const fbConfig = JSON.parse(fs.readFileSync(fbConfigPath, 'utf8'));
 const appAdmin = initializeApp(fbConfig);
 const firestoreClient = getFirestore(appAdmin, fbConfig.firestoreDatabaseId || "(default)");
 
