@@ -128,7 +128,7 @@ export function BlogPostDetails() {
   const hasAccess = () => {
     if (post.restricted === 'none') return true;
     if (!user) return false;
-    if (post.restricted === 'premium' && user.points < 500 && user.role !== 'admin') return false; // Simple logic
+    if (post.restricted === 'premium' && user.balance < 500 && user.role !== 'admin') return false; // Simple logic
     return true;
   };
 

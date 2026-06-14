@@ -52,7 +52,7 @@ export function CheckoutSuccess() {
         }
         
         if (data.success || data.alreadyCompleted) {
-          // Re-fetch user details to get new plan/points
+          // Re-fetch user details to get new plan/balance
           const meRes = await fetch('/api/user/me', {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
           });

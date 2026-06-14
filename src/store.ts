@@ -7,7 +7,7 @@ export interface User {
   email: string;
   name: string;
   role: 'admin' | 'user' | 'creator' | 'operator';
-  points: number;
+  balance: number;
   avatar: string | null;
   status: string;
   phone?: string;
@@ -440,12 +440,8 @@ interface SEOSettings {
 interface SettingsState {
   currency: string;
   setCurrency: (currency: string) => void;
-  pointsPerCurrencyUnit: number;
-  setPointsPerCurrencyUnit: (points: number) => void;
   currencySymbol: string;
   setCurrencySymbol: (symbol: string) => void;
-  pointsUsages: string[];
-  setPointsUsages: (usages: string[]) => void;
   paymentSettings: PaymentSettings;
   setPaymentSettings: (settings: PaymentSettings) => void;
   homepageSettings: HomepageSettings;
@@ -467,12 +463,8 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       currency: 'GBP',
       setCurrency: (currency) => set({ currency }),
-      pointsPerCurrencyUnit: 100,
-      setPointsPerCurrencyUnit: (points) => set({ pointsPerCurrencyUnit: points }),
       currencySymbol: '£',
       setCurrencySymbol: (symbol) => set({ currencySymbol: symbol }),
-      pointsUsages: ['Unlocking Matches', 'Store'],
-      setPointsUsages: (usages) => set({ pointsUsages: usages }),
       paymentSettings: {
         stripe: { publicKey: '', secretKey: '', isTestMode: true, enabled: false },
         paypal: { clientId: '', secret: '', isTestMode: true, enabled: false },
@@ -635,7 +627,7 @@ export interface Match {
   title: string;
   slug: string;
   date: string;
-  price: number; // Price in points
+  price: number;
   embedPrice: number; // Price for creators to embed
   status: 'upcoming' | 'live' | 'completed';
   publishStatus?: 'pending' | 'approved' | 'rejected'; // For creator uploaded videos

@@ -15,7 +15,7 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
   const navigate = useNavigate();
   const location = useLocation();
   const { user, updateUser } = useAuthStore();
-  const { currency, pointsPerCurrencyUnit, currencySymbol, paymentSettings } = useSettingsStore();
+  const { currency, currencySymbol, paymentSettings } = useSettingsStore();
   const { addTransaction } = usePurchaseStore();
   
   const [amount, setAmount] = useState<number>(directCheckoutAmount || 10);

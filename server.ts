@@ -250,7 +250,7 @@ async function startServer() {
       
       const userRef = db.collection("users").doc();
       const role = email === 'mayycutee1@gmail.com' ? 'admin' : 'viewer';
-      const userData = { email, password: hash, name, active_device_id: finalDeviceId, role, points: 0, status: "active", createdAt: admin.firestore.FieldValue.serverTimestamp() };
+      const userData = { email, password: hash, name, active_device_id: finalDeviceId, role, balance: 0, status: "active", createdAt: admin.firestore.FieldValue.serverTimestamp() };
       await userRef.set(userData);
       
       const token = jwt.sign({ id: userRef.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
@@ -317,7 +317,7 @@ async function startServer() {
         const userRef = db.collection("users").doc();
         docId = userRef.id;
         const role = email === 'mayycutee1@gmail.com' ? 'admin' : 'viewer';
-        user = { email, password: "google-auth-no-password", name, avatar, active_device_id: finalDeviceId, role, points: 0, status: "active", createdAt: admin.firestore.FieldValue.serverTimestamp() };
+        user = { email, password: "google-auth-no-password", name, avatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", createdAt: admin.firestore.FieldValue.serverTimestamp() };
         await userRef.set(user);
       } else {
         const doc = snapshot.docs[0];
@@ -846,15 +846,15 @@ async function startServer() {
           {
             id: "kb1",
             title: "How to add funds to my wallet?",
-            content: "You can add virtual funds to your WatchWDS wallet by clicking on 'Add Funds' in the user dropdown menu, entering the desired amount, and completing the payment transaction safely. Once completed, your balance will reflect in points instantly.",
-            tags: ["wallet", "funds", "payment", "points"],
+            content: "You can add funds to your WatchWDS wallet by clicking on 'Add Funds' in the user dropdown menu, entering the desired amount, and completing the payment transaction safely. Once completed, your balance will update instantly.",
+            tags: ["wallet", "funds", "payment", "balance"],
             category: "Billing & Wallet",
             createdAt: new Date().toISOString()
           },
           {
             id: "kb2",
             title: "How to watch premium matches?",
-            content: "Premium matches require a Pay-Per-View unlock or an active subscription plan. Make sure you have enough wallet points, and click the 'Unlock Match' button on the match page. The required coins will be deducted from your balance.",
+            content: "Premium matches require a Pay-Per-View unlock or an active subscription plan. Make sure you have enough balance in your wallet, and click the 'Unlock Match' button on the match page. The required amount will be deducted from your balance.",
             tags: ["match", "watch", "premium", "ppv"],
             category: "Streaming guide",
             createdAt: new Date().toISOString()
@@ -862,7 +862,7 @@ async function startServer() {
           {
             id: "kb3",
             title: "How to become a creator on WatchWDS?",
-            content: "Go to your Profile settings, click on 'Become Creator', fill out your channel name and description, and submit. An admin will review your application soon. Once approved, you can schedule matches and earn points from subscriptions.",
+            content: "Go to your Profile settings, click on 'Become Creator', fill out your channel name and description, and submit. An admin will review your application soon. Once approved, you can schedule matches and earn from subscriptions.",
             tags: ["creator", "become creator", "channel", "apply"],
             category: "Creators",
             createdAt: new Date().toISOString()
@@ -1796,7 +1796,6 @@ async function startServer() {
           return res.json({ checkoutUrl: `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_session&gateway=stripe` });
         }
         const targetCurrency = settings.stripe.merchantCurrency || currency;
-        const convertedAmount = await convertCurrency(Number(amount), currency, targetCurrency);
 
         const stripe = new Stripe(settings.stripe.secretKey, { apiVersion: "2023-10-16" as any });
         const session = await stripe.checkout.sessions.create({
@@ -1808,7 +1807,7 @@ async function startServer() {
                 product_data: {
                   name: type === "top_up" ? "Wallet Top-up" : type === "watch" ? "Match Access" : type === "plan" ? "Subscription Plan" : "Access",
                 },
-                unit_amount: Math.round(convertedAmount * 100),
+                unit_amount: Math.round(Number(amount) * 100),
               },
               quantity: 1,
             },
@@ -1828,7 +1827,6 @@ async function startServer() {
         }
         
         const targetCurrency = settings.paypal.merchantCurrency || currency;
-        const convertedAmount = await convertCurrency(Number(amount), currency, targetCurrency);
 
         const isTest = settings.paypal.isTestMode !== false;
         const auth = Buffer.from(`${settings.paypal.clientId}:${settings.paypal.secret}`).toString('base64');
@@ -1854,7 +1852,7 @@ async function startServer() {
               reference_id: transactionId,
               amount: {
                 currency_code: targetCurrency.toUpperCase(),
-                value: convertedAmount.toFixed(2)
+                value: Number(amount).toFixed(2)
               }
             }],
             application_context: {
@@ -2009,8 +2007,8 @@ async function startServer() {
       if (type === "top_up") {
         const userRef = db.collection("users").doc(userId);
         const userDoc = await userRef.get();
-        const currentPoints = Number(userDoc.data()?.points || 0);
-        await userRef.update({ points: currentPoints + amount });
+        const currentBalance = Number(userDoc.data()?.balance || 0);
+        await userRef.update({ balance: currentBalance + amount });
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
         return res.json({ success: true });
       }
@@ -2060,10 +2058,10 @@ async function startServer() {
       }
       
       const userData = userDoc.data() || {};
-      const currentPoints = Number(userData.points) || 0;
-      const newPoints = currentPoints + Number(amount);
+      const currentBalance = Number(userData.balance) || 0;
+      const newBalance = currentBalance + Number(amount);
       
-      await userRef.update({ points: newPoints });
+      await userRef.update({ balance: newBalance });
 
       // Save a transaction log for user
       const transactionId = Date.now().toString();
@@ -2107,15 +2105,15 @@ async function startServer() {
       }
       
       const userData = userDoc.data() || {};
-      const currentPoints = Number(userData.points) || 0;
+      const currentBalance = Number(userData.balance) || 0;
       const deductAmount = Number(amount);
       
-      if (currentPoints < deductAmount) {
-        return res.status(400).json({ error: "Insufficient points" });
+      if (currentBalance < deductAmount) {
+        return res.status(400).json({ error: "Insufficient balance" });
       }
       
-      const newPoints = currentPoints - deductAmount;
-      await userRef.update({ points: newPoints });
+      const newBalance = currentBalance - deductAmount;
+      await userRef.update({ balance: newBalance });
 
       const purchaseId = Date.now().toString();
       const purchaseData = {
@@ -2171,15 +2169,15 @@ async function startServer() {
       }
       
       const userData = userDoc.data() || {};
-      const currentPoints = Number(userData.points) || 0;
+      const currentBalance = Number(userData.balance) || 0;
       const deductAmount = Number(amount);
       
-      if (currentPoints < deductAmount) {
-        return res.status(400).json({ error: "Insufficient points" });
+      if (currentBalance < deductAmount) {
+        return res.status(400).json({ error: "Insufficient balance" });
       }
       
-      const newPoints = currentPoints - deductAmount;
-      await userRef.update({ points: newPoints });
+      const newBalance = currentBalance - deductAmount;
+      await userRef.update({ balance: newBalance });
 
       const purchaseId = Date.now().toString();
       const purchaseData = {

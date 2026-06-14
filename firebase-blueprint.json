@@ -9,7 +9,7 @@
         "name": { "type": "string" },
         "avatar": { "type": "string" },
         "role": { "type": "string" },
-        "points": { "type": "number" },
+        "balance": { "type": "number" },
         "status": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       }

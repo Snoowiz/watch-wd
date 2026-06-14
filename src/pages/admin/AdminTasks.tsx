@@ -90,7 +90,7 @@ export function AdminTasks() {
 
     showConfirm({
       title: 'Delete Task?',
-      message: `Are you sure you want to delete task "${taskTitle}"? Completing this task will no longer reward points.`,
+      message: `Are you sure you want to delete task "${taskTitle}"? Completing this task will no longer reward funds.`,
       confirmText: 'Delete Task',
       cancelText: 'Keep Task',
       isDanger: true,

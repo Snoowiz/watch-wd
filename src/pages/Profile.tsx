@@ -89,7 +89,7 @@ export function Profile() {
   const handleCompleteTask = async (taskId: number, reward: number, taskTitle: string) => {
     const earned = await completeTask(taskId);
     if (earned !== undefined) {
-      updateUser({ points: user.points + reward });
+      updateUser({ balance: user.balance + reward });
       fetchTransactions();
     }
   };
@@ -320,7 +320,7 @@ export function Profile() {
             <div className="text-right px-1 sm:px-2">
               <div className="text-yellow-50 text-[10px] sm:text-xs font-bold uppercase tracking-wide">Wallet Balance</div>
               <div className="text-xl sm:text-2xl font-extrabold text-white drop-shadow-sm leading-tight mt-0.5">
-                {currencySymbol}{user.points}
+                {currencySymbol}{user.balance}
               </div>
             </div>
             <button 

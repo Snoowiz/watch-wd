@@ -16,7 +16,7 @@ export function StudioDashboard() {
   const { creatorContent = [], submitContent, downloadLinks = [], markAsDownloaded, activities = [] } = useCreatorStore();
   const { notifications = [] } = useNotificationStore();
   const { categories = [] } = useCategoryStore();
-  const { currencySymbol, pointsPerCurrencyUnit, currency } = useSettingsStore();
+  const { currencySymbol, currency } = useSettingsStore();
   
   const [showSubmissionForm, setShowSubmissionForm] = useState(false);
   const [showMediaPicker, setShowMediaPicker] = useState(false);

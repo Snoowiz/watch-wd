@@ -21,7 +21,7 @@ export function CreatorDetail() {
     role: '',
     status: '',
     creatorStatus: '',
-    points: 0,
+    balance: 0,
     verified: false,
     avatar: ''
   });
@@ -51,7 +51,7 @@ export function CreatorDetail() {
       role: creator.role,
       status: creator.status,
       creatorStatus: creator.creatorStatus || 'none',
-      points: creator.points,
+      balance: creator.balance || 0,
       verified: creator.verified || false,
       avatar: creator.avatar || ''
     });
@@ -153,11 +153,11 @@ export function CreatorDetail() {
               <div className="w-px h-8 bg-slate-100 dark:bg-slate-700"></div>
               <div className="text-center">
                 {isEditing ? (
-                  <input type="number" value={editForm.points} onChange={e => setEditForm({...editForm, points: Number(e.target.value)})} className="w-20 text-center text-xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1 focus:ring-2 focus:ring-indigo-500 inline-block" />
+                  <input type="number" value={editForm.balance} onChange={e => setEditForm({...editForm, balance: Number(e.target.value)})} className="w-20 text-center text-xl font-bold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg py-1 focus:ring-2 focus:ring-indigo-500 inline-block" />
                 ) : (
-                  <div className="text-xl font-bold text-slate-900 dark:text-white">{creator.points}</div>
+                  <div className="text-xl font-bold text-slate-900 dark:text-white">{creator.balance || 0}</div>
                 )}
-                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Wallet Points</div>
+                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Wallet Balance</div>
               </div>
             </div>
           </div>

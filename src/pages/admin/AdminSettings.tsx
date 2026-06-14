@@ -14,20 +14,13 @@ export function AdminSettings() {
   // Payment States
   const { 
     currency, setCurrency,
-    pointsPerCurrencyUnit, setPointsPerCurrencyUnit,
     currencySymbol, setCurrencySymbol,
-    pointsUsages, setPointsUsages,
     paymentSettings, setPaymentSettings,
     seoSettings, setSeoSettings
   } = useSettingsStore();
 
   const [localCurrency, setLocalCurrency] = useState(currency);
   const [isSaved, setIsSaved] = useState(false);
-
-  const [localPointsPerCurrencyUnit, setLocalPointsPerCurrencyUnit] = useState(pointsPerCurrencyUnit);
-  const [localCurrencySymbol, setLocalCurrencySymbol] = useState(currencySymbol);
-  const [localPointsUsages, setLocalPointsUsages] = useState(pointsUsages.join(', '));
-  const [isPointsSaved, setIsPointsSaved] = useState(false);
 
   const [localPaymentSettings, setLocalPaymentSettings] = useState(paymentSettings);
   const [isPaymentSaved, setIsPaymentSaved] = useState(false);
@@ -62,13 +55,7 @@ export function AdminSettings() {
     setTimeout(() => setIsSaved(false), 2000);
   };
 
-  const handlePointsSave = () => {
-    setPointsPerCurrencyUnit(localPointsPerCurrencyUnit);
-    setCurrencySymbol(localCurrencySymbol);
-    setPointsUsages(localPointsUsages.split(',').map(s => s.trim()).filter(Boolean));
-    setIsPointsSaved(true);
-    setTimeout(() => setIsPointsSaved(false), 2000);
-  };
+
 
   const handlePaymentSave = async () => {
     setIsPaymentSaved(true);

@@ -309,7 +309,7 @@ export function AdminDashboard() {
 }
 
 function AdminOverview() {
-  const { currency } = useSettingsStore();
+  const { currency, currencySymbol } = useSettingsStore();
   const { users = [] } = useUsersStore();
   const { matches = [] } = useMatchStore();
   const { purchases = [] } = usePurchaseStore();
@@ -390,7 +390,7 @@ function AdminOverview() {
 
   const mostActiveUser = useMemo(() => {
     if (users.length === 0) return null;
-    return [...users].sort((a, b) => (b.points || 0) - (a.points || 0))[0];
+    return [...users].sort((a, b) => (b.balance || 0) - (a.balance || 0))[0];
   }, [users]);
 
   // Views Over Time chart data
@@ -552,7 +552,7 @@ function AdminOverview() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-slate-900 dark:text-white text-sm truncate">{mostActiveUser.name}</div>
-                    <div className="text-[11px] font-mono font-medium text-yellow-500 mt-0.5">{mostActiveUser.points.toLocaleString()} Wallet Points</div>
+                    <div className="text-[11px] font-mono font-medium text-yellow-500 mt-0.5">{currencySymbol}{(mostActiveUser.balance || 0).toLocaleString()} Wallet Balance</div>
                   </div>
                 </div>
               ) : (
@@ -809,8 +809,8 @@ function AdminUsers() {
 
   const handleExportData = () => {
     const csvContent = "data:text/csv;charset=utf-8,"
-      + "ID,Name,Email,Role,Status,Points\n"
-      + users.map(u => `${u.id},${u.name},${u.email},${u.role},${u.status},${u.points}`).join("\n");
+      + "ID,Name,Email,Role,Status,Balance\n"
+      + users.map(u => `${u.id},${u.name},${u.email},${u.role},${u.status},${u.balance || 0}`).join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -846,7 +846,7 @@ function AdminUsers() {
           email: editingUser.email,
           role: editingUser.role,
           status: editingUser.status,
-          points: editingUser.points,
+          balance: editingUser.balance || 0,
           verified: editingUser.verified
         })
       });
@@ -856,7 +856,7 @@ function AdminUsers() {
         email: editingUser.email,
         role: editingUser.role,
         status: editingUser.status,
-        points: editingUser.points,
+        balance: editingUser.balance || 0,
         verified: editingUser.verified,
         avatar: editingUser.avatar
       });
@@ -1048,8 +1048,8 @@ function AdminUsers() {
                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Wallet Balance</label>
                 <input
                   type="number"
-                  value={editingUser.points}
-                  onChange={(e) => setEditingUser({ ...editingUser, points: parseInt(e.target.value) || 0 })}
+                  value={editingUser.balance || 0}
+                  onChange={(e) => setEditingUser({ ...editingUser, balance: parseInt(e.target.value) || 0 })}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                 />
               </div>

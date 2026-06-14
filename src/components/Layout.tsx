@@ -96,7 +96,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <>
                   {isFeatureActive('wallet_system') && (
                     <div className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1 mr-2 text-yellow-500 font-bold">
-                       {currencySymbol}{user.points}
+                       {currencySymbol}{user.balance}
                     </div>
                   )}
                   

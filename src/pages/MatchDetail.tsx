@@ -300,7 +300,7 @@ export function MatchDetail() {
     if (!user || isProcessingPurchase) return;
     
     const priceToPay = match.ppv_price || match.price;
-    if (user.points < priceToPay) {
+    if (user.balance < priceToPay) {
       setShowConfirmModal(false);
       setShowTopUpModal(true);
       return;
@@ -318,7 +318,7 @@ export function MatchDetail() {
       });
       if (!res.ok) throw new Error('Purchase failed');
       const data = await res.json();
-      updateUser({ points: data.newPoints });
+      updateUser({ balance: data.newPoints });
       
       // Update local transactions if we still store them locally
       addTransaction({
@@ -352,7 +352,7 @@ export function MatchDetail() {
       return;
     }
     if (isProcessingPurchase) return;
-    if (user.points < match.embedPrice) {
+    if (user.balance < match.embedPrice) {
       setShowTopUpModal(true);
       return;
     }
@@ -370,7 +370,7 @@ export function MatchDetail() {
       if (!res.ok) throw new Error('Embed purchase failed');
       const data = await res.json();
       
-      updateUser({ points: data.newPoints });
+      updateUser({ balance: data.newPoints });
       
       addTransaction({
         userId: user.id,
@@ -781,7 +781,7 @@ export function MatchDetail() {
               </div>
               <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Insufficient Balance</h3>
               <p className="text-slate-500 dark:text-slate-400 mb-8">
-                You don't have enough {currencySymbol} to unlock this match. You need <span className="text-red-500 font-bold">{currencySymbol}{(match.ppv_price || match.price) - (user?.points || 0)}</span> more in your balance.
+                You don't have enough {currencySymbol} to unlock this match. You need <span className="text-red-500 font-bold">{currencySymbol}{(match.ppv_price || match.price) - (user?.balance || 0)}</span> more in your balance.
               </p>
               <div className="flex flex-col gap-3">
                 <button 

@@ -17,7 +17,7 @@ export function NewMatch() {
   const navigate = useNavigate();
   const { matches = [], addMatch, updateMatch } = useMatchStore();
   const { categories = [] } = useCategoryStore();
-  const { currency, pointsPerCurrencyUnit } = useSettingsStore();
+  const { currency } = useSettingsStore();
   
   const isEditing = !!id;
   const existingMatch = isEditing ? matches.find(m => String(m.id) === String(id)) : null;
