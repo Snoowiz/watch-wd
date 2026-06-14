@@ -241,6 +241,18 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
   app.use("/api", (req, res, next) => { console.log(`[API] ${req.method} ${req.url}`); next(); });
 
+  const normalizeUser = (docId: string, data: any) => {
+    if (!data) return null;
+    const { password: _, ...userData } = data;
+    const normalized = { id: docId, ...userData };
+    if (normalized.balance === undefined) {
+      normalized.balance = normalized.points !== undefined ? Number(normalized.points) : 0;
+    } else {
+      normalized.balance = Number(normalized.balance);
+    }
+    return normalized;
+  };
+
   // === AUTHENTICATION ===
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -254,7 +266,7 @@ async function startServer() {
       await userRef.set(userData);
       
       const token = jwt.sign({ id: userRef.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
-      res.json({ token, user: { id: userRef.id, ...userData }, device_id: finalDeviceId });
+      res.json({ token, user: normalizeUser(userRef.id, userData), device_id: finalDeviceId });
     } catch (e: any) { res.status(400).json({ error: e.message }); }
   });
 
@@ -298,7 +310,7 @@ async function startServer() {
       await userDoc.ref.update({ active_device_id: finalDeviceId, status: "active" });
 
       const token = jwt.sign({ id: userDoc.id, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
-      res.json({ token, user: { id: userDoc.id, ...user }, device_id: finalDeviceId });
+      res.json({ token, user: normalizeUser(userDoc.id, user), device_id: finalDeviceId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -333,9 +345,7 @@ async function startServer() {
         user.avatar = avatar;
       }
 
-      const token = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
-      const { password: _, ...u } = user;
-      res.json({ token, user: { id: docId, ...u }, device_id: finalDeviceId });
+      res.json({ token, user: normalizeUser(docId, user), device_id: finalDeviceId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -389,7 +399,7 @@ async function startServer() {
       if (req.user.device_id && user.active_device_id && req.user.device_id !== user.active_device_id) {
         return res.status(401).json({ error: "Session invalidated." });
       }
-      res.json({ user: { id: doc.id, ...user } });
+      res.json({ user: normalizeUser(doc.id, user) });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -401,7 +411,7 @@ async function startServer() {
       
       await db.collection("users").doc(req.user.id).update(updates);
       const doc = await db.collection("users").doc(req.user.id).get();
-      res.json({ user: { id: doc.id, ...doc.data() } });
+      res.json({ user: normalizeUser(doc.id, doc.data()) });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -2276,6 +2286,34 @@ async function startServer() {
         };
       }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
       res.json(docs);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/user/transactions", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.user.id.toString();
+      const snapshot = await db.collection("transactions").get();
+      const docs = snapshot.docs
+        .map((d: any) => {
+          const data = d.data();
+          let displayAmount = data.amount;
+          if (data.gateway === "paystack" && data.amount && data.currency === "NGN") {
+             displayAmount = data.amount / 100; // Format out of kobo
+          } else if (data.gateway === "stripe" && data.amount) {
+             displayAmount = data.amount / 100; // Default format out of cents
+          }
+          return { 
+            id: d.id, 
+            ...data,
+            amount: displayAmount 
+          };
+        })
+        .filter((t: any) => t.userId && t.userId.toString() === userId)
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      res.json({ transactions: docs });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
