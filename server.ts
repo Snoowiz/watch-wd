@@ -2427,7 +2427,17 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(currentDirname, "dist");
+    let distPath = path.join(currentDirname, "dist");
+    if (!fs.existsSync(path.join(distPath, "index.html"))) {
+      if (fs.existsSync(path.join(currentDirname, "index.html"))) {
+        distPath = currentDirname;
+      } else {
+        const parentDist = path.join(currentDirname, "..", "dist");
+        if (fs.existsSync(path.join(parentDist, "index.html"))) {
+          distPath = parentDist;
+        }
+      }
+    }
     app.use(express.static(distPath));
     app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
   }
