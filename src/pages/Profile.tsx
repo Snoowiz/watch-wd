@@ -165,24 +165,7 @@ export function Profile() {
             </button>
           </div>
           <nav className="space-y-1">
-            {(user.role === 'admin' || user.role === 'creator') && (
-              <>
-                <Link to="/creator/studio" className="flex flex-col p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors">
-                  <span className="font-bold text-slate-900 dark:text-white">Studio Manager</span>
-                </Link>
-                <Link to="/matches/new" className="flex flex-col p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors">
-                  <span className="font-bold text-slate-900 dark:text-white">Post Match</span>
-                </Link>
-                <Link to="/analytics" className="flex flex-col p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors">
-                  <span className="font-bold text-slate-900 dark:text-white">Analytics</span>
-                </Link>
-                <Link to="/subscriptions" className="flex flex-col p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors">
-                  <span className="font-bold text-slate-900 dark:text-white">Channel Subscriptions</span>
-                </Link>
-              </>
-            )}
-            
-            <div className={`p-3 ${(user.role === 'admin' || user.role === 'creator') ? 'border-t border-slate-100 dark:border-slate-700 mt-2' : ''}`}>
+            <div className="p-3">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Recent Watch Match</span>
               <div className="mt-2 space-y-2">
                 {myWatchHistory.length === 0 && <p className="text-xs text-slate-400">No recent matches</p>}
