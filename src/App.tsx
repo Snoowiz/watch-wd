@@ -48,7 +48,7 @@ import { SearchPage } from './pages/SearchPage';
 export default function App() {
   const { token, setAuth, logout, user, originalUser, revertLoginAs } = useAuthStore();
   const { theme, setDarkMode } = useThemeStore();
-  const { seoSettings, platformName: storedPlatformName, preloaderEnabled } = useSettingsStore();
+  const { seoSettings, platformName: storedPlatformName, preloaderEnabled, fetchPaymentSettings } = useSettingsStore();
   const platformName = storedPlatformName || 'WatchWDS';
 
   const { setFeatures } = useFeatureStore();
@@ -201,6 +201,9 @@ export default function App() {
         checkFinished();
       });
 
+    // Fetch public payment settings
+    fetchPaymentSettings();
+
     // Fetch Ads
     fetchAds().finally(() => {
       adsFetched = true;
@@ -238,7 +241,7 @@ export default function App() {
     }
 
     return () => clearTimeout(timer);
-  }, [token, setAuth, logout, setFeatures, fetchAds, fetchPurchases, fetchTransactions]);
+  }, [token, setAuth, logout, setFeatures, fetchAds, fetchPurchases, fetchTransactions, fetchPaymentSettings]);
 
   if (preloaderEnabled !== false && initialLoading) {
     return <Preloader />;

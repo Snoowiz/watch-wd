@@ -1798,6 +1798,40 @@ async function startServer() {
     }
   });
 
+  app.get("/api/payment/settings", async (req, res) => {
+    try {
+      const doc = await db.collection("payment_settings").doc("gateway").get();
+      if (!doc.exists) {
+        return res.json({
+          stripe: { publicKey: "", isTestMode: true, enabled: false },
+          paypal: { clientId: "", isTestMode: true, enabled: false },
+          paystack: { publicKey: "", isTestMode: true, enabled: false }
+        });
+      }
+      const data = doc.data() as any;
+      const publicData = {
+        stripe: {
+          enabled: !!data.stripe?.enabled,
+          publicKey: data.stripe?.publicKey || "",
+          isTestMode: data.stripe?.isTestMode !== false
+        },
+        paypal: {
+          enabled: !!data.paypal?.enabled,
+          clientId: data.paypal?.clientId || "",
+          isTestMode: data.paypal?.isTestMode !== false
+        },
+        paystack: {
+          enabled: !!data.paystack?.enabled,
+          publicKey: data.paystack?.publicKey || "",
+          isTestMode: data.paystack?.isTestMode !== false
+        }
+      };
+      res.json(publicData);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/admin/google-auth/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const doc = await db.collection("settings").doc("google_auth").get();

@@ -444,6 +444,7 @@ interface SettingsState {
   setCurrencySymbol: (symbol: string) => void;
   paymentSettings: PaymentSettings;
   setPaymentSettings: (settings: PaymentSettings) => void;
+  fetchPaymentSettings: () => Promise<void>;
   homepageSettings: HomepageSettings;
   setHomepageSettings: (settings: HomepageSettings) => void;
   seoSettings: SEOSettings;
@@ -471,6 +472,23 @@ export const useSettingsStore = create<SettingsState>()(
         paystack: { publicKey: '', secretKey: '', isTestMode: true, enabled: false },
       },
       setPaymentSettings: (settings) => set({ paymentSettings: settings }),
+      fetchPaymentSettings: async () => {
+        try {
+          const res = await fetch('/api/payment/settings');
+          if (res.ok) {
+            const data = await res.json();
+            set((state) => ({
+              paymentSettings: {
+                stripe: { ...state.paymentSettings.stripe, ...data.stripe },
+                paypal: { ...state.paymentSettings.paypal, ...data.paypal },
+                paystack: { ...state.paymentSettings.paystack, ...data.paystack },
+              }
+            }));
+          }
+        } catch (err) {
+          console.error("Failed to fetch payment settings:", err);
+        }
+      },
       homepageSettings: {
         featuresSectionEnabled: true,
         latestNewsEnabled: true
