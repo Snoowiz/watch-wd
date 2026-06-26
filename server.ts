@@ -216,6 +216,15 @@ async function startServer() {
       const token = jwt.sign({ id: result.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       notifyAdmins("New User Registration", `${name || email} has joined the platform.`, "system", "/admin/users");
       notifyUser(result.id, "Welcome to WatchWDS!", "Your account has been created successfully.", "info", "/profile");
+      
+      sendTemplateEmail(email, "welcome_email", {
+        first_name: name || "User",
+        user_name: name || email,
+        user_email: email,
+        website_url: `${req.protocol}://${req.get('host')}`,
+        support_email: "support@watchwds.com"
+      }).catch(err => console.error("Failed to send welcome email:", err));
+
       res.json({ token, user: normalizeUser(result.id, userData), device_id: finalDeviceId });
     } catch (e: any) { res.status(400).json({ error: e.message }); }
   });
@@ -367,9 +376,18 @@ async function startServer() {
     try {
       const snaps = await db.collection('users').where('email','==',req.body.email).get();
       if (!snaps.empty) {
+         const user = snaps.docs[0].data();
+         const name = user.name || "User";
          // Create reset token
          const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
          await db.collection('password_resets').add({ email: req.body.email, token, expires_at: new Date(Date.now() + 60*60*1000) });
+
+         const resetLink = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
+         sendTemplateEmail(req.body.email, "password_reset_branding", {
+           first_name: name,
+           reset_password_link: resetLink,
+           support_email: "support@watchwds.com"
+         }).catch(err => console.error("Failed to send password reset email:", err));
       }
       res.json({ message: 'If an account with that email exists, we have sent a reset link.' });
     } catch (e:any) { res.status(500).json({ error: e.message }); }
@@ -399,16 +417,30 @@ async function startServer() {
     try {
       const { matchId, matchTitle } = req.body;
       
-      // In a real implementation with `firebase-admin` initialized:
-      // const matchDoc = await db.collection("matches").doc(matchId).get();
-      // const matchData = matchDoc.data();
-      // const subscribers = matchData.subscribers || [];
-      // for(const subId of subscribers) {
-      //   const userConfig = await db.collection("users").doc(subId).collection("fcm_tokens").get();
-      //   ... admin.messaging().send(...)
-      // }
-      
       console.log(`[PUSH] Match Live -> ${matchId} (${matchTitle})`);
+
+      // Find all users who saved this match
+      const savedSnap = await db.collection("saved_matches").where("match_id", "==", matchId).get();
+      const userIds = savedSnap.docs.map(d => d.data().user_id);
+
+      if (userIds.length > 0) {
+        const matchDoc = await db.collection("matches").doc(matchId).get();
+        const matchData = matchDoc.exists ? matchDoc.data() : {};
+        
+        // Fetch all users to filter down
+        const usersSnap = await db.collection("users").get();
+        const usersToEmail = usersSnap.docs.filter(u => userIds.includes(u.id));
+
+        for (const userDoc of usersToEmail) {
+          const user = userDoc.data();
+          sendTemplateEmail(user.email, "match_live_now", {
+            first_name: user.name || "User",
+            match_name: matchData.title || matchTitle || "Saved Match",
+            website_url: `${req.protocol}://${req.get('host')}/matches/${matchId}`
+          }).catch(err => console.error(`Failed to send match live email to ${user.email}:`, err));
+        }
+      }
+      
       res.json({ success: true, message: `Notification broadcast sent for match ${matchId}`});
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -872,6 +904,19 @@ async function startServer() {
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       const docRef = await db.collection("matches").add({ ...req.body, operator_id: req.user.id, created_at: new Date().toISOString() });
+      
+      // Send email alert to admins
+      const adminsSnap = await db.collection("users").where("role", "==", "admin").get();
+      for (const adminDoc of adminsSnap.docs) {
+        const admin = adminDoc.data();
+        sendTemplateEmail(admin.email, "admin_new_match_alert", {
+          match_name: req.body.title || "New Match",
+          creator_name: req.user.name || "Staff",
+          match_date: req.body.start_time || new Date().toLocaleString(),
+          website_url: `${req.protocol}://${req.get('host')}`
+        }).catch(err => console.error(`Failed to send admin match alert to ${admin.email}:`, err));
+      }
+
       res.json({ id: docRef.id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -1070,10 +1115,11 @@ async function startServer() {
     }
 
     if (smtp.provider === "smtp" || !smtp.provider) {
+      const isSecure = smtp.secure === true || smtp.secure === 1 || String(smtp.secure) === "true" || Number(smtp.port) === 465;
       const transporter = nodemailer.createTransport({
         host: smtp.host,
         port: Number(smtp.port),
-        secure: smtp.secure,
+        secure: isSecure,
         auth: {
           user: smtp.auth_user,
           pass: smtp.auth_pass
@@ -1083,18 +1129,46 @@ async function startServer() {
         }
       });
 
-      const info = await transporter.sendMail({
-        from: `"${smtp.from_name}" <${smtp.from_email}>`,
-        replyTo: smtp.reply_to || smtp.from_email,
-        to,
-        subject,
-        html,
-        text: text || "WatchWDS Email Support"
-      });
-      return { success: true, provider: "smtp", messageId: info.messageId };
+      try {
+        const info = await transporter.sendMail({
+          from: `"${smtp.from_name}" <${smtp.from_email}>`,
+          replyTo: smtp.reply_to || smtp.from_email,
+          to,
+          subject,
+          html,
+          text: text || "WatchWDS Email Support"
+        });
+        console.log(`[SMTP SUCCESS] Sent email to ${to} (Subject: ${subject}) via SMTP. MessageId: ${info.messageId}`);
+        return { success: true, provider: "smtp", messageId: info.messageId };
+      } catch (err: any) {
+        console.error(`[SMTP ERROR] Direct SMTP sendMail failed for ${to}:`, err.message || err);
+        throw err;
+      }
     } else {
       console.log(`[EXTERNAL PROVIDER DISPATCH] Routed via ${smtp.provider.toUpperCase()} to ${to} (Key: ${smtp.api_key ? "VALID" : "NONE"})`);
       return { success: true, provider: smtp.provider, messageId: `${smtp.provider}-dispatch-${Date.now()}` };
+    }
+  }
+
+  async function sendTemplateEmail(to: string, slug: string, variables: Record<string, string>) {
+    try {
+      const { subject, html } = await renderEmailTemplate(slug, variables);
+      const result = await dispatchEmail(to, subject, html);
+      console.log(`[EMAIL DISPATCH] Sent ${slug} to ${to}: ${result.success ? "success" : "failed"}`);
+      
+      const analyticsDoc = await db.collection("email_template_analytics").doc(slug).get();
+      if (analyticsDoc.exists) {
+        const data = analyticsDoc.data();
+        await db.collection("email_template_analytics").doc(slug).update({
+          sent: (data.sent || 0) + 1,
+          delivered: (data.delivered || 0) + 1,
+          last_sent_at: new Date().toISOString()
+        });
+      }
+      return result;
+    } catch (err: any) {
+      console.error(`[EMAIL ERROR] Failed to send template ${slug} to ${to}:`, err.message || err);
+      return { success: false, error: err.message };
     }
   }
 
@@ -2028,14 +2102,29 @@ async function startServer() {
       // Fulfill purchase
       const { type, amount, metadata } = txnData;
 
+      const userRef = db.collection("users").doc(userId);
+      const userDoc = await userRef.get();
+      const user = userDoc.exists ? userDoc.data() : null;
+      const userEmail = user?.email;
+      const userName = user?.name || "User";
+
       if (type === "top_up") {
-        const userRef = db.collection("users").doc(userId);
-        const userDoc = await userRef.get();
-        const currentBalance = Number(userDoc.data()?.balance || 0);
+        const currentBalance = Number(user?.balance || 0);
         await userRef.update({ balance: currentBalance + amount });
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
         notifyUser(userId, "Wallet Top-up Successful", `Your wallet has been credited with ${amount}.`, "success", "/profile");
         notifyAdmins("New Wallet Top-up", `User top-up: ${amount}`, "system", "/admin/transactions");
+
+        if (userEmail) {
+          sendTemplateEmail(userEmail, "payment_successful", {
+            first_name: userName,
+            purchase_amount: String(amount),
+            transaction_id: txn_id,
+            invoice_number: `INV-${Date.now()}`,
+            support_email: "support@watchwds.com"
+          }).catch(err => console.error("Failed to send top up email:", err));
+        }
+
         return res.json({ success: true });
       }
 
@@ -2056,6 +2145,21 @@ async function startServer() {
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
         notifyUser(userId, "Purchase Successful", `You have unlocked access.`, "success", `/matches/${metadata.matchId}`);
         notifyAdmins("New Purchase", `A user purchased access for amount: ${amount}`, "system", "/admin/transactions");
+
+        if (userEmail) {
+          const matchDoc = await db.collection("matches").doc(metadata.matchId).get();
+          const matchData = matchDoc.exists ? matchDoc.data() : {};
+          sendTemplateEmail(userEmail, "match_purchased", {
+            first_name: userName,
+            match_name: matchData.title || "Match Access",
+            match_date: matchData.start_time || new Date().toLocaleDateString(),
+            match_time: matchData.time || "UTC",
+            purchase_amount: String(amount),
+            website_url: `${req.protocol}://${req.get('host')}/matches/${metadata.matchId}`,
+            transaction_id: txn_id
+          }).catch(err => console.error("Failed to send match purchase email:", err));
+        }
+
         return res.json({ success: true });
       }
 
@@ -2066,7 +2170,6 @@ async function startServer() {
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + durationDays);
         
-        const userRef = db.collection("users").doc(userId);
         await userRef.update({ 
           planId: Number(metadata.planId),
           planExpiresAt: expiresAt.toISOString()
@@ -2074,6 +2177,18 @@ async function startServer() {
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
         notifyUser(userId, "Plan Subscribed", `You have successfully subscribed to the plan.`, "success", "/profile");
         notifyAdmins("New Subscription", `A user subscribed to a plan.`, "system", "/admin/transactions");
+
+        if (userEmail) {
+          sendTemplateEmail(userEmail, "subscription_purchased", {
+            first_name: userName,
+            subscription_name: planData.name || "Premium Plan",
+            purchase_amount: String(amount),
+            transaction_id: txn_id,
+            invoice_number: `INV-${Date.now()}`,
+            website_url: `${req.protocol}://${req.get('host')}/profile`
+          }).catch(err => console.error("Failed to send plan subscription email:", err));
+        }
+
         return res.json({ success: true });
       }
 
@@ -2323,6 +2438,20 @@ async function startServer() {
       
       notifyUser(userId, "Plan Upgraded", `You successfully upgraded your subscription using your wallet.`, "success", "/profile");
       notifyAdmins("Subscription Purchase", `A plan was purchased via wallet.`, "system", "/admin/transactions");
+      
+      const userEmail = userData.email;
+      const userName = userData.name || "User";
+      if (userEmail) {
+        sendTemplateEmail(userEmail, "subscription_purchased", {
+          first_name: userName,
+          subscription_name: planData.name || "Premium Plan",
+          purchase_amount: String(deductAmount),
+          transaction_id: transactionId,
+          invoice_number: `INV-${Date.now()}`,
+          website_url: `${req.protocol}://${req.get('host')}/profile`
+        }).catch(err => console.error("Failed to send subscription purchased email:", err));
+      }
+
       res.json({ success: true, newBalance, newPoints: newBalance, planId: Number(planId) });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
