@@ -2353,6 +2353,24 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  app.put("/api/admin/users/:id/details", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const userRef = db.collection("users").doc(req.params.id);
+      const { name, email, role, status, balance, verified } = req.body;
+      
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (email !== undefined) updateData.email = email;
+      if (role !== undefined) updateData.role = role;
+      if (status !== undefined) updateData.status = status;
+      if (balance !== undefined) updateData.balance = Number(balance) || 0;
+      if (verified !== undefined) updateData.verified = verified ? 1 : 0;
+
+      await userRef.update(updateData);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.delete("/api/admin/users/:id", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const userRef = db.collection("users").doc(req.params.id);

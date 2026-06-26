@@ -74,6 +74,14 @@ async function migrate() {
     }
   }
   console.log('  ✓ Schema applied successfully.');
+  
+  // Step 2.5: Run incremental schema updates (safe for existing installations)
+  try {
+    await rootConn.query(`ALTER TABLE \`users\` ADD COLUMN \`verified\` TINYINT(1) DEFAULT 0`);
+    console.log('  ✓ Incremental update: Added verified column to users.');
+  } catch (err: any) {
+    // Column might already exist, ignore this error
+  }
 
   // Step 3: Seed default data
   console.log('[4/4] Seeding default data...');
