@@ -34,19 +34,32 @@ async function migrate() {
   console.log(`Database: ${DB_NAME}`);
   console.log('-------------------------------------------');
 
-  // Step 1: Connect without a database to create it
+  // Step 1: Connect to database
   console.log('\n[1/4] Connecting to MySQL server...');
-  const rootConn = await mysql.createConnection({
-    host: DB_HOST,
-    port: DB_PORT,
-    user: DB_USER,
-    password: DB_PASSWORD,
-    multipleStatements: true,
-  });
-
-  console.log('[2/4] Creating database if not exists...');
-  await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  await rootConn.query(`USE \`${DB_NAME}\``);
+  let rootConn;
+  try {
+    // Attempt direct connection (recommended for Hostinger where CREATE DATABASE is forbidden)
+    rootConn = await mysql.createConnection({
+      host: DB_HOST,
+      port: DB_PORT,
+      user: DB_USER,
+      password: DB_PASSWORD,
+      database: DB_NAME,
+      multipleStatements: true,
+    });
+    console.log(`[2/4] Connected directly to database "${DB_NAME}".`);
+  } catch (err: any) {
+    console.log(`[2/4] Direct connection failed: ${err.message}. Trying connection without DB to create it...`);
+    rootConn = await mysql.createConnection({
+      host: DB_HOST,
+      port: DB_PORT,
+      user: DB_USER,
+      password: DB_PASSWORD,
+      multipleStatements: true,
+    });
+    await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    await rootConn.query(`USE \`${DB_NAME}\``);
+  }
 
   // Step 2: Run schema SQL using multipleStatements
   console.log('[3/4] Running schema...');
