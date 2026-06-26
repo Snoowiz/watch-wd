@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { WifiOff, Loader2 } from 'lucide-react';
-import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore } from './store';
+import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore, useAdStore, usePurchaseStore } from './store';
 import { Preloader } from './components/Preloader';
 import { Layout } from './components/Layout';
 import { UIFeedbackProvider } from './components/UIFeedbackProvider';
@@ -36,6 +36,7 @@ import { Checkout } from './pages/Checkout';
 import { CheckoutSuccess } from './pages/CheckoutSuccess';
 import { CheckoutCancel } from './pages/CheckoutCancel';
 import { Plans } from './pages/Plans';
+import { MyPlans } from './pages/MyPlans';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { About } from './pages/About';
@@ -51,6 +52,8 @@ export default function App() {
   const platformName = storedPlatformName || 'WatchWDS';
 
   const { setFeatures } = useFeatureStore();
+  const { fetchAds } = useAdStore();
+  const { fetchPurchases, fetchTransactions } = usePurchaseStore();
   const [initialLoading, setInitialLoading] = useState(true);
   const [profileModalDismissed, setProfileModalDismissed] = useState(
     () => localStorage.getItem('profileModalDismissed') === 'true'
@@ -169,9 +172,10 @@ export default function App() {
     let featuresLoaded = false;
     let authChecked = false;
     let timeoutCompleted = false;
+    let adsFetched = false;
 
     const checkFinished = () => {
-      if (featuresLoaded && authChecked && timeoutCompleted) {
+      if (featuresLoaded && authChecked && timeoutCompleted && adsFetched) {
         setInitialLoading(false);
       }
     };
@@ -197,6 +201,12 @@ export default function App() {
         checkFinished();
       });
 
+    // Fetch Ads
+    fetchAds().finally(() => {
+      adsFetched = true;
+      checkFinished();
+    });
+
     // 3. Fetch user if token exists
     if (token) {
       fetch('/api/auth/me', {
@@ -212,6 +222,8 @@ export default function App() {
         })
         .then(data => {
           setAuth(data.user, token);
+          fetchPurchases();
+          fetchTransactions();
           authChecked = true;
           checkFinished();
         })
@@ -226,7 +238,7 @@ export default function App() {
     }
 
     return () => clearTimeout(timer);
-  }, [token, setAuth, logout, setFeatures]);
+  }, [token, setAuth, logout, setFeatures, fetchAds, fetchPurchases, fetchTransactions]);
 
   if (preloaderEnabled !== false && initialLoading) {
     return <Preloader />;
@@ -291,6 +303,7 @@ export default function App() {
                 <Route path="/checkout/success" element={<CheckoutSuccess />} />
                 <Route path="/checkout/cancel" element={<CheckoutCancel />} />
                 <Route path="/plans" element={<Plans />} />
+                <Route path="/my-plans" element={<MyPlans />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/terms" element={<TermsOfUse />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />

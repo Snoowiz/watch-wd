@@ -82,6 +82,9 @@ export function UserDropdown() {
                 <Video className="w-5 h-5 text-slate-400" /> Creator Studio
               </Link>
             )}
+            <Link to="/my-plans" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+              <LogOut className="w-5 h-5 text-slate-400 rotate-180" /> My Plans
+            </Link>
 
             {/* Mobile-only Navigation Links */}
             <div className="md:hidden space-y-1">

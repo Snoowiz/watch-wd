@@ -27,7 +27,7 @@ export function MatchDetail() {
   const { savedMatches = [], saveMatch, unsaveMatch, fetchSavedMatches } = useSavedMatchesStore();
   
   const [error, setError] = useState('');
-  const [showTopUpModal, setShowTopUpModal] = useState(false);
+
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutData, setCheckoutData] = useState<any>(null);
@@ -90,7 +90,7 @@ export function MatchDetail() {
     );
   }
   
-  const hasPlanAccess = match.access_type === 'plan' && !!user?.planId;
+  const hasPlanAccess = match.access_type === 'plan' && !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date()) && (!match.required_plan_id || String(user.planId) === String(match.required_plan_id));
   const hasAccess = !!(user ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') || match.access === 'free' || hasPlanAccess : match.access === 'free');
   const hasEmbedCode = user ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
   const embedCodePurchase = user ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
@@ -300,50 +300,13 @@ export function MatchDetail() {
     if (!user || isProcessingPurchase) return;
     
     const priceToPay = match.ppv_price || match.price;
-    if (user.balance < priceToPay) {
-      setShowConfirmModal(false);
-      setShowTopUpModal(true);
-      return;
-    }
-    
-    setIsProcessingPurchase(true);
-    try {
-      const res = await fetch('/api/checkout/ppv', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ match_id: match.id, amount: priceToPay })
-      });
-      if (!res.ok) throw new Error('Purchase failed');
-      const data = await res.json();
-      updateUser({ balance: data.newPoints });
-      
-      // Update local transactions if we still store them locally
-      addTransaction({
-        userId: user.id,
-        type: 'purchase',
-        amount: -priceToPay,
-        description: `Purchased access to: ${match.title}`,
-      });
-      addPurchase({
-        id: Date.now(),
-        userId: user.id,
-        matchId: match.id,
-        amount: priceToPay,
-        type: 'watch',
-        date: new Date().toISOString()
-      });
-      
-      setShowConfirmModal(false);
-      setError('');
-    } catch(e) {
-      console.error(e);
-      setError('Failed to process purchase');
-    } finally {
-      setIsProcessingPurchase(false);
-    }
+    setCheckoutData({
+      amount: priceToPay,
+      type: 'watch',
+      metadata: { matchId: match.id, title: match.title }
+    });
+    setShowConfirmModal(false);
+    setShowCheckoutModal(true);
   };
 
   const handleBuyEmbed = async () => {
@@ -352,48 +315,13 @@ export function MatchDetail() {
       return;
     }
     if (isProcessingPurchase) return;
-    if (user.balance < match.embedPrice) {
-      setShowTopUpModal(true);
-      return;
-    }
     
-    setIsProcessingPurchase(true);
-    try {
-      const res = await fetch('/api/checkout/embed', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ match_id: match.id, amount: match.embedPrice })
-      });
-      if (!res.ok) throw new Error('Embed purchase failed');
-      const data = await res.json();
-      
-      updateUser({ balance: data.newPoints });
-      
-      addTransaction({
-        userId: user.id,
-        type: 'purchase',
-        amount: -match.embedPrice,
-        description: `Purchased embed access to: ${match.title}`,
-      });
-      addPurchase({
-        id: Date.now(),
-        userId: user.id,
-        matchId: match.id,
-        amount: match.embedPrice,
-        type: 'embed',
-        date: new Date().toISOString(),
-        code: `<iframe src="https://watchwds.com/embed/${match.slug}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`
-      });
-      setError('');
-    } catch(e) {
-      console.error(e);
-      setError('Failed to process embed purchase');
-    } finally {
-      setIsProcessingPurchase(false);
-    }
+    setCheckoutData({
+      amount: match.embedPrice,
+      type: 'embed',
+      metadata: { matchId: match.id, title: match.title }
+    });
+    setShowCheckoutModal(true);
   };
 
   const renderAccessIcon = () => {
@@ -765,51 +693,6 @@ export function MatchDetail() {
         </div>
       )}
 
-      {/* Top Up Modal */}
-      {showTopUpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-xl p-8 shadow-2xl border border-slate-200 dark:border-slate-700 relative">
-            <button 
-              onClick={() => setShowTopUpModal(false)}
-              className="absolute top-6 right-6 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors"
-            >
-              <X className="w-5 h-5 text-slate-400" />
-            </button>
-            <div className="text-center">
-              <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <AlertCircle className="w-10 h-10 text-red-500" />
-              </div>
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Insufficient Balance</h3>
-              <p className="text-slate-500 dark:text-slate-400 mb-8">
-                You don't have enough {currencySymbol} to unlock this match. You need <span className="text-red-500 font-bold">{currencySymbol}{(match.ppv_price || match.price) - (user?.balance || 0)}</span> more in your balance.
-              </p>
-              <div className="flex flex-col gap-3">
-                <button 
-                  onClick={() => {
-                    setShowTopUpModal(false);
-                    setShowConfirmModal(false);
-                    setCheckoutData({
-                      amount: match.ppv_price || match.price || 0,
-                      type: 'watch',
-                      metadata: { matchId: match.id }
-                    });
-                    setShowCheckoutModal(true);
-                  }}
-                  className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-4 rounded-xl transition-all shadow-lg shadow-yellow-500/20"
-                >
-                  Pay with Gateway
-                </button>
-                <button 
-                  onClick={() => setShowTopUpModal(false)}
-                  className="w-full bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold py-4 rounded-xl transition-all"
-                >
-                  Maybe Later
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showCheckoutModal && checkoutData && (
         <AddFundsModal

@@ -7,9 +7,11 @@ import { AdminSocialSettings } from './AdminSocialSettings';
 import { AdminCookieSettings } from './AdminCookieSettings';
 import { AdminGoogleAuthSettings } from './AdminGoogleAuthSettings';
 import { MediaPicker } from '../../components/MediaPicker';
+import { AdminFirebaseSettings } from './AdminFirebaseSettings';
+import { Database } from 'lucide-react';
 
 export function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie' | 'google-auth'>('seo');
+  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase'>('seo');
   
   // Payment States
   const { 
@@ -179,6 +181,17 @@ export function AdminSettings() {
         >
           <Chrome className="w-4 h-4 text-red-500" />
           Google Login
+        </button>
+        <button
+          onClick={() => setActiveTab('firebase')}
+          className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
+            activeTab === 'firebase'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+          }`}
+        >
+          <Database className="w-4 h-4 text-orange-500" />
+          Firebase Config
         </button>
       </div>
 
@@ -791,6 +804,18 @@ export function AdminSettings() {
               Google Sign-In Integration
             </h2>
             <AdminGoogleAuthSettings />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'firebase' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-4">
+              <Database className="w-6 h-6 text-orange-500" />
+              Firebase Integration
+            </h2>
+            <AdminFirebaseSettings />
           </div>
         </div>
       )}

@@ -8,3 +8,5 @@ coverage/
 !.env.example
 server-pid.txt
 .agents/
+adminer.php
+

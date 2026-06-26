@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { X, CreditCard, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, CreditCard, CheckCircle, AlertCircle, Wallet } from 'lucide-react';
 import { useAuthStore, useSettingsStore, usePurchaseStore } from '../store';
 
 interface AddFundsModalProps {
@@ -16,10 +16,10 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
   const location = useLocation();
   const { user, updateUser } = useAuthStore();
   const { currency, currencySymbol, paymentSettings } = useSettingsStore();
-  const { addTransaction } = usePurchaseStore();
+  const { addTransaction, addPurchase } = usePurchaseStore();
   
   const [amount, setAmount] = useState<number>(directCheckoutAmount || 10);
-  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'paypal' | 'paystack' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'paypal' | 'paystack' | 'wallet' | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -34,6 +34,64 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
 
     setIsProcessing(true);
     setError('');
+
+    if (paymentMethod === 'wallet') {
+      if (!user || user.balance < amount) {
+        setError('Insufficient wallet balance');
+        setIsProcessing(false);
+        return;
+      }
+      
+      try {
+        let endpoint = '';
+        let payload: any = { amount };
+        
+        if (directCheckoutType === 'plan') {
+           endpoint = '/api/checkout/plan';
+           payload.planId = directCheckoutMetadata?.planId;
+        } else if (directCheckoutType === 'embed') {
+           endpoint = '/api/checkout/embed';
+           payload.match_id = directCheckoutMetadata?.matchId;
+        } else if (directCheckoutType === 'watch') {
+           endpoint = '/api/checkout/ppv';
+           payload.match_id = directCheckoutMetadata?.matchId;
+        } else {
+           throw new Error("Invalid checkout type for wallet payment");
+        }
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Payment failed');
+        
+        const newUserData: any = { balance: data.newPoints || data.newBalance };
+        if (data.planId) newUserData.planId = data.planId;
+        updateUser(newUserData);
+        
+        if (data.purchase) {
+          addPurchase(data.purchase);
+        }
+        
+        setSuccess(true);
+        setTimeout(() => {
+          onClose();
+          if ((location.state as any)?.returnUrl) {
+            navigate((location.state as any).returnUrl);
+          }
+        }, 1500);
+      } catch (err: any) {
+        setError(err.message || 'Payment failed');
+        setIsProcessing(false);
+      }
+      return;
+    }
 
     onClose();
     navigate('/checkout', {
@@ -108,6 +166,37 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                     Select Payment Method
                   </label>
+                  
+                  {directCheckoutType && (
+                    <button
+                      onClick={() => setPaymentMethod('wallet')}
+                      disabled={!user || user.balance < amount}
+                      className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        paymentMethod === 'wallet' 
+                          ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-500/10' 
+                          : (!user || user.balance < amount)
+                            ? 'border-slate-100 dark:border-slate-800 opacity-50 cursor-not-allowed'
+                            : 'border-slate-200 dark:border-slate-700 hover:border-yellow-300 dark:hover:border-yellow-500/50'
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        paymentMethod === 'wallet' ? 'bg-yellow-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                      }`}>
+                        <Wallet className="w-5 h-5" />
+                      </div>
+                      <div className="text-left flex-1">
+                        <div className="font-bold text-slate-900 dark:text-white">Wallet Balance</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                          Current: {currencySymbol}{user?.balance || 0}
+                        </div>
+                      </div>
+                      {(!user || user.balance < amount) && (
+                        <div className="text-xs font-bold text-red-500 px-2 py-1 bg-red-100 dark:bg-red-500/10 rounded-md">
+                          Insufficient
+                        </div>
+                      )}
+                    </button>
+                  )}
                   
                   {paymentSettings.stripe.enabled && (
                     <button
@@ -188,9 +277,9 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
 
               <button
                 onClick={handlePayment}
-                disabled={!paymentMethod || isProcessing || amount <= 0 || !hasPaymentMethods}
+                disabled={!paymentMethod || isProcessing || amount <= 0 || (!hasPaymentMethods && paymentMethod !== 'wallet')}
                 className={`w-full py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-2 ${
-                  !paymentMethod || isProcessing || amount <= 0 || !hasPaymentMethods
+                  !paymentMethod || isProcessing || amount <= 0 || (!hasPaymentMethods && paymentMethod !== 'wallet')
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                     : 'bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-lg shadow-yellow-500/30'
                 }`}

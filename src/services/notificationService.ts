@@ -1,6 +1,5 @@
 import { getToken, onMessage } from 'firebase/messaging';
-import { db, messaging } from '../lib/firebase';
-import { doc, setDoc, arrayUnion, updateDoc, arrayRemove } from 'firebase/firestore';
+import { messaging } from '../lib/firebase';
 
 export const getNotificationPermission = (): string => {
   try {
@@ -29,11 +28,18 @@ export const requestNotificationPermission = async (userId: string | number) => 
       });
       if (currentToken) {
         console.log('FCM Registration Token generated.');
-        await setDoc(doc(db, 'users', userIdStr, 'fcm_tokens', currentToken), {
-          token: currentToken,
-          deviceInfo: navigator.userAgent,
-          createdAt: new Date().toISOString()
-        });
+        // Save FCM token via REST API
+        const token = localStorage.getItem('token');
+        if (token) {
+          await fetch('/api/auth/profile', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ fcmToken: currentToken })
+          });
+        }
         return currentToken;
       }
     }

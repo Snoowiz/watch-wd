@@ -589,36 +589,131 @@ interface AdState {
   ads: Advertisement[];
   impressions: AdImpression[];
   adIntervalMinutes: number;
+  fetchAds: () => Promise<void>;
   setAdIntervalMinutes: (minutes: number) => void;
-  addAd: (ad: Omit<Advertisement, 'id'>) => void;
-  updateAd: (id: number, updates: Partial<Advertisement>) => void;
-  deleteAd: (id: number) => void;
-  recordImpression: (adId: number, matchId?: number, userId?: number) => void;
-  recordClick: (impressionId: number) => void;
+  addAd: (ad: Omit<Advertisement, 'id'>) => Promise<void>;
+  updateAd: (id: number, updates: Partial<Advertisement>) => Promise<void>;
+  deleteAd: (id: number) => Promise<void>;
+  recordImpression: (adId: number, matchId?: number, userId?: number) => Promise<void>;
+  recordClick: (impressionId: number) => Promise<void>;
 }
 
 export const useAdStore = create<AdState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ads: [],
       impressions: [],
       adIntervalMinutes: 15,
+      fetchAds: async () => {
+        try {
+          const resAds = await fetch('/api/ads');
+          if (resAds.ok) {
+            const data = await resAds.json();
+            set({ ads: data });
+          }
+          const token = localStorage.getItem('token');
+          if (token) {
+            const resImp = await fetch('/api/admin/ad-impressions', {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (resImp.ok) {
+              const data = await resImp.json();
+              set({ impressions: data });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch ads', err);
+        }
+      },
       setAdIntervalMinutes: (minutes) => set({ adIntervalMinutes: minutes }),
-      addAd: (ad) => set((state) => ({ ads: [...state.ads, { ...ad, id: Date.now() }] })),
-      updateAd: (id, updates) => set((state) => ({
-        ads: state.ads.map(a => a.id === id ? { ...a, ...updates } : a)
-      })),
-      deleteAd: (id) => set((state) => ({
-        ads: state.ads.filter(a => a.id !== id)
-      })),
-      recordImpression: (adId, matchId, userId) => set((state) => ({
-        impressions: [...state.impressions, { id: Date.now(), adId, matchId, userId, clicked: false, timestamp: new Date().toISOString() }]
-      })),
-      recordClick: (impressionId) => set((state) => ({
-        impressions: state.impressions.map(i => i.id === impressionId ? { ...i, clicked: true } : i)
-      }))
+      addAd: async (ad) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+          const res = await fetch('/api/admin/ads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(ad)
+          });
+          if (res.ok) {
+            const data = await res.json();
+            set((state) => ({ ads: [...state.ads, data] }));
+          }
+        } catch (err) {
+          console.error('Failed to add ad', err);
+        }
+      },
+      updateAd: async (id, updates) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+          const res = await fetch(`/api/admin/ads/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(updates)
+          });
+          if (res.ok) {
+            set((state) => ({
+              ads: state.ads.map(a => String(a.id) === String(id) ? { ...a, ...updates } : a)
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to update ad', err);
+        }
+      },
+      deleteAd: async (id) => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+          const res = await fetch(`/api/admin/ads/${id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            set((state) => ({
+              ads: state.ads.filter(a => String(a.id) !== String(id))
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to delete ad', err);
+        }
+      },
+      recordImpression: async (adId, matchId, userId) => {
+        try {
+          const res = await fetch('/api/ads/impression', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adId, matchId, userId })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            set((state) => ({
+              impressions: [...state.impressions, { id: data.id, adId, matchId, userId, clicked: false, timestamp: new Date().toISOString() }]
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to record impression', err);
+        }
+      },
+      recordClick: async (impressionId) => {
+        try {
+          const res = await fetch(`/api/ads/click/${impressionId}`, {
+            method: 'POST'
+          });
+          if (res.ok) {
+            set((state) => ({
+              impressions: state.impressions.map(i => String(i.id) === String(impressionId) ? { ...i, clicked: true } : i)
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to record click', err);
+        }
+      }
     }),
-    { name: 'ad-storage' }
+    { 
+      name: 'ad-storage',
+      partialize: (state) => ({ adIntervalMinutes: state.adIntervalMinutes })
+    }
   )
 );
 
@@ -776,36 +871,49 @@ export interface Transaction {
 interface PurchaseState {
   purchases: Purchase[];
   addPurchase: (purchase: Purchase) => void;
+  fetchPurchases: () => Promise<void>;
   transactions: Transaction[];
   addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => void;
   fetchTransactions: () => Promise<void>;
 }
 
 export const usePurchaseStore = create<PurchaseState>()(
-  persist(
-    (set) => ({
-      purchases: [],
-      addPurchase: (purchase) => set((state) => ({ purchases: [...state.purchases, purchase] })),
-      transactions: [],
-      addTransaction: (transaction) => set((state) => ({ 
-        transactions: [{ ...transaction, id: Date.now(), date: new Date().toISOString() }, ...state.transactions] 
-      })),
-      fetchTransactions: async () => {
-        try {
-          const res = await fetch('/api/user/transactions', {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            set({ transactions: Array.isArray(data.transactions) ? data.transactions : (Array.isArray(data) ? data : []) });
-          }
-        } catch (err) {
-          console.error('Failed to fetch transactions', err);
+  (set) => ({
+    purchases: [],
+    addPurchase: (purchase) => set((state) => ({ purchases: [...state.purchases, purchase] })),
+    fetchPurchases: async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await fetch('/api/user/purchases', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          set({ purchases: Array.isArray(data) ? data : [] });
         }
+      } catch (err) {
+        console.error('Failed to fetch purchases', err);
       }
-    }),
-    { name: 'purchase-storage' }
-  )
+    },
+    transactions: [],
+    addTransaction: (transaction) => set((state) => ({ 
+      transactions: [{ ...transaction, id: Date.now(), date: new Date().toISOString() }, ...state.transactions] 
+    })),
+    fetchTransactions: async () => {
+      try {
+        const res = await fetch('/api/user/transactions', {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          set({ transactions: Array.isArray(data.transactions) ? data.transactions : (Array.isArray(data) ? data : []) });
+        }
+      } catch (err) {
+        console.error('Failed to fetch transactions', err);
+      }
+    }
+  })
 );
 
 export interface Task {

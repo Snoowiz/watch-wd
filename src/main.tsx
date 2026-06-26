@@ -47,12 +47,16 @@ try {
   console.warn('Notification permission request failed or blocked:', e);
 }
 
-initializeFirebaseSync();
+import { initializeFirebase } from './lib/firebase';
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-);
+initializeFirebase().then(() => {
+  initializeFirebaseSync();
+
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+});

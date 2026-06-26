@@ -7,10 +7,13 @@ import fs from "fs";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
 import Stripe from "stripe";
+import dotenv from "dotenv";
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, query, where, getDocs, getDoc, setDoc, updateDoc, deleteDoc, addDoc, orderBy, limit, documentId, serverTimestamp } from 'firebase/firestore';
+import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
+import { testConnection } from "./db/connection.js";
+
+dotenv.config();
 
 let _filename = '';
 let _dirname = '';
@@ -26,111 +29,9 @@ const currentDirname = _dirname;
 
 const JWT_SECRET = process.env.JWT_SECRET || "watchwds-super-secret-key-2026";
 
-let fbConfigPath = './firebase-applet-config.json';
-if (!fs.existsSync(fbConfigPath)) {
-  const possiblePath = path.join(currentDirname, 'firebase-applet-config.json');
-  if (fs.existsSync(possiblePath)) {
-    fbConfigPath = possiblePath;
-  } else {
-    const parentPath = path.join(currentDirname, '..', 'firebase-applet-config.json');
-    if (fs.existsSync(parentPath)) {
-      fbConfigPath = parentPath;
-    }
-  }
-}
-const fbConfig = JSON.parse(fs.readFileSync(fbConfigPath, 'utf8'));
-const appAdmin = initializeApp(fbConfig);
-const firestoreClient = getFirestore(appAdmin, fbConfig.firestoreDatabaseId || "(default)");
-
-class FirebaseAdminWrapper {
-  collection(path: string) {
-    return new CollectionWrapper(path);
-  }
-}
-
-class CollectionWrapper {
-  constructor(public path: string, private queryConstraints: any[] = []) {}
-
-  where(field: string | any, op: any, value: any) {
-    return new CollectionWrapper(this.path, [...this.queryConstraints, where(field, op, value)]);
-  }
-
-  orderBy(field: string, dir: any = 'asc') {
-    return new CollectionWrapper(this.path, [...this.queryConstraints, orderBy(field, dir)]);
-  }
-  
-  limit(n: number) {
-    return new CollectionWrapper(this.path, [...this.queryConstraints, limit(n)]);
-  }
-
-  async get() {
-    console.log("FirebaseAdminWrapper GET called on path:", this.path, "with constraints", this.queryConstraints);
-    const q = query(collection(firestoreClient, this.path), ...this.queryConstraints);
-    const snap = await getDocs(q);
-    return {
-      empty: snap.empty,
-      size: snap.size,
-      docs: snap.docs.map(d => ({
-        id: d.id,
-        ref: new DocWrapper(this.path, d.id),
-        exists: d.exists(),
-        data: () => d.data()
-      }))
-    };
-  }
-
-  doc(id?: string) {
-    if (id) return new DocWrapper(this.path, id);
-    const d = doc(collection(firestoreClient, this.path));
-    return new DocWrapper(this.path, d.id);
-  }
-
-  async add(data: any) {
-    const ref = await addDoc(collection(firestoreClient, this.path), data);
-    return { id: ref.id, ref: new DocWrapper(this.path, ref.id) };
-  }
-}
-
-class DocWrapper {
-  constructor(public path: string, public id: string) {}
-
-  get ref() { return this; }
-
-  async get() {
-    const d = doc(firestoreClient, this.path, this.id);
-    const snap = await getDoc(d);
-    return {
-      id: snap.id,
-      exists: snap.exists(),
-      ref: this,
-      data: () => snap.data()
-    };
-  }
-
-  async set(data: any, options?: any) {
-    await setDoc(doc(firestoreClient, this.path, this.id), data, options);
-  }
-
-  async update(data: any) {
-    await updateDoc(doc(firestoreClient, this.path, this.id), data);
-  }
-
-  async delete() {
-    await deleteDoc(doc(firestoreClient, this.path, this.id));
-  }
-}
-
-const db = new FirebaseAdminWrapper();
-const admin = {
-  firestore: {
-    FieldValue: {
-      serverTimestamp: () => serverTimestamp()
-    },
-    FieldPath: {
-      documentId: () => documentId()
-    }
-  }
-};
+// MySQL database adapter (replaces Firestore)
+const db = new MySQLAdapter();
+const admin = adminCompat;
 
 // === API FRAGMENT CACHE MIDDLEWARE ===
 function apiFragmentCache(ttlSeconds: number) {
@@ -240,6 +141,37 @@ const requireRole = (roles: string[]) => {
   };
 };
 
+async function notifyUser(userId: string, title: string, message: string, type: string = 'info', link: string | null = null, actorName: string | null = null, actorAvatar: string | null = null) {
+  try {
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 6);
+    await db.collection("notifications").doc(id).set({
+      id,
+      userId,
+      title,
+      message,
+      type,
+      link,
+      actorName,
+      actorAvatar,
+      isRead: 0,
+      createdAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Failed to notify user', err);
+  }
+}
+
+async function notifyAdmins(title: string, message: string, type: string = 'system', link: string | null = null, actorName: string | null = null, actorAvatar: string | null = null) {
+  try {
+    const snap = await db.collection("users").where("role", "==", "admin").get();
+    for (const d of snap.docs) {
+      await notifyUser(d.id, title, message, type, link, actorName, actorAvatar);
+    }
+  } catch (err) {
+    console.error('Failed to notify admins', err);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.APP_PORT || process.env.PORT || 3000;
@@ -255,8 +187,13 @@ async function startServer() {
 
   const normalizeUser = (docId: string, data: any) => {
     if (!data) return null;
-    const { password: _, ...userData } = data;
-    const normalized = { id: docId, ...userData };
+    const { password: _, plan_id, plan_expires_at, ...userData } = data;
+    const normalized = { 
+      id: docId, 
+      ...userData,
+      planId: plan_id,
+      planExpiresAt: plan_expires_at
+    };
     if (normalized.balance === undefined) {
       normalized.balance = normalized.points !== undefined ? Number(normalized.points) : 0;
     } else {
@@ -272,33 +209,32 @@ async function startServer() {
       const hash = bcrypt.hashSync(password, 10);
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
       
-      const userRef = db.collection("users").doc();
       const role = email === 'mayycutee1@gmail.com' ? 'admin' : 'viewer';
-      const userData = { email, password: hash, name, active_device_id: finalDeviceId, role, balance: 0, status: "active", createdAt: admin.firestore.FieldValue.serverTimestamp() };
-      await userRef.set(userData);
+      const userData = { email, password: hash, name, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
+      const result = await db.collection("users").add(userData);
       
-      const token = jwt.sign({ id: userRef.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
-      res.json({ token, user: normalizeUser(userRef.id, userData), device_id: finalDeviceId });
+      const token = jwt.sign({ id: result.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
+      notifyAdmins("New User Registration", `${name || email} has joined the platform.`, "system", "/admin/users");
+      notifyUser(result.id, "Welcome to WatchWDS!", "Your account has been created successfully.", "info", "/profile");
+      res.json({ token, user: normalizeUser(result.id, userData), device_id: finalDeviceId });
     } catch (e: any) { res.status(400).json({ error: e.message }); }
   });
 
   app.get("/api/testdb", async (req, res) => {
     try {
-      const q = query(collection(firestoreClient, 'users'), limit(1));
-      const snap = await getDocs(q);
-      res.json({ success: true, dbId: fbConfig.firestoreDatabaseId, size: snap.size });
+      const snap = await db.collection("users").limit(1).get();
+      res.json({ success: true, dbType: "mysql", size: snap.size });
     } catch (e: any) {
-      res.status(500).json({ error: e.message, code: e.code, name: e.name, dbId: fbConfig.firestoreDatabaseId });
+      res.status(500).json({ error: e.message, dbType: "mysql" });
     }
   });
 
   app.post("/api/testpost", async (req, res) => {
     try {
-      const q = query(collection(firestoreClient, 'users'), where('email', '==', req.body.email));
-      const snap = await getDocs(q);
-      res.json({ success: true, dbId: fbConfig.firestoreDatabaseId, size: snap.size });
+      const snap = await db.collection("users").where("email", "==", req.body.email).get();
+      res.json({ success: true, dbType: "mysql", size: snap.size });
     } catch (e: any) {
-      res.status(500).json({ error: e.message, code: e.code, name: e.name, dbId: fbConfig.firestoreDatabaseId });
+      res.status(500).json({ error: e.message, dbType: "mysql" });
     }
   });
 
@@ -338,11 +274,10 @@ async function startServer() {
       let docId = "";
 
       if (snapshot.empty) {
-        const userRef = db.collection("users").doc();
-        docId = userRef.id;
         const role = email === 'mayycutee1@gmail.com' ? 'admin' : 'viewer';
-        user = { email, password: "google-auth-no-password", name, avatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", createdAt: admin.firestore.FieldValue.serverTimestamp() };
-        await userRef.set(user);
+        user = { email, password: "google-auth-no-password", name, avatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
+        const result = await db.collection("users").add(user);
+        docId = result.id;
       } else {
         const doc = snapshot.docs[0];
         docId = doc.id;
@@ -357,6 +292,7 @@ async function startServer() {
         user.avatar = avatar;
       }
 
+      const token = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token, user: normalizeUser(docId, user), device_id: finalDeviceId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -926,7 +862,7 @@ async function startServer() {
 
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
-      const docRef = await db.collection("matches").add({ ...req.body, operator_id: req.user.id, created_at: admin.firestore.FieldValue.serverTimestamp() });
+      const docRef = await db.collection("matches").add({ ...req.body, operator_id: req.user.id, created_at: new Date().toISOString() });
       res.json({ id: docRef.id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -950,8 +886,8 @@ async function startServer() {
       const snap = await db.collection("saved_matches").where("user_id", "==", req.user.id).get();
       const matchIds = snap.docs.map(d => d.data().match_id);
       if(matchIds.length === 0) return res.json([]);
-      // Limit to 30 for IN queries
-      const matchSnap = await db.collection("matches").where(admin.firestore.FieldPath.documentId(), "in", matchIds.slice(0, 30)).get();
+      // Use IN query for MySQL
+      const matchSnap = await db.collection("matches").where("id", "in", matchIds.slice(0, 30)).get();
       res.json(matchSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -959,6 +895,7 @@ async function startServer() {
   app.post("/api/matches/:id/save", authenticate, async (req: any, res) => {
     try {
       await db.collection("saved_matches").add({ user_id: req.user.id, match_id: req.params.id });
+      notifyUser(req.user.id, "Match Saved", `You saved Match #${req.params.id} to watch later.`, "info", `/matches/${req.params.id}`);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -1391,7 +1328,7 @@ async function startServer() {
       await db.collection("email_templates").doc(req.params.id).delete();
       
       const snap = await db.collection("email_versions").where("template_id", "==", req.params.id).get();
-      snap.docs.forEach(d => d.ref.delete());
+      for (const d of snap.docs) { await d.ref.delete(); }
 
       await db.collection("email_template_analytics").doc(req.params.id).delete();
 
@@ -1548,12 +1485,68 @@ async function startServer() {
   app.delete("/api/matches/:id/save", authenticate, async (req: any, res) => {
     try {
       const snap = await db.collection("saved_matches").where("user_id", "==", req.user.id).where("match_id", "==", req.params.id).get();
-      snap.docs.forEach(doc => doc.ref.delete());
+      for (const doc of snap.docs) {
+        await doc.ref.delete();
+      }
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // Default catch-all for missing routes returning mock data or simple success so UI doesn't crash empty state
+  app.post("/api/plans/upgrade-cost", authenticate, async (req: any, res) => {
+    try {
+      const { planId } = req.body;
+      const userDoc = await db.collection("users").doc(req.user.id).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+      const user = userDoc.data() as any;
+      
+      const newPlanDoc = await db.collection("plans").doc(planId.toString()).get();
+      if (!newPlanDoc.exists) return res.status(404).json({ error: "New plan not found" });
+      const newPlan = newPlanDoc.data() as any;
+      const newPlanPrice = Number(newPlan.price);
+
+      if (!user.plan_id || !user.plan_expires_at) {
+        return res.json({ cost: newPlanPrice, credit: 0 });
+      }
+
+      const currentPlanDoc = await db.collection("plans").doc(user.plan_id.toString()).get();
+      if (!currentPlanDoc.exists) {
+        return res.json({ cost: newPlanPrice, credit: 0 });
+      }
+
+      const currentPlan = currentPlanDoc.data() as any;
+      const currentPlanPrice = Number(currentPlan.price);
+      
+      if (newPlanPrice <= currentPlanPrice && String(user.plan_id) !== String(planId)) {
+        return res.status(400).json({ error: "You can only upgrade to a higher plan." });
+      }
+      
+      if (String(user.plan_id) === String(planId)) {
+        const expiresAt = new Date(user.plan_expires_at);
+        if (expiresAt > new Date()) {
+          return res.status(400).json({ error: "You already have an active subscription for this plan." });
+        }
+      }
+
+      const expiresAt = new Date(user.plan_expires_at);
+      const now = new Date();
+      if (expiresAt <= now || String(user.plan_id) === String(planId)) {
+        return res.json({ cost: newPlanPrice, credit: 0 });
+      }
+
+      // Calculate credit
+      const durationDays = Number(currentPlan.duration_days) || 30;
+      const totalMs = durationDays * 24 * 60 * 60 * 1000;
+      const remainingMs = expiresAt.getTime() - now.getTime();
+      const credit = (currentPlanPrice * remainingMs) / totalMs;
+
+      let cost = newPlanPrice - credit;
+      if (cost < 0) cost = 0;
+
+      res.json({ cost: Math.round(cost * 100) / 100, credit: Math.round(credit * 100) / 100 });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get("/api/plans", cdnEdgeSim(120), apiFragmentCache(60), async (req, res) => {
     try {
       const plansSnap = await db.collection("plans").get();
@@ -1803,7 +1796,7 @@ async function startServer() {
 
       // Save pending transaction securely in backend
       const pendingData = {
-        userId: Number(userId),
+        userId: userId,
         type,
         amount: Number(amount),
         status: "pending",
@@ -2032,15 +2025,17 @@ async function startServer() {
         const currentBalance = Number(userDoc.data()?.balance || 0);
         await userRef.update({ balance: currentBalance + amount });
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
+        notifyUser(userId, "Wallet Top-up Successful", `Your wallet has been credited with ${amount}.`, "success", "/profile");
+        notifyAdmins("New Wallet Top-up", `User top-up: ${amount}`, "system", "/admin/transactions");
         return res.json({ success: true });
       }
 
       if (type === "watch" || type === "embed") {
         const purchaseId = Date.now().toString();
         const purchaseData = {
-          id: Number(purchaseId),
-          userId: Number(userId),
-          matchId: Number(metadata.matchId),
+          id: purchaseId,
+          userId: userId,
+          matchId: metadata.matchId,
           amount,
           type,
           date: new Date().toISOString()
@@ -2050,13 +2045,26 @@ async function startServer() {
         }
         await db.collection("purchases").doc(purchaseId).set(purchaseData);
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
+        notifyUser(userId, "Purchase Successful", `You have unlocked access.`, "success", `/matches/${metadata.matchId}`);
+        notifyAdmins("New Purchase", `A user purchased access for amount: ${amount}`, "system", "/admin/transactions");
         return res.json({ success: true });
       }
 
       if (type === "plan") {
+        const planDoc = await db.collection("plans").doc(String(metadata.planId)).get();
+        const planData = planDoc.data() || {};
+        const durationDays = Number(planData.duration_days) || 30;
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + durationDays);
+        
         const userRef = db.collection("users").doc(userId);
-        await userRef.update({ planId: Number(metadata.planId) });
+        await userRef.update({ 
+          planId: Number(metadata.planId),
+          planExpiresAt: expiresAt.toISOString()
+        });
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
+        notifyUser(userId, "Plan Subscribed", `You have successfully subscribed to the plan.`, "success", "/profile");
+        notifyAdmins("New Subscription", `A user subscribed to a plan.`, "system", "/admin/transactions");
         return res.json({ success: true });
       }
 
@@ -2088,8 +2096,8 @@ async function startServer() {
       // Save a transaction log for user
       const transactionId = Date.now().toString();
       const transactionData = {
-        id: Number(transactionId),
-        userId: Number(userId),
+        id: transactionId,
+        userId: userId,
         type: 'top_up',
         amount: Number(amount),
         description: `Top up via ${paymentMethod || "Credit Card"}`,
@@ -2104,6 +2112,21 @@ async function startServer() {
     }
   });
 
+  app.get("/api/user/purchases", authenticate, async (req: any, res) => {
+    try {
+      const snap = await db.collection("purchases").where("user_id", "==", req.user.id).get();
+      res.json(snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          userId: data.user_id,
+          matchId: data.match_id
+        };
+      }));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post("/api/checkout/ppv", authenticate, async (req: any, res) => {
     try {
       const { match_id, amount } = req.body;
@@ -2111,8 +2134,8 @@ async function startServer() {
       
       // Prevent duplicate purchase for the same match
       const existingPurchases = await db.collection("purchases")
-        .where("userId", "==", Number(userId))
-        .where("matchId", "==", Number(match_id))
+        .where("userId", "==", userId)
+        .where("matchId", "==", match_id)
         .where("type", "==", "watch")
         .get();
       
@@ -2139,9 +2162,9 @@ async function startServer() {
 
       const purchaseId = Date.now().toString();
       const purchaseData = {
-        id: Number(purchaseId),
-        userId: Number(userId),
-        matchId: Number(match_id),
+        id: purchaseId,
+        userId: userId,
+        matchId: match_id,
         amount: deductAmount,
         type: 'watch',
         date: new Date().toISOString()
@@ -2153,16 +2176,17 @@ async function startServer() {
       // Save transaction
       const transactionId = (Date.now() + 1).toString();
       const transactionData = {
-        id: Number(transactionId),
-        userId: Number(userId),
+        id: transactionId,
+        userId: userId,
         type: 'purchase',
         amount: -deductAmount,
         description: `Purchased access to: Match #${match_id}`,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        status: 'completed'
       };
       await db.collection("transactions").doc(transactionId).set(transactionData);
       
-      res.json({ success: true, newBalance, newPoints: newBalance });
+      res.json({ success: true, newBalance, newPoints: newBalance, purchase: purchaseData });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -2175,8 +2199,8 @@ async function startServer() {
       
       // Prevent duplicate embed purchase for the same match
       const existingEmbeds = await db.collection("purchases")
-        .where("userId", "==", Number(userId))
-        .where("matchId", "==", Number(match_id))
+        .where("userId", "==", userId)
+        .where("matchId", "==", match_id)
         .where("type", "==", "embed")
         .get();
       
@@ -2203,9 +2227,9 @@ async function startServer() {
 
       const purchaseId = Date.now().toString();
       const purchaseData = {
-        id: Number(purchaseId),
-        userId: Number(userId),
-        matchId: Number(match_id),
+        id: purchaseId,
+        userId: userId,
+        matchId: match_id,
         amount: deductAmount,
         type: 'embed',
         date: new Date().toISOString(),
@@ -2218,16 +2242,19 @@ async function startServer() {
       // Save transaction
       const transactionId = (Date.now() + 1).toString();
       const transactionData = {
-        id: Number(transactionId),
-        userId: Number(userId),
+        id: transactionId,
+        userId: userId,
         type: 'purchase',
         amount: -deductAmount,
         description: `Purchased embed access to: Match #${match_id}`,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        status: 'completed'
       };
       await db.collection("transactions").doc(transactionId).set(transactionData);
       
-      res.json({ success: true, newBalance, newPoints: newBalance });
+      notifyUser(userId, "Embed Access Unlocked", `You unlocked embed access to Match #${match_id}.`, "success", `/matches/${match_id}`);
+      notifyAdmins("Embed Purchase", `Embed access purchased via wallet for Match #${match_id}.`, "system", "/admin/transactions");
+      res.json({ success: true, newBalance, newPoints: newBalance, purchase: purchaseData });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -2239,6 +2266,58 @@ async function startServer() {
       const tasks = snap.docs.map(doc => ({ id: Number(doc.id), ...doc.data() }));
       res.json({ tasks, completedTasks: [] });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/checkout/plan", authenticate, async (req: any, res) => {
+    try {
+      const { planId, amount } = req.body;
+      const userId = req.user.id.toString();
+      
+      const userRef = db.collection("users").doc(userId);
+      const userDoc = await userRef.get();
+      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+      
+      const userData = userDoc.data() || {};
+      const currentBalance = Number(userData.balance) || 0;
+      const deductAmount = Number(amount);
+      
+      if (currentBalance < deductAmount) {
+        return res.status(400).json({ error: "Insufficient balance" });
+      }
+      
+      const newBalance = currentBalance - deductAmount;
+      
+      const planDoc = await db.collection("plans").doc(String(planId)).get();
+      const planData = planDoc.data() || {};
+      const durationDays = Number(planData.duration_days) || 30;
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + durationDays);
+
+      await userRef.update({ 
+        balance: newBalance, 
+        planId: Number(planId),
+        planExpiresAt: expiresAt.toISOString()
+      });
+
+      // Save transaction
+      const transactionId = Date.now().toString();
+      const transactionData = {
+        id: transactionId,
+        userId: userId,
+        type: 'purchase',
+        amount: -deductAmount,
+        description: `Purchased Subscription Plan #${planId}`,
+        date: new Date().toISOString(),
+        status: 'completed'
+      };
+      await db.collection("transactions").doc(transactionId).set(transactionData);
+      
+      notifyUser(userId, "Plan Upgraded", `You successfully upgraded your subscription using your wallet.`, "success", "/profile");
+      notifyAdmins("Subscription Purchase", `A plan was purchased via wallet.`, "system", "/admin/transactions");
+      res.json({ success: true, newBalance, newPoints: newBalance, planId: Number(planId) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
   
   // Create an admin dashboard fallback
@@ -2284,6 +2363,7 @@ async function startServer() {
 
       const docs = snapshot.docs.map((d: any) => {
         const data = d.data();
+        const actualUserId = data.user_id || data.userId;
         let displayAmount = data.amount;
         if (data.gateway === "paystack" && data.amount && data.currency === "NGN") {
            displayAmount = data.amount / 100; // Format out of kobo
@@ -2293,7 +2373,8 @@ async function startServer() {
         return { 
           id: d.id, 
           ...data,
-          userEmail: data.userId ? usersMap[data.userId.toString()] : 'Unknown',
+          userId: actualUserId,
+          userEmail: actualUserId ? usersMap[actualUserId.toString()] : 'Unknown',
           amount: displayAmount 
         };
       }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -2310,6 +2391,7 @@ async function startServer() {
       const docs = snapshot.docs
         .map((d: any) => {
           const data = d.data();
+          const actualUserId = data.user_id || data.userId;
           let displayAmount = data.amount;
           if (data.gateway === "paystack" && data.amount && data.currency === "NGN") {
              displayAmount = data.amount / 100; // Format out of kobo
@@ -2319,6 +2401,7 @@ async function startServer() {
           return { 
             id: d.id, 
             ...data,
+            userId: actualUserId,
             amount: displayAmount 
           };
         })
@@ -2330,6 +2413,66 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
+
+  // === AD MANAGER ENDPOINTS ===
+  app.get("/api/ads", async (req, res) => {
+    try {
+      const snap = await db.collection("ads").get();
+      res.json(snap.docs.map(doc => ({ id: Number(doc.id) || doc.id, ...doc.data() })));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/admin/ads", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = Date.now().toString();
+      const adData = { ...req.body, id, created_at: new Date().toISOString() };
+      await db.collection("ads").doc(id).set(adData);
+      res.json(adData);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/admin/ads/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = req.params.id;
+      const updates = { ...req.body, updated_at: new Date().toISOString() };
+      await db.collection("ads").doc(id).update(updates);
+      res.json({ success: true, id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/admin/ads/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = req.params.id;
+      await db.collection("ads").doc(id).delete();
+      res.json({ success: true, id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Ad Impressions
+  app.get("/api/admin/ad-impressions", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const snap = await db.collection("ad_impressions").get();
+      res.json(snap.docs.map(doc => ({ id: Number(doc.id) || doc.id, ...doc.data() })));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/ads/impression", async (req, res) => {
+    try {
+      const id = Date.now().toString();
+      const data = { ...req.body, id, timestamp: new Date().toISOString() };
+      await db.collection("ad_impressions").doc(id).set(data);
+      res.json({ success: true, id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/ads/click/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      await db.collection("ad_impressions").doc(id).update({ clicked: 1 });
+      res.json({ success: true, id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
 
   // === TASKS ENDPOINTS ===
   app.get("/api/admin/tasks", authenticate, requireRole(["admin"]), async (req, res) => {
@@ -2410,6 +2553,28 @@ async function startServer() {
     try {
       const success = await warmCriticalCaches();
       res.json({ success, message: "Manual cache warming executed" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === SETTINGS API (Dynamic Config) ===
+  app.get("/api/settings/:key", async (req, res) => {
+    try {
+      const snap = await db.collection("settings").doc(req.params.key).get();
+      if (!snap.exists) {
+        return res.status(404).json({ error: "Setting not found" });
+      }
+      res.json(snap.data() || {});
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      await db.collection("settings").doc(req.params.key).set(req.body);
+      res.json({ success: true, message: "Settings updated successfully" });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

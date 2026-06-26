@@ -1,6 +1,3 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-
 export interface PageSettings {
   about: string;
   terms: string;
@@ -47,59 +44,43 @@ const defaultCookie: CookieSettings = {
   rejectText: 'Reject All'
 };
 
-export const getPageSettings = async (): Promise<PageSettings> => {
+const fetchSetting = async <T>(key: string, defaultValue: T): Promise<T> => {
   try {
-    const docRef = doc(db, 'settings', 'pages');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as PageSettings;
+    const res = await fetch(`/api/settings/${key}`);
+    if (res.ok) {
+      const data = await res.json();
+      return { ...defaultValue, ...data };
     }
   } catch (error) {
-    console.error("Error fetching page settings:", error);
+    console.error(`Error fetching ${key} settings:`, error);
   }
-  return defaultPages;
+  return defaultValue;
 };
 
-export const savePageSettings = async (settings: PageSettings): Promise<void> => {
-  const docRef = doc(db, 'settings', 'pages');
-  await setDoc(docRef, settings, { merge: true });
-};
-
-export const getSocialSettings = async (): Promise<SocialSettings> => {
+const saveSetting = async <T>(key: string, settings: T): Promise<void> => {
   try {
-    const docRef = doc(db, 'settings', 'social');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as SocialSettings;
-    }
+    const token = localStorage.getItem('token');
+    await fetch(`/api/admin/settings/${key}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(settings)
+    });
   } catch (error) {
-    console.error("Error fetching social settings:", error);
+    console.error(`Error saving ${key} settings:`, error);
   }
-  return defaultSocial;
 };
 
-export const saveSocialSettings = async (settings: SocialSettings): Promise<void> => {
-  const docRef = doc(db, 'settings', 'social');
-  await setDoc(docRef, settings, { merge: true });
-};
+export const getPageSettings = () => fetchSetting<PageSettings>('pages', defaultPages);
+export const savePageSettings = (settings: PageSettings) => saveSetting('pages', settings);
 
-export const getCookieSettings = async (): Promise<CookieSettings> => {
-  try {
-    const docRef = doc(db, 'settings', 'cookies');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as CookieSettings;
-    }
-  } catch (error) {
-    console.error("Error fetching cookie settings:", error);
-  }
-  return defaultCookie;
-};
+export const getSocialSettings = () => fetchSetting<SocialSettings>('social', defaultSocial);
+export const saveSocialSettings = (settings: SocialSettings) => saveSetting('social', settings);
 
-export const saveCookieSettings = async (settings: CookieSettings): Promise<void> => {
-  const docRef = doc(db, 'settings', 'cookies');
-  await setDoc(docRef, settings, { merge: true });
-};
+export const getCookieSettings = () => fetchSetting<CookieSettings>('cookies', defaultCookie);
+export const saveCookieSettings = (settings: CookieSettings) => saveSetting('cookies', settings);
 
 export interface BrandingSettings {
   platformName: string;
@@ -113,27 +94,8 @@ const defaultBranding: BrandingSettings = {
   preloaderEnabled: true
 };
 
-export const getBrandingSettings = async (): Promise<BrandingSettings> => {
-  try {
-    const docRef = doc(db, 'settings', 'branding');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      return {
-        ...defaultBranding,
-        ...data
-      } as BrandingSettings;
-    }
-  } catch (error) {
-    console.error("Error fetching branding settings:", error);
-  }
-  return defaultBranding;
-};
-
-export const saveBrandingSettings = async (settings: BrandingSettings): Promise<void> => {
-  const docRef = doc(db, 'settings', 'branding');
-  await setDoc(docRef, settings, { merge: true });
-};
+export const getBrandingSettings = () => fetchSetting<BrandingSettings>('branding', defaultBranding);
+export const saveBrandingSettings = (settings: BrandingSettings) => saveSetting('branding', settings);
 
 export interface GoogleAuthSettings {
   enabled: boolean;
@@ -195,4 +157,27 @@ export const getPublicGoogleAuthConfig = async (): Promise<{ enabled: boolean; c
   }
   return { enabled: false, clientId: '' };
 };
+
+export interface FirebaseConfigSettings {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId: string;
+}
+
+const defaultFirebaseConfig: FirebaseConfigSettings = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
+  measurementId: ""
+};
+
+export const getFirebaseConfigSettings = () => fetchSetting<FirebaseConfigSettings>('firebase_config', defaultFirebaseConfig);
+export const saveFirebaseConfigSettings = (settings: FirebaseConfigSettings) => saveSetting('firebase_config', settings);
 
