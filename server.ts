@@ -177,9 +177,20 @@ async function startServer() {
   const PORT = process.env.APP_PORT || process.env.PORT || 3000;
   fs.writeFileSync('server-pid.txt', process.pid.toString());
 
+  let globalAppUrl = process.env.APP_URL || "http://localhost:3000";
+
+  function getRequestBaseUrl(req: any): string {
+    const host = req.headers['x-forwarded-host'] || req.get('host') || 'watchwds.com';
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const finalProto = isLocal ? proto : 'https';
+    return `${finalProto}://${host}`;
+  }
+
   app.use(express.json({ limit: "50mb" }));
   app.use((req, res, next) => {
     res.setHeader("X-My-Server", "true");
+    globalAppUrl = getRequestBaseUrl(req);
     next();
   });
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -221,7 +232,7 @@ async function startServer() {
         first_name: name || "User",
         user_name: name || email,
         user_email: email,
-        website_url: `${req.protocol}://${req.get('host')}`,
+        website_url: getRequestBaseUrl(req),
         support_email: "support@watchwds.com"
       }).catch(err => console.error("Failed to send welcome email:", err));
 
@@ -382,7 +393,7 @@ async function startServer() {
          const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
          await db.collection('password_resets').add({ email: req.body.email, token, expires_at: new Date(Date.now() + 60*60*1000) });
 
-         const resetLink = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
+         const resetLink = `${getRequestBaseUrl(req)}/reset-password?token=${token}`;
          sendTemplateEmail(req.body.email, "password_reset_branding", {
            first_name: name,
            reset_password_link: resetLink,
@@ -436,7 +447,7 @@ async function startServer() {
           sendTemplateEmail(user.email, "match_live_now", {
             first_name: user.name || "User",
             match_name: matchData.title || matchTitle || "Saved Match",
-            website_url: `${req.protocol}://${req.get('host')}/matches/${matchId}`
+            website_url: `${getRequestBaseUrl(req)}/matches/${matchId}`
           }).catch(err => console.error(`Failed to send match live email to ${user.email}:`, err));
         }
       }
@@ -913,7 +924,7 @@ async function startServer() {
           match_name: req.body.title || "New Match",
           creator_name: req.user.name || "Staff",
           match_date: req.body.start_time || new Date().toLocaleString(),
-          website_url: `${req.protocol}://${req.get('host')}`
+          website_url: getRequestBaseUrl(req)
         }).catch(err => console.error(`Failed to send admin match alert to ${admin.email}:`, err));
       }
 
@@ -1035,9 +1046,9 @@ async function startServer() {
       invoice_number: "INV-2026-908",
       support_email: "support@watchwds.com",
       company_name: "WatchWDS",
-      website_url: "http://localhost:3000",
-      reset_password_link: "http://localhost:3000/auth/reset?token=abc",
-      verification_link: "http://localhost:3000/auth/verify?token=xyz",
+      website_url: globalAppUrl,
+      reset_password_link: `${globalAppUrl}/auth/reset?token=abc`,
+      verification_link: `${globalAppUrl}/auth/verify?token=xyz`,
       creator_name: "ProStreamer X",
       ...variables
     };
@@ -2216,7 +2227,7 @@ async function startServer() {
             match_date: matchData.start_time || new Date().toLocaleDateString(),
             match_time: matchData.time || "UTC",
             purchase_amount: String(amount),
-            website_url: `${req.protocol}://${req.get('host')}/matches/${metadata.matchId}`,
+            website_url: `${getRequestBaseUrl(req)}/matches/${metadata.matchId}`,
             transaction_id: txn_id
           }).catch(err => console.error("Failed to send match purchase email:", err));
         }
@@ -2246,7 +2257,7 @@ async function startServer() {
             purchase_amount: String(amount),
             transaction_id: txn_id,
             invoice_number: `INV-${Date.now()}`,
-            website_url: `${req.protocol}://${req.get('host')}/profile`
+            website_url: `${getRequestBaseUrl(req)}/profile`
           }).catch(err => console.error("Failed to send plan subscription email:", err));
         }
 
@@ -2509,7 +2520,7 @@ async function startServer() {
           purchase_amount: String(deductAmount),
           transaction_id: transactionId,
           invoice_number: `INV-${Date.now()}`,
-          website_url: `${req.protocol}://${req.get('host')}/profile`
+          website_url: `${getRequestBaseUrl(req)}/profile`
         }).catch(err => console.error("Failed to send subscription purchased email:", err));
       }
 
