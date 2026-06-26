@@ -2021,7 +2021,22 @@ async function startServer() {
       const txnData = txnDoc.data();
 
       if (txnData.status === "completed") {
-        return res.json({ success: true, alreadyCompleted: true }); // Deduplication
+        let matchSlug = txnData.metadata?.fromMatchSlug || null;
+        if (txnData.metadata?.matchId && !matchSlug) {
+          try {
+            const matchDoc = await db.collection("matches").doc(String(txnData.metadata.matchId)).get();
+            if (matchDoc.exists) {
+              matchSlug = matchDoc.data()?.slug || null;
+            }
+          } catch (err) {}
+        }
+        return res.json({ 
+          success: true, 
+          alreadyCompleted: true, 
+          type: txnData.type, 
+          matchId: txnData.metadata?.matchId || null, 
+          matchSlug 
+        }); // Deduplication
       }
       
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
@@ -2108,6 +2123,18 @@ async function startServer() {
       const userEmail = user?.email;
       const userName = user?.name || "User";
 
+      let matchSlug = metadata?.fromMatchSlug || null;
+      if (metadata?.matchId && !matchSlug) {
+        try {
+          const matchDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
+          if (matchDoc.exists) {
+            matchSlug = matchDoc.data()?.slug || null;
+          }
+        } catch (err) {
+          console.error("Error fetching match slug for redirect:", err);
+        }
+      }
+
       if (type === "top_up") {
         const currentBalance = Number(user?.balance || 0);
         await userRef.update({ balance: currentBalance + amount });
@@ -2125,7 +2152,7 @@ async function startServer() {
           }).catch(err => console.error("Failed to send top up email:", err));
         }
 
-        return res.json({ success: true });
+        return res.json({ success: true, type, matchId: null, matchSlug: null });
       }
 
       if (type === "watch" || type === "embed") {
@@ -2160,7 +2187,7 @@ async function startServer() {
           }).catch(err => console.error("Failed to send match purchase email:", err));
         }
 
-        return res.json({ success: true });
+        return res.json({ success: true, type, matchId: metadata.matchId, matchSlug });
       }
 
       if (type === "plan") {
@@ -2189,7 +2216,7 @@ async function startServer() {
           }).catch(err => console.error("Failed to send plan subscription email:", err));
         }
 
-        return res.json({ success: true });
+        return res.json({ success: true, type, matchId: metadata.matchId || null, matchSlug });
       }
 
       throw new Error("Unknown transaction type");

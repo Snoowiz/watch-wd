@@ -2,13 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useAuthStore, useSettingsStore } from '../store';
 import { Check, Shield } from 'lucide-react';
 import { AddFundsModal } from '../components/AddFundsModal';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export function Plans() {
   const [plans, setPlans] = useState<any[]>([]);
   const { currencySymbol } = useSettingsStore();
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as { fromMatchSlug?: string; matchId?: any } | null;
 
   const [checkoutData, setCheckoutData] = useState<any>(null);
 
@@ -45,7 +47,12 @@ export function Plans() {
       setCheckoutData({
         amount: data.cost,
         type: 'plan',
-        metadata: { planId: plan.id, creditApplied: data.credit }
+        metadata: { 
+          planId: plan.id, 
+          creditApplied: data.credit,
+          matchId: state?.matchId || null,
+          fromMatchSlug: state?.fromMatchSlug || null
+        }
       });
     } catch (err) {
       alert('Error fetching upgrade details. Please try again.');

@@ -290,7 +290,7 @@ export function MatchDetail() {
       return;
     }
     if (match.access_type === 'plan') {
-      navigate('/plans');
+      navigate('/plans', { state: { fromMatchSlug: match.slug, matchId: match.id } });
       return;
     }
     setShowConfirmModal(true);

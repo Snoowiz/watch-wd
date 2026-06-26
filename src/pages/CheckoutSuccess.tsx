@@ -9,6 +9,7 @@ export function CheckoutSuccess() {
   const { updateUser } = useAuthStore();
   const [status, setStatus] = useState<'verifying' | 'success' | 'failed'>('verifying');
   const [error, setError] = useState('');
+  const [redirectUrl, setRedirectUrl] = useState('/profile');
 
   useEffect(() => {
     let ignore = false;
@@ -62,7 +63,9 @@ export function CheckoutSuccess() {
           }
           if (!ignore) {
             setStatus('success');
-            setTimeout(() => navigate('/profile'), 3000);
+            const target = data.matchSlug ? `/matches/${data.matchSlug}` : '/profile';
+            setRedirectUrl(target);
+            setTimeout(() => navigate(target), 3000);
           }
         } else {
           throw new Error(data.error || 'Verification failed format');
@@ -109,7 +112,9 @@ export function CheckoutSuccess() {
             <p className="text-slate-500 dark:text-slate-400">
               Your transaction has been verified and applied to your account.
             </p>
-            <p className="text-sm text-slate-400 animate-pulse">Redirecting to profile...</p>
+            <p className="text-sm text-slate-400 animate-pulse">
+              Redirecting to {redirectUrl === '/profile' ? 'profile' : 'match'}...
+            </p>
           </div>
         )}
 
@@ -125,7 +130,7 @@ export function CheckoutSuccess() {
               {error}
             </p>
             <button
-               onClick={() => navigate('/profile')}
+               onClick={() => navigate(redirectUrl)}
                className="w-full bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold py-4 rounded-xl transition-all"
             >
               Return Home
