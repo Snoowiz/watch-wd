@@ -486,7 +486,16 @@ async function startServer() {
   app.get("/api/features", cdnEdgeSim(60), apiFragmentCache(30), async (req, res) => {
     try {
       const snap = await db.collection("features").get();
-      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      res.json(snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: Number(d.id) || d.id,
+          slug: data.slug || data.key_name || '',
+          name: data.name || data.label || '',
+          description: data.description || '',
+          is_active: data.is_active !== undefined ? Number(data.is_active) : (data.enabled ? 1 : 0)
+        };
+      }));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

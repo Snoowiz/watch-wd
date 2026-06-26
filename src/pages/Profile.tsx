@@ -227,8 +227,8 @@ export function Profile() {
                   transactions.filter(t => t.userId?.toString() === user.id.toString()).slice(0, 4).map(transaction => (
                     <div key={transaction.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg gap-2">
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate" title={transaction.description}>
-                          {transaction.description.length > 20 ? transaction.description.substring(0,20) + '...' : transaction.description}
+                        <div className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate" title={transaction.description || ''}>
+                          {(transaction.description || '').length > 20 ? transaction.description.substring(0,20) + '...' : (transaction.description || '')}
                         </div>
                         <div className="text-[10px] text-slate-500">{new Date(transaction.date).toLocaleDateString()}</div>
                       </div>

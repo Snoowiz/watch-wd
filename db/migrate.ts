@@ -156,6 +156,18 @@ async function migrate() {
     console.log('  ✓ Seeded default SMTP settings.');
   }
 
+  // Default features
+  const [existingFeatures] = await rootConn.query(`SELECT COUNT(*) as count FROM features`) as any;
+  if (existingFeatures[0].count === 0) {
+    await rootConn.query(`INSERT INTO features (id, key_name, label, enabled) VALUES 
+      ('1', 'wallet_system', 'Wallet System', 1),
+      ('2', 'live_betting', 'Live Betting', 1),
+      ('3', 'referral_program', 'Referral Program', 0),
+      ('4', 'dark_mode', 'Dark Mode', 1)
+    `);
+    console.log('  ✓ Seeded default features.');
+  }
+
   // Default email branding
   const [existingBranding] = await rootConn.query(`SELECT COUNT(*) as count FROM email_branding`) as any;
   if (existingBranding[0].count === 0) {
