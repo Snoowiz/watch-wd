@@ -9,4 +9,5 @@ coverage/
 server-pid.txt
 .agents/
 adminer.php
-
+scratch/
+db/update.sql

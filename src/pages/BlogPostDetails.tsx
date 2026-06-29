@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 export function BlogPostDetails() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { posts = [], comments = [], incrementViews, likePost, addComment, likeComment } = useBlogStore();
+  const { posts = [], comments = [], incrementViews, likePost, addComment, likeComment, fetchComments } = useBlogStore();
   const { user } = useAuthStore();
   
   const [post, setPost] = useState(posts.find(p => p.slug === slug));
@@ -30,6 +30,7 @@ export function BlogPostDetails() {
     const currentPost = posts.find(p => p.slug === slug);
     if (currentPost) {
       setPost(currentPost);
+      fetchComments(currentPost.id);
       // Only increment view if it hasn't been viewed this session
       const viewed = sessionStorage.getItem(`viewed_${currentPost.id}`);
       if (!viewed) {
@@ -37,7 +38,7 @@ export function BlogPostDetails() {
         sessionStorage.setItem(`viewed_${currentPost.id}`, 'true');
       }
     }
-  }, [slug, posts, incrementViews]);
+  }, [slug, posts, incrementViews, fetchComments]);
 
   // Read progress tracker
   useEffect(() => {
@@ -78,7 +79,7 @@ export function BlogPostDetails() {
     );
   }
 
-  const postComments = comments.filter(c => c.postId === post.id);
+  const postComments = comments.filter(c => String(c.postId) === String(post.id));
 
   const handleShare = () => {
     if (navigator.share) {

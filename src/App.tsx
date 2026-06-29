@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { WifiOff, Loader2 } from 'lucide-react';
-import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore, useAdStore, usePurchaseStore } from './store';
+import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore, useAdStore, usePurchaseStore, useMatchStore, useCategoryStore, useBlogStore } from './store';
 import { Preloader } from './components/Preloader';
 import { Layout } from './components/Layout';
 import { UIFeedbackProvider } from './components/UIFeedbackProvider';
@@ -48,12 +48,15 @@ import { SearchPage } from './pages/SearchPage';
 export default function App() {
   const { token, setAuth, logout, user, originalUser, revertLoginAs } = useAuthStore();
   const { theme, setDarkMode } = useThemeStore();
-  const { seoSettings, platformName: storedPlatformName, preloaderEnabled, fetchPaymentSettings } = useSettingsStore();
+  const { seoSettings, platformName: storedPlatformName, preloaderEnabled, fetchPaymentSettings, fetchSettings } = useSettingsStore();
   const platformName = storedPlatformName || 'WatchWDS';
 
   const { setFeatures } = useFeatureStore();
   const { fetchAds } = useAdStore();
   const { fetchPurchases, fetchTransactions } = usePurchaseStore();
+  const { fetchMatches } = useMatchStore();
+  const { fetchCategories: fetchMatchCategories } = useCategoryStore();
+  const { fetchPosts, fetchCategories: fetchBlogCategories } = useBlogStore();
   const [initialLoading, setInitialLoading] = useState(true);
   const [profileModalDismissed, setProfileModalDismissed] = useState(
     () => localStorage.getItem('profileModalDismissed') === 'true'
@@ -204,6 +207,13 @@ export default function App() {
     // Fetch public payment settings
     fetchPaymentSettings();
 
+    // Fetch database configuration, matches, and blogs
+    fetchSettings();
+    fetchMatches();
+    fetchMatchCategories();
+    fetchPosts();
+    fetchBlogCategories();
+
     // Fetch Ads
     fetchAds().finally(() => {
       adsFetched = true;
@@ -241,7 +251,7 @@ export default function App() {
     }
 
     return () => clearTimeout(timer);
-  }, [token, setAuth, logout, setFeatures, fetchAds, fetchPurchases, fetchTransactions, fetchPaymentSettings]);
+  }, [token, setAuth, logout, setFeatures, fetchAds, fetchPurchases, fetchTransactions, fetchPaymentSettings, fetchSettings, fetchMatches, fetchMatchCategories, fetchPosts, fetchBlogCategories]);
 
   if (preloaderEnabled !== false && initialLoading) {
     return <Preloader />;

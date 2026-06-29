@@ -375,3 +375,25 @@ CREATE TABLE IF NOT EXISTS `ad_impressions` (
   `timestamp` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_ad_impressions_ad` (`adId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- MATCH CATEGORIES
+-- ============================================
+CREATE TABLE IF NOT EXISTS `match_categories` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(128) NOT NULL,
+  `slug` VARCHAR(64) NOT NULL UNIQUE,
+  `description` VARCHAR(500) DEFAULT '',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- BLOG CATEGORIES
+-- ============================================
+CREATE TABLE IF NOT EXISTS `blog_categories` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(128) NOT NULL,
+  `slug` VARCHAR(64) NOT NULL UNIQUE,
+  `description` VARCHAR(500) DEFAULT '',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

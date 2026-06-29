@@ -11,7 +11,7 @@ import dotenv from "dotenv";
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
-import { testConnection } from "./db/connection.js";
+import { testConnection, query, execute } from "./db/connection.js";
 
 dotenv.config();
 
@@ -916,6 +916,9 @@ async function startServer() {
     try {
       const docRef = await db.collection("matches").add({ ...req.body, operator_id: req.user.id, created_at: new Date().toISOString() });
       
+      // Invalidate cache immediately on update
+      cacheEngine.invalidateCollection("matches");
+
       // Send email alert to admins
       const adminsSnap = await db.collection("users").where("role", "==", "admin").get();
       for (const adminDoc of adminsSnap.docs) {
@@ -935,6 +938,15 @@ async function startServer() {
   app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       await db.collection("matches").doc(req.params.id).update(req.body);
+      cacheEngine.invalidateCollection("matches");
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      await db.collection("matches").doc(req.params.id).delete();
+      cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -1696,6 +1708,7 @@ async function startServer() {
         is_active: Number(req.body.is_active) ?? 1
       };
       await db.collection("plans").doc(id.toString()).set(planData);
+      cacheEngine.invalidateCollection("plans");
       res.json({ success: true, ...planData });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -1715,6 +1728,7 @@ async function startServer() {
         is_active: Number(req.body.is_active) ?? 1
       };
       await db.collection("plans").doc(id).set(planData);
+      cacheEngine.invalidateCollection("plans");
       res.json({ success: true, ...planData });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -1725,6 +1739,7 @@ async function startServer() {
     try {
       const { id } = req.params;
       await db.collection("plans").doc(id).delete();
+      cacheEngine.invalidateCollection("plans");
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -2715,6 +2730,7 @@ async function startServer() {
       const id = Date.now();
       const taskData = { ...req.body, id };
       await db.collection("tasks").doc(id.toString()).set(taskData);
+      cacheEngine.invalidateCollection("tasks");
       res.json({ success: true, ...taskData });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -2724,6 +2740,7 @@ async function startServer() {
       const { id } = req.params;
       const taskData = { ...req.body, id: Number(id) };
       await db.collection("tasks").doc(id).set(taskData);
+      cacheEngine.invalidateCollection("tasks");
       res.json({ success: true, ...taskData });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -2732,6 +2749,7 @@ async function startServer() {
     try {
       const { id } = req.params;
       await db.collection("tasks").doc(id).delete();
+      cacheEngine.invalidateCollection("tasks");
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -2781,6 +2799,331 @@ async function startServer() {
     try {
       const success = await warmCriticalCaches();
       res.json({ success, message: "Manual cache warming executed" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === BLOG POSTS API ===
+  app.get("/api/blog/posts", async (req, res) => {
+    try {
+      const snap = await db.collection("blog_posts").orderBy("created_at", "desc").get();
+      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/blog/posts", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const id = Date.now().toString();
+      const postData = {
+        ...req.body,
+        id,
+        views: 0,
+        likes: 0,
+        createdAt: req.body.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await db.collection("blog_posts").doc(id).set(postData);
+      res.json(postData);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/blog/posts/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      await db.collection("blog_posts").doc(req.params.id).update(req.body);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/blog/posts/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      await db.collection("blog_posts").doc(req.params.id).delete();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/blog/posts/:id/view", async (req, res) => {
+    try {
+      const doc = await db.collection("blog_posts").doc(req.params.id).get();
+      if (doc.exists) {
+        const currentViews = Number(doc.data()?.views || 0);
+        await db.collection("blog_posts").doc(req.params.id).update({ views: currentViews + 1 });
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/blog/posts/:id/like", async (req, res) => {
+    try {
+      const doc = await db.collection("blog_posts").doc(req.params.id).get();
+      if (doc.exists) {
+        const currentLikes = Number(doc.data()?.likes || 0);
+        await db.collection("blog_posts").doc(req.params.id).update({ likes: currentLikes + 1 });
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === COMMENTS API ===
+  app.get("/api/comments", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const snap = await db.collection("comments").get();
+      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/matches/:matchId/comments", async (req, res) => {
+    try {
+      const snap = await db.collection("comments").where("match_id", "==", req.params.matchId).get();
+      const allComments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const activeComments = allComments.filter((c: any) => c.status !== 'spam');
+      res.json(activeComments);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/matches/:matchId/comments", authenticate, async (req: any, res) => {
+    try {
+      // Fetch actual user from DB for accurate name/avatar
+      const userSnap = await db.collection("users").doc(req.user.id).get();
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const id = Date.now().toString();
+      const commentData = {
+        id,
+        matchId: req.params.matchId,
+        userId: req.user.id.toString(),
+        username: userData.name || req.body.username || 'User',
+        avatar: userData.avatar || req.body.avatar || null,
+        content: req.body.content || '',
+        timestamp: new Date().toISOString(),
+        likes: 0,
+        role: userData.role || req.user.role || 'user',
+        status: 'active'
+      };
+      await db.collection("comments").doc(id).set(commentData);
+      cacheEngine.invalidateCollection("comments");
+      res.json({ id, ...commentData });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/blog/posts/:postId/comments", async (req, res) => {
+    try {
+      const matchId = `blog_${req.params.postId}`;
+      const snap = await db.collection("comments").where("match_id", "==", matchId).get();
+      const allComments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const activeComments = allComments.filter((c: any) => c.status !== 'spam');
+      res.json(activeComments);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/blog/posts/:postId/comments", authenticate, async (req: any, res) => {
+    try {
+      // Fetch actual user from DB for accurate name/avatar
+      const userSnap = await db.collection("users").doc(req.user.id).get();
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const id = Date.now().toString();
+      const matchId = `blog_${req.params.postId}`;
+      const commentData = {
+        id,
+        matchId,
+        userId: req.user.id.toString(),
+        username: userData.name || req.body.username || 'User',
+        avatar: userData.avatar || req.body.avatar || null,
+        content: req.body.content || '',
+        timestamp: new Date().toISOString(),
+        likes: 0,
+        role: userData.role || req.user.role || 'user',
+        status: 'active'
+      };
+      await db.collection("comments").doc(id).set(commentData);
+      cacheEngine.invalidateCollection("comments");
+      res.json({ id, ...commentData });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/comments/:id/like", async (req, res) => {
+    try {
+      const doc = await db.collection("comments").doc(req.params.id).get();
+      if (doc.exists) {
+        const currentLikes = Number(doc.data()?.likes || 0);
+        await db.collection("comments").doc(req.params.id).update({ likes: currentLikes + 1 });
+        cacheEngine.invalidateCollection("comments");
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/comments/:id", authenticate, async (req: any, res) => {
+    try {
+      const doc = await db.collection("comments").doc(req.params.id).get();
+      if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
+      const data = doc.data();
+      if (data.userId?.toString() !== req.user.id.toString() && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const updates: any = {};
+      if (req.body.content !== undefined) updates.content = req.body.content;
+      if (req.body.status !== undefined) updates.status = req.body.status;
+      if (req.body.likes !== undefined) updates.likes = req.body.likes;
+      
+      await db.collection("comments").doc(req.params.id).update(updates);
+      cacheEngine.invalidateCollection("comments");
+      res.json({ success: true, id: req.params.id, ...updates });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/comments/:id", authenticate, async (req: any, res) => {
+    try {
+      const doc = await db.collection("comments").doc(req.params.id).get();
+      if (!doc.exists) return res.status(404).json({ error: "Comment not found" });
+      const data = doc.data();
+      if (data.userId?.toString() !== req.user.id.toString() && req.user.role !== 'admin') {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      await db.collection("comments").doc(req.params.id).delete();
+      cacheEngine.invalidateCollection("comments");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === MATCH CATEGORIES API (Dedicated Table) ===
+  app.get("/api/match-categories", async (_req, res) => {
+    try {
+      const rows = await query("SELECT * FROM match_categories ORDER BY name ASC");
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Also respond to the old settings-based URL so existing frontend code keeps working
+  app.get("/api/settings/match_categories", async (_req, res) => {
+    try {
+      const rows = await query("SELECT * FROM match_categories ORDER BY name ASC");
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/match-categories", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { name, slug, description } = req.body;
+      if (!name || !slug) return res.status(400).json({ error: "Name and slug are required" });
+      const result = await execute(
+        "INSERT INTO match_categories (name, slug, description) VALUES (?, ?, ?)",
+        [name, slug, description || '']
+      );
+      res.json({ success: true, id: result.insertId, name, slug, description: description || '' });
+    } catch (e: any) {
+      if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: "A category with that slug already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/admin/match-categories/:id", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { name, slug, description } = req.body;
+      await execute(
+        "UPDATE match_categories SET name = COALESCE(?, name), slug = COALESCE(?, slug), description = COALESCE(?, description) WHERE id = ?",
+        [name, slug, description, req.params.id]
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: "A category with that slug already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/admin/match-categories/:id", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      await execute("DELETE FROM match_categories WHERE id = ?", [req.params.id]);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === BLOG CATEGORIES API (Dedicated Table) ===
+  app.get("/api/blog-categories", async (_req, res) => {
+    try {
+      const rows = await query("SELECT * FROM blog_categories ORDER BY name ASC");
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Also respond to old settings-based URL
+  app.get("/api/settings/blog_categories", async (_req, res) => {
+    try {
+      const rows = await query("SELECT * FROM blog_categories ORDER BY name ASC");
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/blog-categories", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { name, slug, description } = req.body;
+      if (!name || !slug) return res.status(400).json({ error: "Name and slug are required" });
+      const result = await execute(
+        "INSERT INTO blog_categories (name, slug, description) VALUES (?, ?, ?)",
+        [name, slug, description || '']
+      );
+      res.json({ success: true, id: result.insertId, name, slug, description: description || '' });
+    } catch (e: any) {
+      if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: "A category with that slug already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/admin/blog-categories/:id", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { name, slug, description } = req.body;
+      await execute(
+        "UPDATE blog_categories SET name = COALESCE(?, name), slug = COALESCE(?, slug), description = COALESCE(?, description) WHERE id = ?",
+        [name, slug, description, req.params.id]
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: "A category with that slug already exists" });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/admin/blog-categories/:id", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      await execute("DELETE FROM blog_categories WHERE id = ?", [req.params.id]);
+      res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

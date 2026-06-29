@@ -54,13 +54,16 @@ function unwrapKVRow(row: any): any {
 
 /** Build SET clause and values from a data object, skipping undefined */
 function buildSetClause(data: Record<string, any>, table: string): { clause: string; values: any[] } {
-  const entries = Object.entries(data).filter(([_, v]) => v !== undefined);
+  const snakeData: Record<string, any> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) {
+      snakeData[camelToSnake(k)] = v;
+    }
+  }
+
   const parts: string[] = [];
   const values: any[] = [];
-
-  for (const [key, val] of entries) {
-    // Convert camelCase to snake_case for known fields
-    const col = camelToSnake(key);
+  for (const [col, val] of Object.entries(snakeData)) {
     parts.push(`\`${col}\` = ?`);
     values.push(serializeValue(val));
   }
@@ -123,6 +126,10 @@ function camelToSnake(str: string): string {
     apiKey: 'api_key',
     userName: 'user_name',
     userAvatar: 'user_avatar',
+    username: 'user_name',
+    avatar: 'user_avatar',
+    content: 'text',
+    timestamp: 'timestamp',
     likedBy: 'liked_by',
     user_id: 'user_id',
     match_id: 'match_id',
@@ -136,6 +143,67 @@ function camelToSnake(str: string): string {
     created_at: 'created_at',
     updated_at: 'updated_at',
     reply_count: 'reply_count',
+  };
+  return overrides[str] || str;
+}
+
+function snakeToCamel(str: string): string {
+  const overrides: Record<string, string> = {
+    created_at: 'createdAt',
+    updated_at: 'updatedAt',
+    user_id: 'userId',
+    match_id: 'matchId',
+    category_id: 'categoryId',
+    topic_id: 'topicId',
+    author_id: 'authorId',
+    author_name: 'authorName',
+    author_avatar: 'authorAvatar',
+    author_role: 'authorRole',
+    reply_count: 'replyCount',
+    is_pinned: 'isPinned',
+    is_locked: 'isLocked',
+    is_active: 'isActive',
+    is_custom: 'isCustom',
+    is_read: 'isRead',
+    plan_id: 'planId',
+    operator_id: 'operatorId',
+    creator_id: 'creatorId',
+    embed_price: 'embedPrice',
+    publish_status: 'publishStatus',
+    access_type: 'accessType',
+    ppv_price: 'ppvPrice',
+    required_plan_id: 'requiredPlanId',
+    scheduled_date: 'scheduledDate',
+    live_commenting: 'liveCommenting',
+    comment_alignment: 'commentAlignment',
+    ad_settings: 'adSettings',
+    start_time: 'startTime',
+    active_device_id: 'activeDeviceId',
+    subscribed_matches: 'subscribedMatches',
+    subscribed_categories: 'subscribedCategories',
+    duration_days: 'durationDays',
+    variables_hint: 'variablesHint',
+    template_id: 'templateId',
+    version_number: 'versionNumber',
+    created_by: 'createdBy',
+    last_sent_at: 'lastSentAt',
+    expires_at: 'expiresAt',
+    plan_expires_at: 'planExpiresAt',
+    key_name: 'keyName',
+    featured_image: 'featuredImage',
+    embed_url: 'embedUrl',
+    reading_time_minutes: 'readingTimeMinutes',
+    from_name: 'fromName',
+    from_email: 'fromEmail',
+    reply_to: 'replyTo',
+    auth_user: 'authUser',
+    auth_pass: 'authPass',
+    api_key: 'apiKey',
+    user_name: 'username',
+    user_avatar: 'avatar',
+    text: 'content',
+    timestamp: 'timestamp',
+    liked_by: 'likedBy',
   };
   return overrides[str] || str;
 }
@@ -181,13 +249,32 @@ class DocWrapper {
       return { id: this.id, exists: false, ref: this, data: () => null };
     }
     const row = { ...arr[0] };
-    // Parse any JSON columns
+    const mappedRow: Record<string, any> = {};
     for (const [k, v] of Object.entries(row)) {
-      if (typeof v === 'string' && (v.startsWith('[') || v.startsWith('{'))) {
-        try { row[k] = JSON.parse(v); } catch {}
+      let val = v;
+      if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
+        try { val = JSON.parse(val); } catch {}
+      }
+      mappedRow[snakeToCamel(k)] = val;
+    }
+    if (this.tableName === 'comments') {
+      if (row.user_name !== undefined) {
+        mappedRow.username = row.user_name;
+        mappedRow.userName = row.user_name;
+      }
+      if (row.user_avatar !== undefined) {
+        mappedRow.avatar = row.user_avatar;
+        mappedRow.userAvatar = row.user_avatar;
+      }
+      if (row.text !== undefined) {
+        mappedRow.content = row.text;
+      }
+      if (row.timestamp !== undefined) {
+        mappedRow.timestamp = row.timestamp;
+        mappedRow.createdAt = row.timestamp;
       }
     }
-    return { id: this.id, exists: true, ref: this, data: () => row };
+    return { id: this.id, exists: true, ref: this, data: () => mappedRow };
   }
 
   async set(data: any, _options?: any): Promise<void> {
@@ -204,12 +291,17 @@ class DocWrapper {
 
     // For regular tables: UPSERT
     const allData = { ...data };
+    const snakeData: Record<string, any> = {};
+    for (const [k, v] of Object.entries(allData)) {
+      snakeData[camelToSnake(k)] = v;
+    }
     // Ensure the PK value is set
-    if (pk === 'id' && !allData.id) allData.id = this.id;
-    if (pk === 'slug' && !allData.slug) allData.slug = this.id;
+    const pkSnake = camelToSnake(pk);
+    if (pk === 'id' && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
+    if (pk === 'slug' && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
 
-    const keys = Object.keys(allData).map(k => camelToSnake(k));
-    const vals = Object.values(allData).map(v => serializeValue(v));
+    const keys = Object.keys(snakeData);
+    const vals = Object.values(snakeData).map(v => serializeValue(v));
     const placeholders = keys.map(() => '?').join(', ');
     const updateParts = keys.map(k => `\`${k}\` = VALUES(\`${k}\`)`).join(', ');
 
@@ -315,17 +407,36 @@ class CollectionWrapper {
     const docs = arr.map(row => {
       const docId = String(row[pk] ?? row.id ?? '');
       const rowData = { ...row };
-      // Parse JSON string columns
+      const mappedRow: Record<string, any> = {};
       for (const [k, v] of Object.entries(rowData)) {
-        if (typeof v === 'string' && (v.startsWith('[') || v.startsWith('{'))) {
-          try { rowData[k] = JSON.parse(v); } catch {}
+        let val = v;
+        if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
+          try { val = JSON.parse(val); } catch {}
+        }
+        mappedRow[snakeToCamel(k)] = val;
+      }
+      if (this.tableName === 'comments') {
+        if (rowData.user_name !== undefined) {
+          mappedRow.username = rowData.user_name;
+          mappedRow.userName = rowData.user_name;
+        }
+        if (rowData.user_avatar !== undefined) {
+          mappedRow.avatar = rowData.user_avatar;
+          mappedRow.userAvatar = rowData.user_avatar;
+        }
+        if (rowData.text !== undefined) {
+          mappedRow.content = rowData.text;
+        }
+        if (rowData.timestamp !== undefined) {
+          mappedRow.timestamp = rowData.timestamp;
+          mappedRow.createdAt = rowData.timestamp;
         }
       }
       return {
         id: docId,
         ref: new DocWrapper(this.tableName, docId),
         exists: true,
-        data: () => rowData,
+        data: () => mappedRow,
       };
     });
 
@@ -349,8 +460,13 @@ class CollectionWrapper {
       allData.id = generatedId;
     }
 
-    const keys = Object.keys(allData).map(k => camelToSnake(k));
-    const vals = Object.values(allData).map(v => serializeValue(v));
+    const snakeData: Record<string, any> = {};
+    for (const [k, v] of Object.entries(allData)) {
+      snakeData[camelToSnake(k)] = v;
+    }
+
+    const keys = Object.keys(snakeData);
+    const vals = Object.values(snakeData).map(v => serializeValue(v));
     const placeholders = keys.map(() => '?').join(', ');
 
     const sql = `INSERT INTO \`${this.tableName}\` (${keys.map(k => `\`${k}\``).join(', ')}) VALUES (${placeholders})`;

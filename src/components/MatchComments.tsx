@@ -11,7 +11,7 @@ interface MatchCommentsProps {
 
 export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
   const { user } = useAuthStore();
-  const { comments = [], addComment, likeComment } = useCommentStore();
+  const { comments = [], addComment, likeComment, fetchComments } = useCommentStore();
   const [newComment, setNewComment] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
@@ -20,6 +20,10 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
   const commentsContainerRef = useRef<HTMLDivElement>(null);
 
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    fetchComments(match.id);
+  }, [match.id, fetchComments]);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -34,7 +38,7 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
     };
   }, []);
 
-  const matchComments = comments.filter(c => c.matchId === match.id);
+  const matchComments = comments.filter(c => String(c.matchId) === String(match.id));
   const isCommentingEnabled = match.liveCommenting !== false;
 
   useEffect(() => {
@@ -149,7 +153,7 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
                   </span>
                 </div>
                 <div className={`${isCompact ? 'px-3 py-1.5 text-xs' : 'px-3 py-2 sm:px-4 sm:py-2 text-sm'} rounded-2xl break-words ${
-                  comment.userId === user?.id 
+                  String(comment.userId) === String(user?.id)
                     ? 'bg-indigo-500 text-white rounded-tr-sm' 
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-tl-sm'
                 }`}>

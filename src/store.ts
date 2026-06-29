@@ -14,6 +14,7 @@ export interface User {
   dob?: string;
   gender?: string;
   planId?: number;
+  planExpiresAt?: string;
   verified?: boolean;
   creatorStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   channelName?: string;
@@ -457,75 +458,167 @@ interface SettingsState {
   setPreloaderEnabled: (enabled: boolean) => void;
   googleAuthSettings: GoogleAuthSettings;
   setGoogleAuthSettings: (settings: GoogleAuthSettings) => void;
+  fetchSettings: () => Promise<void>;
 }
 
-export const useSettingsStore = create<SettingsState>()(
-  persist(
-    (set) => ({
-      currency: 'GBP',
-      setCurrency: (currency) => set({ currency }),
-      currencySymbol: '£',
-      setCurrencySymbol: (symbol) => set({ currencySymbol: symbol }),
-      paymentSettings: {
-        stripe: { publicKey: '', secretKey: '', isTestMode: true, enabled: false },
-        paypal: { clientId: '', secret: '', isTestMode: true, enabled: false },
-        paystack: { publicKey: '', secretKey: '', isTestMode: true, enabled: false },
+const saveSettingHelper = (key: string, value: any) => {
+  fetch(`/api/admin/settings/${key}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    },
+    body: JSON.stringify(value)
+  }).catch(console.error);
+};
+
+export const useSettingsStore = create<SettingsState>((set, get) => ({
+  currency: 'GBP',
+  setCurrency: (currency) => {
+    const symbol = currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '$';
+    set({ currency, currencySymbol: symbol });
+    saveSettingHelper('currency', { currency, symbol });
+  },
+  currencySymbol: '£',
+  setCurrencySymbol: (symbol) => {
+    set({ currencySymbol: symbol });
+    saveSettingHelper('currency', { currency: get().currency, symbol });
+  },
+  paymentSettings: {
+    stripe: { publicKey: '', secretKey: '', isTestMode: true, enabled: false },
+    paypal: { clientId: '', secret: '', isTestMode: true, enabled: false },
+    paystack: { publicKey: '', secretKey: '', isTestMode: true, enabled: false },
+  },
+  setPaymentSettings: (settings) => {
+    set({ paymentSettings: settings });
+    fetch('/api/admin/payment/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
       },
-      setPaymentSettings: (settings) => set({ paymentSettings: settings }),
-      fetchPaymentSettings: async () => {
-        try {
-          const res = await fetch('/api/payment/settings');
-          if (res.ok) {
-            const data = await res.json();
-            set((state) => ({
-              paymentSettings: {
-                stripe: { ...state.paymentSettings.stripe, ...data.stripe },
-                paypal: { ...state.paymentSettings.paypal, ...data.paypal },
-                paystack: { ...state.paymentSettings.paystack, ...data.paystack },
-              }
-            }));
+      body: JSON.stringify(settings)
+    }).catch(console.error);
+  },
+  fetchPaymentSettings: async () => {
+    try {
+      const res = await fetch('/api/payment/settings');
+      if (res.ok) {
+        const data = await res.json();
+        set((state) => ({
+          paymentSettings: {
+            stripe: { ...state.paymentSettings.stripe, ...data.stripe },
+            paypal: { ...state.paymentSettings.paypal, ...data.paypal },
+            paystack: { ...state.paymentSettings.paystack, ...data.paystack },
           }
-        } catch (err) {
-          console.error("Failed to fetch payment settings:", err);
-        }
-      },
-      homepageSettings: {
-        featuresSectionEnabled: true,
-        latestNewsEnabled: true
-      },
-      setHomepageSettings: (settings) => set({ homepageSettings: settings }),
-      seoSettings: {
-        metaTitle: 'Watch WDS - Live Sports Streaming',
-        metaDescription: 'Watch live sports, follow your favorite creators, and join the community.',
-        metaKeywords: 'sports, streaming, live matches, community',
-        ogTitle: 'Watch WDS',
-        ogDescription: 'Experience the best live sports streaming platform.',
-        ogImage: '',
-        twitterHandle: '@watchwds',
-        googleAnalyticsId: '',
-        googleTagManagerId: '',
-        robotsTxt: 'User-agent: *\nAllow: /'
-      },
-      setSeoSettings: (settings) => set({ seoSettings: settings }),
-      platformName: 'WatchWDS',
-      setPlatformName: (name) => set({ platformName: name }),
-      favicon: '/favicon.ico',
-      setFavicon: (favicon) => set({ favicon: favicon }),
-      preloaderEnabled: true,
-      setPreloaderEnabled: (enabled) => set({ preloaderEnabled: enabled }),
-      googleAuthSettings: {
-        enabled: false,
-        clientId: '',
-        clientSecret: '',
-        redirectUri: ''
-      },
-      setGoogleAuthSettings: (settings) => set({ googleAuthSettings: settings }),
-    }),
-    {
-      name: 'settings-storage',
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch payment settings:", err);
     }
-  )
-);
+  },
+  homepageSettings: {
+    featuresSectionEnabled: true,
+    latestNewsEnabled: true
+  },
+  setHomepageSettings: (settings) => {
+    set({ homepageSettings: settings });
+    saveSettingHelper('homepage', settings);
+  },
+  seoSettings: {
+    metaTitle: 'Watch WDS - Live Sports Streaming',
+    metaDescription: 'Watch live sports, follow your favorite creators, and join the community.',
+    metaKeywords: 'sports, streaming, live matches, community',
+    ogTitle: 'Watch WDS',
+    ogDescription: 'Experience the best live sports streaming platform.',
+    ogImage: '',
+    twitterHandle: '@watchwds',
+    googleAnalyticsId: '',
+    googleTagManagerId: '',
+    robotsTxt: 'User-agent: *\nAllow: /'
+  },
+  setSeoSettings: (settings) => {
+    set({ seoSettings: settings });
+    saveSettingHelper('seo', settings);
+  },
+  platformName: 'WatchWDS',
+  setPlatformName: (name) => {
+    set({ platformName: name });
+    saveSettingHelper('branding', { platformName: name, favicon: get().favicon, preloaderEnabled: get().preloaderEnabled });
+  },
+  favicon: '/favicon.ico',
+  setFavicon: (favicon) => {
+    set({ favicon });
+    saveSettingHelper('branding', { platformName: get().platformName, favicon, preloaderEnabled: get().preloaderEnabled });
+  },
+  preloaderEnabled: true,
+  setPreloaderEnabled: (enabled) => {
+    set({ preloaderEnabled: enabled });
+    saveSettingHelper('branding', { platformName: get().platformName, favicon: get().favicon, preloaderEnabled: enabled });
+  },
+  googleAuthSettings: {
+    enabled: false,
+    clientId: '',
+    clientSecret: '',
+    redirectUri: ''
+  },
+  setGoogleAuthSettings: (settings) => {
+    set({ googleAuthSettings: settings });
+    fetch('/api/admin/google-auth/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify(settings)
+    }).catch(console.error);
+  },
+  fetchSettings: async () => {
+    try {
+      const brandingRes = await fetch('/api/settings/branding');
+      if (brandingRes.ok) {
+        const data = await brandingRes.json();
+        set({
+          platformName: data.platformName || 'WatchWDS',
+          favicon: data.favicon || '/favicon.ico',
+          preloaderEnabled: data.preloaderEnabled !== false
+        });
+      }
+      const seoRes = await fetch('/api/settings/seo');
+      if (seoRes.ok) {
+        const data = await seoRes.json();
+        set({ seoSettings: { ...get().seoSettings, ...data } });
+      }
+      const homeRes = await fetch('/api/settings/homepage');
+      if (homeRes.ok) {
+        const data = await homeRes.json();
+        set({ homepageSettings: { ...get().homepageSettings, ...data } });
+      }
+      const currencyRes = await fetch('/api/settings/currency');
+      if (currencyRes.ok) {
+        const data = await currencyRes.json();
+        set({
+          currency: data.currency || 'GBP',
+          currencySymbol: data.symbol || '£'
+        });
+      }
+      const googleRes = await fetch('/api/auth/google/config');
+      if (googleRes.ok) {
+        const data = await googleRes.json();
+        set({
+          googleAuthSettings: {
+            enabled: data.enabled || false,
+            clientId: data.clientId || '',
+            clientSecret: '',
+            redirectUri: ''
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch settings:", err);
+    }
+  }
+}));
 
 type ThemeType = 'light' | 'dark' | 'system';
 
@@ -770,71 +863,96 @@ export interface Match {
 
 interface MatchState {
   matches: Match[];
-  addMatch: (match: Match) => void;
+  addMatch: (match: Match) => Promise<void>;
   setMatches: (matches: Match[]) => void;
-  updateMatch: (id: number, updates: Partial<Match>) => void;
-  deleteMatch: (id: number) => void;
+  updateMatch: (id: number, updates: Partial<Match>) => Promise<void>;
+  deleteMatch: (id: number) => Promise<void>;
+  fetchMatches: () => Promise<void>;
   watchHistory: { userId: number; matchId: number; watchedAt: string; }[];
   addToWatchHistory: (userId: number, matchId: number) => void;
 }
 
-export const useMatchStore = create<MatchState>()(
-  persist(
-    (set) => ({
-      matches: [
-        { 
-          id: 1, 
-          title: 'Championship Finals', 
-          slug: 'championship-finals',
-          date: '2026-04-15T18:00:00Z', 
-          price: 50, 
-          embedPrice: 500, 
-          status: 'upcoming', 
-          thumbnail: 'https://picsum.photos/seed/match1/800/450',
-          content: '<p>The ultimate showdown of the season.</p>',
-          description: 'Watch the finals live on WatchWDS.',
-          categories: [1],
-          access: 'paid',
-          seo: { keywords: 'finals, championship, football', metaDescription: 'Watch the Championship Finals live.' }
+export const useMatchStore = create<MatchState>((set, get) => ({
+  matches: [],
+  fetchMatches: async () => {
+    try {
+      const res = await fetch('/api/matches');
+      if (res.ok) {
+        const data = await res.json();
+        set({ matches: Array.isArray(data) ? data : [] });
+      }
+    } catch (err) {
+      console.error('Failed to fetch matches', err);
+    }
+  },
+  addMatch: async (match) => {
+    try {
+      const res = await fetch('/api/matches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        { 
-          id: 2, 
-          title: 'Semi-Finals Clash', 
-          slug: 'semi-finals-clash',
-          date: '2026-04-10T20:00:00Z', 
-          price: 30, 
-          embedPrice: 300, 
-          status: 'upcoming', 
-          thumbnail: 'https://picsum.photos/seed/match2/800/450',
-          content: '<p>A battle for a spot in the finals.</p>',
-          description: 'Semi-finals action you cannot miss.',
-          categories: [1, 2],
-          access: 'paid',
-          seo: { keywords: 'semi-finals, clash', metaDescription: 'Semi-finals action live.' }
+        body: JSON.stringify(match)
+      });
+      if (res.ok) {
+        const savedMatch = await res.json();
+        // Since backend might return { id: '...' }, construct savedMatch correctly
+        const newMatch = { ...match, id: savedMatch.id || match.id };
+        set((state) => ({ matches: [newMatch, ...state.matches] }));
+      }
+    } catch (err) {
+      console.error('Failed to add match', err);
+    }
+  },
+  setMatches: (matches) => set({ matches }),
+  updateMatch: async (id, updates) => {
+    try {
+      const res = await fetch(`/api/matches/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-      ],
-      addMatch: (match) => set((state) => ({ matches: [match, ...state.matches] })),
-      setMatches: (matches) => set({ matches }),
-      updateMatch: (id, updates) => set((state) => ({
-        matches: state.matches.map(m => String(m.id) === String(id) ? { ...m, ...updates } : m)
-      })),
-      deleteMatch: (id) => set((state) => ({
-        matches: state.matches.filter(m => String(m.id) !== String(id))
-      })),
-      watchHistory: [],
-      addToWatchHistory: (userId, matchId) => set((state) => {
-        const filtered = state.watchHistory.filter(h => !(h.userId === userId && h.matchId === matchId));
-        return {
-          watchHistory: [{ userId, matchId, watchedAt: new Date().toISOString() }, ...filtered]
-        };
-      })
-    }),
-    { name: 'match-storage' }
-  )
-);
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        set((state) => ({
+          matches: state.matches.map(m => String(m.id) === String(id) ? { ...m, ...updates } : m)
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to update match', err);
+    }
+  },
+  deleteMatch: async (id) => {
+    try {
+      const res = await fetch(`/api/matches/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        set((state) => ({
+          matches: state.matches.filter(m => String(m.id) !== String(id))
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to delete match', err);
+    }
+  },
+  watchHistory: [],
+  addToWatchHistory: (userId, matchId) => set((state) => {
+    const filtered = state.watchHistory.filter(h => !(h.userId === userId && h.matchId === matchId));
+    return {
+      watchHistory: [{ userId, matchId, watchedAt: new Date().toISOString() }, ...filtered]
+    };
+  })
+}));
 
 export interface Category {
-  id: number;
+  id: any;
   name: string;
   slug: string;
   description: string;
@@ -842,30 +960,78 @@ export interface Category {
 
 interface CategoryState {
   categories: Category[];
-  addCategory: (category: Category) => void;
-  updateCategory: (id: number, updates: Partial<Category>) => void;
-  deleteCategory: (id: number) => void;
+  addCategory: (category: any) => Promise<void>;
+  updateCategory: (id: any, updates: Partial<Category>) => Promise<void>;
+  deleteCategory: (id: any) => Promise<void>;
+  fetchCategories: () => Promise<void>;
 }
 
-export const useCategoryStore = create<CategoryState>()(
-  persist(
-    (set) => ({
-      categories: [
-        { id: 1, name: 'Live Match', slug: 'live-match', description: 'Live sporting events' },
-        { id: 2, name: 'Highlights', slug: 'highlights', description: 'Match highlights and replays' },
-        { id: 3, name: 'Interviews', slug: 'interviews', description: 'Player and coach interviews' },
-      ],
-      addCategory: (category) => set((state) => ({ categories: [...state.categories, category] })),
-      updateCategory: (id, updates) => set((state) => ({
-        categories: state.categories.map(c => c.id === id ? { ...c, ...updates } : c)
-      })),
-      deleteCategory: (id) => set((state) => ({
-        categories: state.categories.filter(c => c.id !== id)
-      })),
-    }),
-    { name: 'category-storage' }
-  )
-);
+export const useCategoryStore = create<CategoryState>((set, get) => ({
+  categories: [],
+  fetchCategories: async () => {
+    try {
+      const res = await fetch('/api/match-categories');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          set({ categories: data });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch match categories', err);
+    }
+  },
+  addCategory: async (category) => {
+    try {
+      const res = await fetch('/api/admin/match-categories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(category)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ categories: [...get().categories, { ...category, id: data.id }] });
+      }
+    } catch (err) {
+      console.error('Failed to save match category', err);
+    }
+  },
+  updateCategory: async (id, updates) => {
+    try {
+      const res = await fetch(`/api/admin/match-categories/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        set({ categories: get().categories.map(c => c.id === id ? { ...c, ...updates } : c) });
+      }
+    } catch (err) {
+      console.error('Failed to save match category', err);
+    }
+  },
+  deleteCategory: async (id) => {
+    try {
+      const res = await fetch(`/api/admin/match-categories/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        set({ categories: get().categories.filter(c => c.id !== id) });
+      }
+    } catch (err) {
+      console.error('Failed to delete match category', err);
+    }
+  },
+}));
 
 export interface Purchase {
   id: number;
@@ -1005,45 +1171,124 @@ export interface Comment {
   likes: number;
   timestamp: string;
   parentId?: number;
+  status?: string;
+  role?: string;
 }
 
 interface CommentState {
   comments: Comment[];
-  addComment: (comment: Omit<Comment, 'id' | 'timestamp' | 'likes'>) => void;
-  likeComment: (id: number) => void;
-  deleteComment: (id: number) => void;
+  addComment: (comment: Omit<Comment, 'id' | 'timestamp' | 'likes'>) => Promise<void>;
+  likeComment: (id: number) => Promise<void>;
+  deleteComment: (id: number) => Promise<void>;
+  updateComment: (id: number | string, updates: Partial<Comment>) => Promise<void>;
+  fetchComments: (matchId: number | string) => Promise<void>;
+  fetchAllComments: () => Promise<void>;
 }
 
-export const useCommentStore = create<CommentState>()(
-  persist(
-    (set) => ({
-      comments: [],
-      addComment: (comment) => set((state) => ({
-        comments: [
-          ...state.comments,
-          {
-            ...comment,
-            id: Date.now(),
-            timestamp: new Date().toISOString(),
-            likes: 0,
-          },
-        ],
-      })),
-      likeComment: (id) => set((state) => ({
-        comments: state.comments.map((c) =>
-          c.id === id ? { ...c, likes: c.likes + 1 } : c
-        ),
-      })),
-      deleteComment: (id) => set((state) => ({
-        comments: state.comments.filter((c) => c.id !== id),
-      })),
-    }),
-    { name: 'comment-storage' }
-  )
-);
+export const useCommentStore = create<CommentState>((set, get) => ({
+  comments: [],
+  fetchComments: async (matchId) => {
+    try {
+      const res = await fetch(`/api/matches/${matchId}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        set((state) => {
+          const otherComments = state.comments.filter(c => String(c.matchId) !== String(matchId));
+          const newComments = Array.isArray(data) ? data : [];
+          return { comments: [...otherComments, ...newComments] };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch comments', err);
+    }
+  },
+  fetchAllComments: async () => {
+    try {
+      const res = await fetch('/api/comments', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ comments: Array.isArray(data) ? data : [] });
+      }
+    } catch (err) {
+      console.error('Failed to fetch all comments', err);
+    }
+  },
+  addComment: async (comment) => {
+    try {
+      const res = await fetch(`/api/matches/${comment.matchId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(comment)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        set((state) => ({ comments: [...state.comments, saved] }));
+      }
+    } catch (err) {
+      console.error('Failed to add comment', err);
+    }
+  },
+  likeComment: async (id) => {
+    try {
+      const res = await fetch(`/api/comments/${id}/like`, { method: 'POST' });
+      if (res.ok) {
+        set((state) => ({
+          comments: state.comments.map((c) =>
+            String(c.id) === String(id) ? { ...c, likes: c.likes + 1 } : c
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to like comment', err);
+    }
+  },
+  updateComment: async (id, updates) => {
+    try {
+      const res = await fetch(`/api/comments/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        set((state) => ({
+          comments: state.comments.map((c) =>
+            String(c.id) === String(id) ? { ...c, ...updates } : c
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to update comment', err);
+    }
+  },
+  deleteComment: async (id) => {
+    try {
+      const res = await fetch(`/api/comments/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        set((state) => ({
+          comments: state.comments.filter((c) => String(c.id) !== String(id))
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to delete comment', err);
+    }
+  }
+}));
 
 export interface BlogCategory {
-  id: string;
+  id: any;
   name: string;
   slug: string;
   description: string;
@@ -1089,106 +1334,226 @@ interface BlogState {
   posts: BlogPost[];
   comments: BlogComment[];
   categories: BlogCategory[];
-  addCategory: (category: Omit<BlogCategory, 'id'>) => void;
-  updateCategory: (id: string, updates: Partial<BlogCategory>) => void;
-  deleteCategory: (id: string) => void;
-  addPost: (post: Omit<BlogPost, 'id' | 'views' | 'likes' | 'updatedAt' | 'createdAt'> & { createdAt?: string }) => void;
+  fetchPosts: () => Promise<void>;
+  fetchCategories: () => Promise<void>;
+  fetchComments: (postId: number) => Promise<void>;
+  addCategory: (category: Omit<BlogCategory, 'id'>) => Promise<void>;
+  updateCategory: (id: any, updates: Partial<BlogCategory>) => Promise<void>;
+  deleteCategory: (id: any) => Promise<void>;
+  addPost: (post: Omit<BlogPost, 'id' | 'views' | 'likes' | 'updatedAt' | 'createdAt'> & { createdAt?: string }) => Promise<void>;
   setPosts: (posts: BlogPost[]) => void;
-  updatePost: (id: number, updates: Partial<BlogPost>) => void;
-  deletePost: (id: number) => void;
-  incrementViews: (id: number) => void;
-  likePost: (id: number) => void;
-  addComment: (comment: Omit<BlogComment, 'id' | 'createdAt' | 'likes'>) => void;
-  likeComment: (id: number) => void;
+  updatePost: (id: number, updates: Partial<BlogPost>) => Promise<void>;
+  deletePost: (id: number) => Promise<void>;
+  incrementViews: (id: number) => Promise<void>;
+  likePost: (id: number) => Promise<void>;
+  addComment: (comment: Omit<BlogComment, 'id' | 'createdAt' | 'likes'>) => Promise<void>;
+  likeComment: (id: number) => Promise<void>;
 }
 
-export const useBlogStore = create<BlogState>()(
-  persist(
-    (set) => ({
-      categories: [
-        { id: '1', name: 'Technology', slug: 'technology', description: 'Tech related news' },
-        { id: '2', name: 'Community', slug: 'community', description: 'Updates from the community' }
-      ],
-      posts: [
-        {
-          id: 1,
-          title: 'The Future of Grassroots Sports Streaming',
-          slug: 'future-of-grassroots-sports-streaming',
-          content: '<p>Grassroots sports are entering a new era...</p><h2>Interactive Streaming</h2><p>Our new payload handles live statistics.</p>',
-          excerpt: 'Discover how new streaming technologies are empowering local leagues and transforming fan engagement.',
-          featuredImage: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80',
-          authorId: 1,
-          categories: ['Technology', 'Community'],
-          tags: ['Streaming', 'Live', 'Updates'],
-          status: 'published',
-          restricted: 'none',
-          seo: { keywords: 'streaming, grassroots, sports', description: 'Tech empowering local sports' },
-          views: 1250,
-          likes: 45,
-          createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-          updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-          readingTimeMinutes: 5,
+export const useBlogStore = create<BlogState>((set, get) => ({
+  posts: [],
+  comments: [],
+  categories: [],
+  fetchPosts: async () => {
+    try {
+      const res = await fetch('/api/blog/posts');
+      if (res.ok) {
+        const data = await res.json();
+        set({ posts: Array.isArray(data) ? data : [] });
+      }
+    } catch (err) {
+      console.error('Failed to fetch blog posts', err);
+    }
+  },
+  fetchCategories: async () => {
+    try {
+      const res = await fetch('/api/blog-categories');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          set({ categories: data });
         }
-      ],
-      comments: [],
-      addPost: (post) => set((state) => ({
-        posts: [
-          {
-            ...post,
-            id: Date.now(),
-            views: 0,
-            likes: 0,
-            createdAt: post.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          ...state.posts
-        ]
-      })),
-      setPosts: (posts) => set({ posts }),
-      updatePost: (id, updates) => set((state) => ({
-        posts: state.posts.map((p) => p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p)
-      })),
-      deletePost: (id) => set((state) => ({
-        posts: state.posts.filter((p) => p.id !== id)
-      })),
-      incrementViews: (id) => set((state) => ({
-        posts: state.posts.map((p) => p.id === id ? { ...p, views: p.views + 1 } : p)
-      })),
-      likePost: (id) => set((state) => ({
-        posts: state.posts.map((p) => p.id === id ? { ...p, likes: p.likes + 1 } : p)
-      })),
-      addComment: (comment) => set((state) => ({
-        comments: [
-          ...state.comments,
-          {
-            ...comment,
-            id: Date.now(),
-            createdAt: new Date().toISOString(),
-            likes: 0
-          }
-        ]
-      })),
-      likeComment: (id) => set((state) => ({
-        comments: state.comments.map((c) => c.id === id ? { ...c, likes: c.likes + 1 } : c)
-      })),
-      addCategory: (category) =>
+      }
+    } catch (err) {
+      console.error('Failed to fetch blog categories', err);
+    }
+  },
+  fetchComments: async (postId) => {
+    try {
+      const res = await fetch(`/api/blog/posts/${postId}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        set((state) => {
+          const otherComments = state.comments.filter(c => String(c.postId) !== String(postId));
+          const newComments = Array.isArray(data) ? data.map((c: any) => ({ ...c, postId })) : [];
+          return { comments: [...otherComments, ...newComments] };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch blog comments', err);
+    }
+  },
+  addPost: async (post) => {
+    try {
+      const res = await fetch('/api/blog/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(post)
+      });
+      if (res.ok) {
+        const savedPost = await res.json();
+        set((state) => ({ posts: [savedPost, ...state.posts] }));
+      }
+    } catch (err) {
+      console.error('Failed to add blog post', err);
+    }
+  },
+  setPosts: (posts) => set({ posts }),
+  updatePost: async (id, updates) => {
+    try {
+      const res = await fetch(`/api/blog/posts/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
         set((state) => ({
-          categories: [...state.categories, { ...category, id: Math.random().toString(36).substring(7) }]
-        })),
-      updateCategory: (id, updates) =>
+          posts: state.posts.map((p) => String(p.id) === String(id) ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p)
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to update blog post', err);
+    }
+  },
+  deletePost: async (id) => {
+    try {
+      const res = await fetch(`/api/blog/posts/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
         set((state) => ({
-          categories: state.categories.map((c) =>
-            c.id === id ? { ...c, ...updates } : c
-          )
-        })),
-      deleteCategory: (id) =>
+          posts: state.posts.filter((p) => String(p.id) !== String(id))
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to delete blog post', err);
+    }
+  },
+  incrementViews: async (id) => {
+    try {
+      const res = await fetch(`/api/blog/posts/${id}/view`, { method: 'POST' });
+      if (res.ok) {
         set((state) => ({
-          categories: state.categories.filter((c) => c.id !== id)
-        }))
-    }),
-    { name: 'blog-storage' }
-  )
-);
+          posts: state.posts.map((p) => String(p.id) === String(id) ? { ...p, views: (p.views || 0) + 1 } : p)
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to increment view count', err);
+    }
+  },
+  likePost: async (id) => {
+    try {
+      const res = await fetch(`/api/blog/posts/${id}/like`, { method: 'POST' });
+      if (res.ok) {
+        set((state) => ({
+          posts: state.posts.map((p) => String(p.id) === String(id) ? { ...p, likes: (p.likes || 0) + 1 } : p)
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to like blog post', err);
+    }
+  },
+  addComment: async (comment) => {
+    try {
+      const res = await fetch(`/api/blog/posts/${comment.postId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(comment)
+      });
+      if (res.ok) {
+        const savedComment = await res.json();
+        const normalizedComment = { ...savedComment, postId: comment.postId };
+        set((state) => ({ comments: [...state.comments, normalizedComment] }));
+      }
+    } catch (err) {
+      console.error('Failed to add blog comment', err);
+    }
+  },
+  likeComment: async (id) => {
+    try {
+      const res = await fetch(`/api/comments/${id}/like`, { method: 'POST' });
+      if (res.ok) {
+        set((state) => ({
+          comments: state.comments.map((c) => String(c.id) === String(id) ? { ...c, likes: (c.likes || 0) + 1 } : c)
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to like comment', err);
+    }
+  },
+  addCategory: async (category) => {
+    try {
+      const res = await fetch('/api/admin/blog-categories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(category)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ categories: [...get().categories, { ...category, id: data.id }] });
+      }
+    } catch (err) {
+      console.error('Failed to save blog category', err);
+    }
+  },
+  updateCategory: async (id, updates) => {
+    try {
+      const res = await fetch(`/api/admin/blog-categories/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        set({ categories: get().categories.map((c) => c.id === id ? { ...c, ...updates } : c) });
+      }
+    } catch (err) {
+      console.error('Failed to save blog category', err);
+    }
+  },
+  deleteCategory: async (id) => {
+    try {
+      const res = await fetch(`/api/admin/blog-categories/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        set({ categories: get().categories.filter((c) => c.id !== id) });
+      }
+    } catch (err) {
+      console.error('Failed to delete blog category', err);
+    }
+  }
+}));
 
 export interface MediaItem {
   id: string;
