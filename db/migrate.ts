@@ -83,6 +83,13 @@ async function migrate() {
     // Column might already exist, ignore this error
   }
 
+  try {
+    await rootConn.query(`ALTER TABLE \`comments\` ADD COLUMN \`status\` VARCHAR(50) DEFAULT 'active'`);
+    console.log('  ✓ Incremental update: Added status column to comments.');
+  } catch (err: any) {
+    // Column might already exist, ignore this error
+  }
+
   // Step 3: Seed default data
   console.log('[4/4] Seeding default data...');
 

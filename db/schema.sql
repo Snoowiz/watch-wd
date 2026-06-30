@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS `comments` (
   `likes` INT DEFAULT 0,
   `liked_by` JSON DEFAULT NULL,
   `role` VARCHAR(50) DEFAULT 'user',
+  `status` VARCHAR(50) DEFAULT 'active',
   INDEX `idx_comments_match` (`match_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

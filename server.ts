@@ -3202,6 +3202,26 @@ async function startServer() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `).catch(err => console.error("Failed to ensure blog_categories table exists", err));
 
+    // Ensure comments status column exists (safe incremental upgrade)
+    execute(`
+      ALTER TABLE \`comments\` ADD COLUMN \`status\` VARCHAR(50) DEFAULT 'active'
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure comments status column exists:", err);
+      }
+    });
+
+    // Ensure users verified column exists (safe incremental upgrade)
+    execute(`
+      ALTER TABLE \`users\` ADD COLUMN \`verified\` TINYINT(1) DEFAULT 0
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure users verified column exists:", err);
+      }
+    });
+
     // Trigger deploy/startup cache warming
     warmCriticalCaches().catch(err => console.error("Startup Cache Warning failed", err));
   });
