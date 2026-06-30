@@ -47,15 +47,15 @@ export function Matches() {
     if (m.publishStatus && m.publishStatus !== 'approved' && m.publishStatus !== 'published') return false;
     
     // Category filter
-    if (selectedCategory !== 'all' && !(m.categories || []).includes(selectedCategory)) return false;
+    if (selectedCategory !== 'all' && !(m.categories || []).some((catId: any) => Number(catId) === Number(selectedCategory))) return false;
     
     // Search query matching (title, description, category names)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const titleMatch = (m.title || '').toLowerCase().includes(query);
       const descMatch = (m.description || '').toLowerCase().includes(query);
-      const categoryNamesMatch = (m.categories || []).some(catId => {
-        const cat = categories.find(c => c.id === catId);
+      const categoryNamesMatch = (m.categories || []).some((catId: any) => {
+        const cat = categories.find(c => Number(c.id) === Number(catId));
         return cat && (cat.name || '').toLowerCase().includes(query);
       });
       if (!titleMatch && !descMatch && !categoryNamesMatch) return false;
@@ -175,7 +175,7 @@ export function Matches() {
                   <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
                     <div className="flex flex-wrap gap-1 max-w-[70%]">
                       {((match.categories || []) as number[]).slice(0, 2).map(catId => {
-                        const cat = categories.find(c => c.id === catId);
+                        const cat = categories.find(c => Number(c.id) === Number(catId));
                         return cat ? (
                           <span key={catId} className="bg-white/10 backdrop-blur-md text-white text-[9px] font-bold px-2 py-0.5 rounded-md border border-white/10">
                             {cat.name}

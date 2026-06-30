@@ -320,7 +320,7 @@ export function AdminMatches() {
                       <td className="p-4">
                         <div className="flex flex-wrap gap-1">
                           {match.categories?.map(catId => {
-                            const cat = categories.find(c => c.id === catId);
+                            const cat = categories.find(c => Number(c.id) === Number(catId));
                             return cat ? (
                               <span key={catId} className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded">
                                 {cat.name}

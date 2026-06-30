@@ -23,7 +23,7 @@ export function CategoryPage() {
     );
   }
 
-  const categoryMatches = matches.filter(m => (m.categories || []).includes(category.id));
+  const categoryMatches = matches.filter(m => (m.categories || []).some((catId: any) => Number(catId) === Number(category.id)));
 
   return (
     <div className="space-y-8">

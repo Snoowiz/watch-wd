@@ -507,7 +507,7 @@ export function MatchDetail() {
              <div className={`relative ${!isInfoExpanded ? "max-h-24 overflow-hidden" : ""}`}>
                 <div className="flex flex-wrap gap-2 mb-3">
                   {match.categories?.map(catId => {
-                    const cat = categories.find(c => c.id === catId);
+                    const cat = categories.find(c => Number(c.id) === Number(catId));
                     return cat ? (
                       <Link 
                         key={catId} 

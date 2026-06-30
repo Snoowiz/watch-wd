@@ -48,7 +48,7 @@ export function NewMatch() {
       })
       .catch(console.error);
   }, []);
-  const [selectedCategories, setSelectedCategories] = useState<number[]>(existingMatch?.categories || []);
+  const [selectedCategories, setSelectedCategories] = useState<any[]>((existingMatch?.categories || []).map((c: any) => Number(c)));
   const [seo, setSeo] = useState(existingMatch?.seo || { keywords: '', metaDescription: '' });
   const [publishMode, setPublishMode] = useState<'now' | 'scheduled'>(existingMatch?.scheduledDate ? 'scheduled' : 'now');
   const [scheduledDate, setScheduledDate] = useState(existingMatch?.scheduledDate || '');
@@ -124,7 +124,9 @@ export function NewMatch() {
       };
 
       if (isEditing) {
-        updateMatch(Number(id), matchData);
+        await updateMatch(Number(id), matchData);
+        // Re-fetch matches to ensure store has the latest data from DB
+        await useMatchStore.getState().fetchMatches();
         updateToast(toastId, { message: 'Match updated successfully!', type: 'success' });
       } else {
         addMatch(matchData);
@@ -140,9 +142,10 @@ export function NewMatch() {
     }
   };
 
-  const toggleCategory = (catId: number) => {
+  const toggleCategory = (catId: any) => {
+    const numId = Number(catId);
     setSelectedCategories(prev => 
-      prev.includes(catId) ? prev.filter(id => id !== catId) : [...prev, catId]
+      prev.some(id => Number(id) === numId) ? prev.filter(id => Number(id) !== numId) : [...prev, numId]
     );
   };
 
@@ -410,7 +413,7 @@ export function NewMatch() {
                 <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900/50 rounded-lg cursor-pointer transition-colors group">
                   <input 
                     type="checkbox"
-                    checked={selectedCategories.includes(cat.id)}
+                    checked={selectedCategories.some(id => Number(id) === Number(cat.id))}
                     onChange={() => toggleCategory(cat.id)}
                     className="w-4 h-4 rounded border-slate-300 text-yellow-500 focus:ring-yellow-500"
                   />
