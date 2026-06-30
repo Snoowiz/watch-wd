@@ -3180,6 +3180,28 @@ async function startServer() {
 
   app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
+    
+    // Ensure categories tables exist
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`match_categories\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`name\` VARCHAR(128) NOT NULL,
+        \`slug\` VARCHAR(64) NOT NULL UNIQUE,
+        \`description\` VARCHAR(500) DEFAULT '',
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure match_categories table exists", err));
+
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`blog_categories\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`name\` VARCHAR(128) NOT NULL,
+        \`slug\` VARCHAR(64) NOT NULL UNIQUE,
+        \`description\` VARCHAR(500) DEFAULT '',
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure blog_categories table exists", err));
+
     // Trigger deploy/startup cache warming
     warmCriticalCaches().catch(err => console.error("Startup Cache Warning failed", err));
   });

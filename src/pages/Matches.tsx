@@ -44,7 +44,7 @@ export function Matches() {
 
   const filteredMatches = matches.filter(m => {
     // Only show approved or natively created matches
-    if (m.publishStatus && m.publishStatus !== 'approved') return false;
+    if (m.publishStatus && m.publishStatus !== 'approved' && m.publishStatus !== 'published') return false;
     
     // Category filter
     if (selectedCategory !== 'all' && !(m.categories || []).includes(selectedCategory)) return false;

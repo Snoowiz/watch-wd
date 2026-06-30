@@ -1010,7 +1010,7 @@ export const useCategoryStore = create<CategoryState>((set, get) => ({
         body: JSON.stringify(updates)
       });
       if (res.ok) {
-        set({ categories: get().categories.map(c => c.id === id ? { ...c, ...updates } : c) });
+        set({ categories: get().categories.map(c => String(c.id) === String(id) ? { ...c, ...updates } : c) });
       }
     } catch (err) {
       console.error('Failed to save match category', err);
@@ -1025,7 +1025,7 @@ export const useCategoryStore = create<CategoryState>((set, get) => ({
         }
       });
       if (res.ok) {
-        set({ categories: get().categories.filter(c => c.id !== id) });
+        set({ categories: get().categories.filter(c => String(c.id) !== String(id)) });
       }
     } catch (err) {
       console.error('Failed to delete match category', err);
@@ -1532,7 +1532,7 @@ export const useBlogStore = create<BlogState>((set, get) => ({
         body: JSON.stringify(updates)
       });
       if (res.ok) {
-        set({ categories: get().categories.map((c) => c.id === id ? { ...c, ...updates } : c) });
+        set({ categories: get().categories.map((c) => String(c.id) === String(id) ? { ...c, ...updates } : c) });
       }
     } catch (err) {
       console.error('Failed to save blog category', err);
@@ -1547,7 +1547,7 @@ export const useBlogStore = create<BlogState>((set, get) => ({
         }
       });
       if (res.ok) {
-        set({ categories: get().categories.filter((c) => c.id !== id) });
+        set({ categories: get().categories.filter((c) => String(c.id) !== String(id)) });
       }
     } catch (err) {
       console.error('Failed to delete blog category', err);

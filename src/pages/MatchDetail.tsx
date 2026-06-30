@@ -227,7 +227,7 @@ export function MatchDetail() {
     .filter(m => {
       if (!match) return false;
       if (m.id === match.id) return false;
-      if (m.publishStatus && m.publishStatus !== 'approved') return false;
+      if (m.publishStatus && m.publishStatus !== 'approved' && m.publishStatus !== 'published') return false;
       
       const shareCategory = m.categories?.some(c => match.categories?.includes(c));
       // Check title for basic word match
@@ -241,7 +241,7 @@ export function MatchDetail() {
     
   // If we don't have enough related, fill with newest
   if (relatedMatches.length < 4) {
-      const fillMatches = sortedMatches.filter(m => m.id !== match?.id && (m.publishStatus === 'approved' || !m.publishStatus) && !relatedMatches.some(rm => rm.id === m.id));
+      const fillMatches = sortedMatches.filter(m => m.id !== match?.id && (m.publishStatus === 'approved' || m.publishStatus === 'published' || !m.publishStatus) && !relatedMatches.some(rm => rm.id === m.id));
       relatedMatches.push(...fillMatches.slice(0, 4 - relatedMatches.length));
   }
 
