@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore, useSettingsStore } from '../store';
 import { UserPlus, AlertCircle } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
@@ -14,8 +14,12 @@ export function Register() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { setAuth } = useAuthStore();
   const { googleAuthSettings } = useSettingsStore();
+
+  // Determine where to redirect after registration
+  const redirectTo = (location.state as any)?.from || '/';
 
   const handleGoogleSignup = async () => {
     try {
@@ -46,7 +50,7 @@ export function Register() {
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
 
       setAuth(data.user, data.token);
-      navigate('/');
+      navigate(redirectTo);
     } catch (err: any) {
       setError(err.message === 'Firebase: Error (auth/popup-closed-by-user).' ? 'Signup cancelled.' : err.message);
     } finally {
@@ -77,7 +81,7 @@ export function Register() {
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
 
       setAuth(data.user, data.token);
-      navigate('/profile');
+      navigate(redirectTo);
     } catch (err: any) {
       setError(err.message);
     }
@@ -199,7 +203,7 @@ export function Register() {
 
         <p className="mt-8 text-center text-sm text-slate-600 dark:text-slate-400">
           Already have an account?{' '}
-          <Link to="/login" className="text-yellow-600 dark:text-yellow-500 font-bold hover:underline">
+          <Link to="/login" state={{ from: redirectTo !== '/' ? redirectTo : undefined }} className="text-yellow-600 dark:text-yellow-500 font-bold hover:underline">
             Log in
           </Link>
         </p>

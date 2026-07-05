@@ -303,7 +303,7 @@ export function MatchDetail() {
     setCheckoutData({
       amount: priceToPay,
       type: 'watch',
-      metadata: { matchId: match.id, title: match.title }
+      metadata: { matchId: match.id, title: match.title, matchSlug: match.slug }
     });
     setShowConfirmModal(false);
     setShowCheckoutModal(true);
@@ -319,7 +319,7 @@ export function MatchDetail() {
     setCheckoutData({
       amount: match.embedPrice,
       type: 'embed',
-      metadata: { matchId: match.id, title: match.title }
+      metadata: { matchId: match.id, title: match.title, matchSlug: match.slug }
     });
     setShowCheckoutModal(true);
   };

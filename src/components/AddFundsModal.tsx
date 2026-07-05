@@ -82,7 +82,11 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
         setSuccess(true);
         setTimeout(() => {
           onClose();
-          if ((location.state as any)?.returnUrl) {
+          // Redirect to match page if this was a match or plan purchase originating from a match
+          const targetSlug = directCheckoutMetadata?.matchSlug || directCheckoutMetadata?.fromMatchSlug;
+          if (targetSlug) {
+            navigate(`/matches/${targetSlug}`);
+          } else if ((location.state as any)?.returnUrl) {
             navigate((location.state as any).returnUrl);
           }
         }, 1500);

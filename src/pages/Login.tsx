@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore, useSettingsStore } from '../store';
 import { AlertCircle } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
@@ -13,8 +13,12 @@ export function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { setAuth } = useAuthStore();
   const { googleAuthSettings } = useSettingsStore();
+
+  // Determine where to redirect after login
+  const redirectTo = (location.state as any)?.from || '/';
 
   const handleGoogleLogin = async () => {
     try {
@@ -45,7 +49,7 @@ export function Login() {
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
       
       setAuth(data.user, data.token);
-      navigate('/');
+      navigate(redirectTo);
     } catch (err: any) {
       setError(err.message === 'Firebase: Error (auth/popup-closed-by-user).' ? 'Login cancelled.' : err.message);
     } finally {
@@ -74,7 +78,7 @@ export function Login() {
       if (!res.ok) throw new Error(data.error || 'Login failed');
       
       setAuth(data.user, data.token);
-      navigate('/');
+      navigate(redirectTo);
     } catch (err: any) {
       setError(err.message);
     }
