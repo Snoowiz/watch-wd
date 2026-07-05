@@ -12,6 +12,7 @@ import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
 import { testConnection, query, execute } from "./db/connection.js";
+import { createMatchRouter } from "./api/v1/routes/matches.js";
 
 dotenv.config();
 
@@ -195,6 +196,9 @@ async function startServer() {
   });
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
   app.use("/api", (req, res, next) => { console.log(`[API] ${req.method} ${req.url}`); next(); });
+
+  // === API v1 — External third-party endpoints ===
+  app.use("/api/v1/matches", createMatchRouter({ db, cacheEngine }));
 
   const normalizeUser = (docId: string, data: any) => {
     if (!data) return null;
