@@ -363,7 +363,7 @@ function AdminOverview() {
   const completedTxns = transactions.filter(t => t.status === 'completed' || t.status === 'success');
   const totalRevenue = completedTxns
     .filter(t => ['top_up', 'watch', 'embed', 'plan'].includes(t.type))
-    .reduce((acc, t) => acc + (t.amount || 0), 0);
+    .reduce((acc, t) => acc + Number(t.amount || 0), 0);
 
   const contentPurchases = completedTxns.filter(t => ['watch', 'embed', 'plan'].includes(t.type));
   const purchasesCount = contentPurchases.length;

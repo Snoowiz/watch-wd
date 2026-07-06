@@ -918,7 +918,11 @@ async function startServer() {
 
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
-      const docRef = await db.collection("matches").add({ ...req.body, operator_id: req.user.id, created_at: new Date().toISOString() });
+      const matchData = { ...req.body };
+      if (matchData.date && !matchData.startTime && !matchData.start_time) {
+        matchData.start_time = matchData.date;
+      }
+      const docRef = await db.collection("matches").add({ ...matchData, operator_id: req.user.id, created_at: new Date().toISOString() });
       
       // Invalidate cache immediately on update
       cacheEngine.invalidateCollection("matches");
@@ -930,7 +934,7 @@ async function startServer() {
         sendTemplateEmail(admin.email, "admin_new_match_alert", {
           match_name: req.body.title || "New Match",
           creator_name: req.user.name || "Staff",
-          match_date: req.body.start_time || new Date().toLocaleString(),
+          match_date: req.body.start_time || req.body.date || new Date().toLocaleString(),
           website_url: getRequestBaseUrl(req)
         }).catch(err => console.error(`Failed to send admin match alert to ${admin.email}:`, err));
       }
@@ -941,7 +945,11 @@ async function startServer() {
 
   app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
-      await db.collection("matches").doc(req.params.id).update(req.body);
+      const matchData = { ...req.body };
+      if (matchData.date && !matchData.startTime && !matchData.start_time) {
+        matchData.start_time = matchData.date;
+      }
+      await db.collection("matches").doc(req.params.id).update(matchData);
       cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }

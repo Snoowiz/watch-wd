@@ -836,7 +836,7 @@ export interface Match {
   price: number;
   embedPrice: number; // Price for creators to embed
   status: 'upcoming' | 'live' | 'completed';
-  publishStatus?: 'pending' | 'approved' | 'rejected'; // For creator uploaded videos
+  publishStatus?: 'pending' | 'approved' | 'rejected' | 'published' | 'draft' | 'scheduled'; // For creator uploaded videos
   creatorId?: number;
   thumbnail: string;
   content: string;
@@ -845,7 +845,7 @@ export interface Match {
   access: 'free' | 'paid';
   access_type?: 'free' | 'ppv' | 'plan'; 
   ppv_price?: number;
-  required_plan_id?: number | null;
+  required_plan_id?: string | number | null;
   seo: {
     keywords: string;
     metaDescription: string;

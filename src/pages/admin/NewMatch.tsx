@@ -30,7 +30,7 @@ export function NewMatch() {
   const [status, setStatus] = useState<Match['status']>(existingMatch?.status || 'upcoming');
   const [accessType, setAccessType] = useState<'free' | 'ppv' | 'plan'>(existingMatch?.access_type || 'free');
   const [ppvPrice, setPpvPrice] = useState(existingMatch?.ppv_price || 50);
-  const [requiredPlanId, setRequiredPlanId] = useState<number | null>(existingMatch?.required_plan_id || null);
+  const [requiredPlanId, setRequiredPlanId] = useState<string | number | null>(existingMatch?.required_plan_id || null);
   const [plans, setPlans] = useState<any[]>([]);
 
   const [adSettingsEnabled, setAdSettingsEnabled] = useState(existingMatch?.adSettings?.enabled ?? true);
@@ -64,12 +64,37 @@ export function NewMatch() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
 
-  // Auto-generate slug from title
+  // Auto-generate slug from title (only when creating a new match)
   useEffect(() => {
-    if (title) {
+    if (!isEditing && title) {
       setSlug(title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
     }
-  }, [title]);
+  }, [title, isEditing]);
+
+  // Sync form state when existingMatch loads (useful when page is refreshed)
+  useEffect(() => {
+    if (existingMatch) {
+      setTitle(existingMatch.title || '');
+      setSlug(existingMatch.slug || '');
+      setContent(existingMatch.content || '');
+      setDescription(existingMatch.description || '');
+      setThumbnail(existingMatch.thumbnail || '');
+      setStatus(existingMatch.status || 'upcoming');
+      setAccessType((existingMatch.access_type || (existingMatch as any).accessType || 'free') as any);
+      setPpvPrice(existingMatch.ppv_price || (existingMatch as any).ppvPrice || 50);
+      setRequiredPlanId(existingMatch.required_plan_id || (existingMatch as any).requiredPlanId || null);
+      setAdSettingsEnabled(existingMatch.adSettings?.enabled ?? true);
+      setAdFrequencyOverride(existingMatch.adSettings?.frequencyOverride || '');
+      setAdCampaignIds(existingMatch.adSettings?.campaignIds || []);
+      setSelectedCategories((existingMatch.categories || []).map((c: any) => Number(c)));
+      setSeo(existingMatch.seo || { keywords: '', metaDescription: '' });
+      setPublishMode(existingMatch.scheduledDate ? 'scheduled' : 'now');
+      setScheduledDate(existingMatch.scheduledDate || '');
+      setCustomDate(existingMatch.date ? new Date(existingMatch.date).toISOString().slice(0, 16) : '');
+      setLiveCommenting(existingMatch.liveCommenting ?? true);
+      setCommentAlignment(existingMatch.commentAlignment || 'center');
+    }
+  }, [existingMatch]);
 
   const handleSave = async () => {
     if (!title || !slug) {
@@ -97,7 +122,7 @@ export function NewMatch() {
       }
 
       const matchData: Match = {
-        id: isEditing ? Number(id) : Date.now(),
+        id: (isEditing ? String(id) : String(Date.now())) as any,
         title,
         slug,
         date: finalDate,
@@ -124,7 +149,7 @@ export function NewMatch() {
       };
 
       if (isEditing) {
-        await updateMatch(Number(id), matchData);
+        await updateMatch(String(id) as any, matchData);
         // Re-fetch matches to ensure store has the latest data from DB
         await useMatchStore.getState().fetchMatches();
         updateToast(toastId, { message: 'Match updated successfully!', type: 'success' });
@@ -389,7 +414,7 @@ export function NewMatch() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Required Plan</label>
                   <select
                     value={requiredPlanId || ''}
-                    onChange={(e) => setRequiredPlanId(e.target.value ? Number(e.target.value) : null)}
+                    onChange={(e) => setRequiredPlanId(e.target.value ? e.target.value : null)}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                   >
                      <option value="" disabled>Select a plan...</option>

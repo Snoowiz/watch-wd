@@ -13,18 +13,21 @@ export function MatchDetail() {
   const navigate = useNavigate();
   // ... other hooks
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    setupMessageListener();
-  }, [slug]);
-
   const { user, updateUser } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
   const { currencySymbol } = useSettingsStore();
   const { matches, addToWatchHistory } = useMatchStore();
   const { categories = [] } = useCategoryStore();
-  const { purchases = [], addPurchase, addTransaction } = usePurchaseStore();
+  const { purchases = [], addPurchase, addTransaction, fetchPurchases } = usePurchaseStore();
   const { savedMatches = [], saveMatch, unsaveMatch, fetchSavedMatches } = useSavedMatchesStore();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    setupMessageListener();
+    if (user) {
+      fetchPurchases();
+    }
+  }, [slug, user, fetchPurchases]);
   
   const [error, setError] = useState('');
 
@@ -66,7 +69,13 @@ export function MatchDetail() {
     }
   };
 
-  const match = matches.find(m => m.slug === slug);
+  const match = matches.find(m => m.slug === slug || String(m.id) === String(slug));
+  
+  useEffect(() => {
+    if (match && String(match.id) === String(slug) && match.slug) {
+      navigate(`/matches/${match.slug}`, { replace: true });
+    }
+  }, [match, slug, navigate]);
   
   const processedDescription = mobileVideoStarted && match?.description 
     ? match.description.replace(/src="([^"]+)"/g, (m, p1) => `src="${p1}${p1.includes('?') ? '&' : '?'}autoplay=1"`)

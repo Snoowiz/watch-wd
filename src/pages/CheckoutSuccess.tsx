@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle, LoaderCircle, AlertCircle } from 'lucide-react';
-import { useAuthStore } from '../store';
+import { useAuthStore, usePurchaseStore } from '../store';
 
 export function CheckoutSuccess() {
   const [searchParams] = useSearchParams();
@@ -60,6 +60,11 @@ export function CheckoutSuccess() {
           if (meRes.ok) {
              const meData = await meRes.json();
              if (!ignore) updateUser(meData.user);
+          }
+          try {
+            await usePurchaseStore.getState().fetchPurchases();
+          } catch (err) {
+            console.error('Failed to fetch purchases in success page:', err);
           }
           if (!ignore) {
             setStatus('success');

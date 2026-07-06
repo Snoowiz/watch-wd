@@ -57,7 +57,7 @@ function buildSetClause(data: Record<string, any>, table: string): { clause: str
   const snakeData: Record<string, any> = {};
   for (const [k, v] of Object.entries(data)) {
     if (v !== undefined) {
-      snakeData[camelToSnake(k)] = v;
+      snakeData[camelToSnake(k, table)] = v;
     }
   }
 
@@ -71,7 +71,10 @@ function buildSetClause(data: Record<string, any>, table: string): { clause: str
   return { clause: parts.join(', '), values };
 }
 
-function camelToSnake(str: string): string {
+function camelToSnake(str: string, tableName?: string): string {
+  if (str === 'content') {
+    return tableName === 'comments' ? 'text' : 'content';
+  }
   // Map of common camelCase -> snake_case overrides used in the app
   const overrides: Record<string, string> = {
     createdAt: 'created_at',
@@ -128,7 +131,6 @@ function camelToSnake(str: string): string {
     userAvatar: 'user_avatar',
     username: 'user_name',
     avatar: 'user_avatar',
-    content: 'text',
     timestamp: 'timestamp',
     likedBy: 'liked_by',
     user_id: 'user_id',
@@ -147,7 +149,10 @@ function camelToSnake(str: string): string {
   return overrides[str] || str;
 }
 
-function snakeToCamel(str: string): string {
+function snakeToCamel(str: string, tableName?: string): string {
+  if (str === 'text') {
+    return tableName === 'comments' ? 'content' : 'text';
+  }
   const overrides: Record<string, string> = {
     created_at: 'createdAt',
     updated_at: 'updatedAt',
@@ -201,7 +206,6 @@ function snakeToCamel(str: string): string {
     api_key: 'apiKey',
     user_name: 'username',
     user_avatar: 'avatar',
-    text: 'content',
     timestamp: 'timestamp',
     liked_by: 'likedBy',
   };
@@ -255,7 +259,11 @@ class DocWrapper {
       if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
         try { val = JSON.parse(val); } catch {}
       }
-      mappedRow[snakeToCamel(k)] = val;
+      const camelKey = snakeToCamel(k, this.tableName);
+      mappedRow[camelKey] = val;
+      if (camelKey !== k) {
+        mappedRow[k] = val;
+      }
     }
     if (this.tableName === 'comments') {
       if (row.user_name !== undefined) {
@@ -293,10 +301,10 @@ class DocWrapper {
     const allData = { ...data };
     const snakeData: Record<string, any> = {};
     for (const [k, v] of Object.entries(allData)) {
-      snakeData[camelToSnake(k)] = v;
+      snakeData[camelToSnake(k, this.tableName)] = v;
     }
     // Ensure the PK value is set
-    const pkSnake = camelToSnake(pk);
+    const pkSnake = camelToSnake(pk, this.tableName);
     if (pk === 'id' && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
     if (pk === 'slug' && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
 
@@ -355,13 +363,13 @@ class CollectionWrapper {
 
   where(field: string, op: string, value: any): CollectionWrapper {
     const clone = this._clone();
-    clone.whereClauses.push({ field: camelToSnake(field), op: mapOp(op), value });
+    clone.whereClauses.push({ field: camelToSnake(field, this.tableName), op: mapOp(op), value });
     return clone;
   }
 
   orderBy(field: string, dir: string = 'asc'): CollectionWrapper {
     const clone = this._clone();
-    clone.orderClauses.push({ field: camelToSnake(field), dir: dir.toUpperCase() === 'DESC' ? 'DESC' : 'ASC' });
+    clone.orderClauses.push({ field: camelToSnake(field, this.tableName), dir: dir.toUpperCase() === 'DESC' ? 'DESC' : 'ASC' });
     return clone;
   }
 
@@ -413,7 +421,11 @@ class CollectionWrapper {
         if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
           try { val = JSON.parse(val); } catch {}
         }
-        mappedRow[snakeToCamel(k)] = val;
+        const camelKey = snakeToCamel(k, this.tableName);
+        mappedRow[camelKey] = val;
+        if (camelKey !== k) {
+          mappedRow[k] = val;
+        }
       }
       if (this.tableName === 'comments') {
         if (rowData.user_name !== undefined) {
@@ -462,7 +474,7 @@ class CollectionWrapper {
 
     const snakeData: Record<string, any> = {};
     for (const [k, v] of Object.entries(allData)) {
-      snakeData[camelToSnake(k)] = v;
+      snakeData[camelToSnake(k, this.tableName)] = v;
     }
 
     const keys = Object.keys(snakeData);

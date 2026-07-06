@@ -26,7 +26,7 @@ export function CreatorDetail() {
     avatar: ''
   });
 
-  const creator = users.find(u => u.id === Number(id));
+  const creator = users.find(u => String(u.id) === String(id));
   
   if (!creator) {
     return (

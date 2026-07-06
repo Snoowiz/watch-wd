@@ -9,6 +9,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { timingSafeEqual } from "crypto";
 
 export function bearerAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
@@ -43,8 +44,7 @@ export function bearerAuth(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
-  // Constant-time comparison to prevent timing attacks
-  if (token.length !== expectedToken.length || !timingSafeEqual(token, expectedToken)) {
+  if (token.length !== expectedToken.length) {
     res.status(401).json({
       error: "Unauthorized",
       message: "Invalid Bearer token.",
@@ -52,25 +52,28 @@ export function bearerAuth(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
-  next();
-}
-
-/**
- * Constant-time string comparison to prevent timing-based attacks.
- * Falls back to a manual byte comparison if crypto is unavailable.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-
   try {
-    const { timingSafeEqual: cryptoTimingSafe } = require("crypto");
-    return cryptoTimingSafe(Buffer.from(a), Buffer.from(b));
-  } catch {
-    // Manual constant-time comparison fallback
-    let result = 0;
-    for (let i = 0; i < a.length; i++) {
-      result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    if (!timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Invalid Bearer token.",
+      });
+      return;
     }
-    return result === 0;
+  } catch (err) {
+    // Fallback if Buffer comparison fails
+    let result = 0;
+    for (let i = 0; i < token.length; i++) {
+      result |= token.charCodeAt(i) ^ expectedToken.charCodeAt(i);
+    }
+    if (result !== 0) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Invalid Bearer token.",
+      });
+      return;
+    }
   }
+
+  next();
 }
