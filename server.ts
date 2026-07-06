@@ -2209,7 +2209,7 @@ async function startServer() {
 
       if (type === "top_up") {
         const currentBalance = Number(user?.balance || 0);
-        await userRef.update({ balance: currentBalance + amount });
+        await userRef.update({ balance: currentBalance + Number(amount) });
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
         notifyUser(userId, "Wallet Top-up Successful", `Your wallet has been credited with ${amount}.`, "success", "/profile");
         notifyAdmins("New Wallet Top-up", `User top-up: ${amount}`, "system", "/admin/transactions");
