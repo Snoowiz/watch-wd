@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   Building2, Plus, Edit3, Trash2, Save, X, CheckCircle, XCircle, 
   DollarSign, Link as LinkIcon, Mail, Loader2, Percent, Shield,
-  ExternalLink, AlertCircle
+  ExternalLink, AlertCircle, Image as ImageIcon
 } from 'lucide-react';
+import { MediaPickerModal } from '../../components/MediaPickerModal';
 
 interface Club {
   id: string;
@@ -40,6 +41,7 @@ export function AdminClubs() {
   const [editingClub, setEditingClub] = useState<Club | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -273,20 +275,42 @@ export function AdminClubs() {
                   />
                 </div>
               </div>
-              {/* Logo URL */}
+              {/* Logo Selection (Platform Media System) */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Logo URL
+                  Club Logo
                 </label>
-                <div className="relative">
-                  <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="url"
-                    value={formLogo}
-                    onChange={(e) => setFormLogo(e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 dark:text-white transition-colors"
-                  />
+                <div className="flex items-center gap-3">
+                  {/* Logo Preview */}
+                  <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
+                    {formLogo ? (
+                      <img src={formLogo} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Building2 className="w-5 h-5 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                          type="url"
+                          value={formLogo}
+                          onChange={(e) => setFormLogo(e.target.value)}
+                          placeholder="https://example.com/logo.png"
+                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 dark:text-white transition-colors"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowMediaPicker(true)}
+                        className="bg-violet-100 hover:bg-violet-200 dark:bg-violet-500/20 dark:hover:bg-violet-500/30 text-violet-700 dark:text-violet-300 font-bold px-3 py-2.5 rounded-xl text-xs transition-colors flex items-center gap-1.5 shrink-0"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                        Pick / Upload
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               {/* Stripe Connected Account ID */}
@@ -529,6 +553,14 @@ export function AdminClubs() {
           })}
         </div>
       )}
+
+      {/* Media Picker Modal */}
+      <MediaPickerModal
+        isOpen={showMediaPicker}
+        onClose={() => setShowMediaPicker(false)}
+        onSelect={(url) => setFormLogo(url)}
+        title="Select Partner Club Logo"
+      />
     </div>
   );
 }
