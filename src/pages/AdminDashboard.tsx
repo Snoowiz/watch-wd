@@ -5,7 +5,7 @@ import {
   Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
   Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
-  UserPlus, Award, PlayCircle, Ban, Trash2
+  UserPlus, Award, PlayCircle, Ban, Trash2, Building2
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -16,6 +16,7 @@ import { motion } from 'motion/react';
 import { AdminMatches } from './admin/AdminMatches';
 import { NewMatch } from './admin/NewMatch';
 import { Categories } from './admin/Categories';
+import { AdminClubs } from './admin/AdminClubs';
 
 import { AdminCreators } from './admin/AdminCreators';
 import { CreatorDetail } from './admin/CreatorDetail';
@@ -101,6 +102,7 @@ export function AdminDashboard() {
     { path: '/admin/media', icon: ImageIcon, label: 'Media' },
     { path: '/admin/blog', icon: Newspaper, label: 'Blog' },
     { path: '/admin/plans', icon: CreditCard, label: 'Subscriptions' },
+    { path: '/admin/clubs', icon: Building2, label: 'Partner Clubs' },
     { path: '/admin/ads', icon: DollarSign, label: 'Ad Manager' },
     { path: '/admin/tasks', icon: Gift, label: 'Missions' },
     { path: '/admin/creators', icon: Briefcase, label: 'Creators' },
@@ -294,6 +296,7 @@ export function AdminDashboard() {
               <Route path="/features" element={<AdminFeatures />} />
               <Route path="/tasks" element={<AdminTasks />} />
               <Route path="/plans" element={<AdminPlans />} />
+              <Route path="/clubs" element={<AdminClubs />} />
               <Route path="/ads" element={<AdManager />} />
               <Route path="/settings" element={<AdminSettings />} />
               <Route path="/transactions" element={<AdminTransactions />} />

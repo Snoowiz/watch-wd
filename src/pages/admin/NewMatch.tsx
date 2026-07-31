@@ -31,7 +31,9 @@ export function NewMatch() {
   const [accessType, setAccessType] = useState<'free' | 'ppv' | 'plan'>(existingMatch?.access_type || 'free');
   const [ppvPrice, setPpvPrice] = useState(existingMatch?.ppv_price || 50);
   const [requiredPlanId, setRequiredPlanId] = useState<string | number | null>(existingMatch?.required_plan_id || null);
+  const [clubId, setClubId] = useState<string | null>(existingMatch?.club_id || (existingMatch as any)?.clubId || null);
   const [plans, setPlans] = useState<any[]>([]);
+  const [clubs, setClubs] = useState<any[]>([]);
 
   const [adSettingsEnabled, setAdSettingsEnabled] = useState(existingMatch?.adSettings?.enabled ?? true);
   const [adFrequencyOverride, setAdFrequencyOverride] = useState(existingMatch?.adSettings?.frequencyOverride || '');
@@ -45,6 +47,14 @@ export function NewMatch() {
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setPlans(data);
+      })
+      .catch(console.error);
+
+    // Fetch active partner clubs
+    fetch('/api/clubs/active')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setClubs(data);
       })
       .catch(console.error);
   }, []);
@@ -83,6 +93,7 @@ export function NewMatch() {
       setAccessType((existingMatch.access_type || (existingMatch as any).accessType || 'free') as any);
       setPpvPrice(existingMatch.ppv_price || (existingMatch as any).ppvPrice || 50);
       setRequiredPlanId(existingMatch.required_plan_id || (existingMatch as any).requiredPlanId || null);
+      setClubId(existingMatch.club_id || (existingMatch as any).clubId || null);
       setAdSettingsEnabled(existingMatch.adSettings?.enabled ?? true);
       setAdFrequencyOverride(existingMatch.adSettings?.frequencyOverride || '');
       setAdCampaignIds(existingMatch.adSettings?.campaignIds || []);
@@ -130,6 +141,7 @@ export function NewMatch() {
         access_type: accessType,
         ppv_price: ppvPrice,
         required_plan_id: requiredPlanId,
+        club_id: clubId,
         embedPrice: ppvPrice * 10, // Default multiplier
         status,
         thumbnail: finalThumbnail || 'https://picsum.photos/seed/default/800/450',
@@ -403,6 +415,23 @@ export function NewMatch() {
                   </div>
                   <p className="mt-2 text-xs text-slate-400">
                     Entering a custom PPV amount means users without a covering plan must pay this amount.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Partner Club (For PPV Revenue Split)</label>
+                  <select
+                    value={clubId || ''}
+                    onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
+                  >
+                    <option value="">Select a partner club...</option>
+                    {clubs.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Select the partner club to receive automatic revenue distribution via Stripe Connect.
                   </p>
                 </div>
               </div>

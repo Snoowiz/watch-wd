@@ -133,6 +133,12 @@ function camelToSnake(str: string, tableName?: string): string {
     avatar: 'user_avatar',
     timestamp: 'timestamp',
     likedBy: 'liked_by',
+    clubId: 'club_id',
+    stripeAccountId: 'stripe_account_id',
+    stripeOnboardingComplete: 'stripe_onboarding_complete',
+    contactEmail: 'contact_email',
+    platformFeePercent: 'platform_fee_percent',
+    clubSharePercent: 'club_share_percent',
     user_id: 'user_id',
     match_id: 'match_id',
     category_id: 'category_id',
@@ -208,6 +214,12 @@ function snakeToCamel(str: string, tableName?: string): string {
     user_avatar: 'avatar',
     timestamp: 'timestamp',
     liked_by: 'likedBy',
+    club_id: 'clubId',
+    stripe_account_id: 'stripeAccountId',
+    stripe_onboarding_complete: 'stripeOnboardingComplete',
+    contact_email: 'contactEmail',
+    platform_fee_percent: 'platformFeePercent',
+    club_share_percent: 'clubSharePercent',
   };
   return overrides[str] || str;
 }

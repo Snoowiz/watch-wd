@@ -32,6 +32,8 @@ export function Checkout() {
         currency: platformCurrency || 'GBP'
       };
 
+      let endpoint = '/api/checkout/gateway/initialize';
+
       if (state.type === 'plan') {
          payload.type = 'plan';
          payload.metadata = { 
@@ -41,16 +43,21 @@ export function Checkout() {
          };
       } else if (state.metadata?.matchId) {
          payload.type = state.metadata.type || 'watch';
+         payload.matchId = state.metadata.matchId;
          payload.metadata = { 
            matchId: state.metadata.matchId,
            fromMatchSlug: state.metadata.matchSlug || state.metadata.fromMatchSlug || null
          };
+         // Use Stripe Connect PPV endpoint if payment gateway is Stripe
+         if (state.paymentMethod === 'stripe') {
+           endpoint = '/api/checkout/gateway/connect-ppv';
+         }
       } else {
          payload.type = 'top_up';
          payload.metadata = {};
       }
 
-      const response = await fetch('/api/checkout/gateway/initialize', {
+      let response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,6 +65,19 @@ export function Checkout() {
         },
         body: JSON.stringify(payload)
       });
+
+      // If connect-ppv failed because no club was assigned, fallback to standard initialize
+      if (!response.ok && endpoint === '/api/checkout/gateway/connect-ppv') {
+        endpoint = '/api/checkout/gateway/initialize';
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify(payload)
+        });
+      }
       
       const data = await response.json();
       if (!response.ok || !data.checkoutUrl) {

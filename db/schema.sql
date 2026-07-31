@@ -398,3 +398,33 @@ CREATE TABLE IF NOT EXISTS `blog_categories` (
   `description` VARCHAR(500) DEFAULT '',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- PARTNER CLUBS (Stripe Connect)
+-- ============================================
+CREATE TABLE IF NOT EXISTS `clubs` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `name` VARCHAR(255) NOT NULL,
+  `slug` VARCHAR(255) NOT NULL UNIQUE,
+  `logo` TEXT DEFAULT NULL,
+  `contact_email` VARCHAR(255) DEFAULT NULL,
+  `stripe_account_id` VARCHAR(255) DEFAULT NULL,
+  `stripe_onboarding_complete` TINYINT(1) DEFAULT 0,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- REVENUE POLICIES (Per-club split config)
+-- ============================================
+CREATE TABLE IF NOT EXISTS `revenue_policies` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `club_id` VARCHAR(100) NOT NULL,
+  `platform_fee_percent` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+  `club_share_percent` DECIMAL(5,2) NOT NULL DEFAULT 80.00,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_policy_club` (`club_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -846,6 +846,7 @@ export interface Match {
   access_type?: 'free' | 'ppv' | 'plan'; 
   ppv_price?: number;
   required_plan_id?: string | number | null;
+  club_id?: string | null;
   seo: {
     keywords: string;
     metaDescription: string;
