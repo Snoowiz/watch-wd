@@ -8,6 +8,7 @@ coverage/
 !.env.example
 server-pid.txt
 .agents/
+skills-lock.json
 adminer.php
 scratch/
 db/update.sql

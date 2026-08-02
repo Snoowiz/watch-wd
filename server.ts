@@ -13,6 +13,13 @@ import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
 import { testConnection, query, execute } from "./db/connection.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
+import { validateEnvironmentSecurity, securityHeaders, apiRateLimiter, authRateLimiter, corsControl } from "./api/middleware/security.js";
+import { createAuthRouter } from "./api/routes/auth.js";
+import { createPaymentRouter } from "./api/routes/payments.js";
+import { createUploadRouter } from "./api/routes/upload.js";
+import { createAIRouter } from "./api/routes/ai.js";
+import { createAnalyticsRouter } from "./api/routes/analytics.js";
+import { createAdminRouter } from "./api/routes/admin.js";
 
 dotenv.config();
 
@@ -174,6 +181,8 @@ async function notifyAdmins(title: string, message: string, type: string = 'syst
 }
 
 async function startServer() {
+  validateEnvironmentSecurity();
+
   const app = express();
   const PORT = process.env.APP_PORT || process.env.PORT || 3000;
   fs.writeFileSync('server-pid.txt', process.pid.toString());
@@ -188,6 +197,11 @@ async function startServer() {
     return `${finalProto}://${host}`;
   }
 
+  // Security Headers & Rate Limiting
+  app.use(securityHeaders);
+  app.use(corsControl);
+  app.use("/api", apiRateLimiter);
+
   app.use(express.json({ limit: "50mb" }));
   app.use((req, res, next) => {
     res.setHeader("X-My-Server", "true");
@@ -196,6 +210,14 @@ async function startServer() {
   });
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
   app.use("/api", (req, res, next) => { console.log(`[API] ${req.method} ${req.url}`); next(); });
+
+  // Modular API Routes
+  app.use("/api/auth", authRateLimiter, createAuthRouter(JWT_SECRET, cacheEngine));
+  app.use("/api/payments", createPaymentRouter(authenticate, cacheEngine));
+  app.use("/api/upload", createUploadRouter(authenticate, requireRole));
+  app.use("/api/ai", createAIRouter(authenticate));
+  app.use("/api/analytics", createAnalyticsRouter(authenticate, cacheEngine));
+  app.use("/api/admin", createAdminRouter(authenticate, requireRole, cacheEngine));
 
   // === API v1 — External third-party endpoints ===
   app.use("/api/v1/matches", createMatchRouter({ db, cacheEngine }));
