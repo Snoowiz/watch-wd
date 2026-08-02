@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useAuthStore, usePurchaseStore, useAdStore, Match, Advertisement } from '../store';
 import { X, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import DOMPurify from 'dompurify';
 
 interface AdOverlayProps {
   match: Match;
@@ -168,12 +167,12 @@ export function AdOverlay({ match }: AdOverlayProps) {
           ) : currentAd.type === 'html' || currentAd.type === 'adsense' ? (
             <div 
               className="w-full h-full p-4 flex items-center justify-center text-white [&_img]:max-w-full [&_img]:max-h-full"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentAd.code, { ADD_TAGS: ['iframe'], ADD_ATTR: ['src', 'target', 'allow', 'allowfullscreen', 'frameborder'] }) }}
+              dangerouslySetInnerHTML={{ __html: currentAd.code }}
             />
           ) : currentAd.type === 'embed' ? (
             <div 
               className="w-full h-full absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:border-0"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentAd.code, { ADD_TAGS: ['iframe'], ADD_ATTR: ['src', 'target', 'allow', 'allowfullscreen', 'frameborder'] }) }}
+              dangerouslySetInnerHTML={{ __html: currentAd.code }}
             />
           ) : (
             <div className="text-white p-4 text-center">

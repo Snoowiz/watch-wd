@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import DOMPurify from 'dompurify';
 import { useAuthStore, useCreatorStore, useNotificationStore, useCategoryStore, useSettingsStore } from '../../store';
 import { useUIStore } from '../../store/uiStore';
 import { 
@@ -222,7 +221,7 @@ export function StudioDashboard() {
                   </div>
                   <div className="bg-slate-50 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
                     {formData.description ? (
-                      <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formData.description, { ADD_TAGS: ['iframe'], ADD_ATTR: ['src', 'target', 'allow', 'allowfullscreen', 'frameborder'] }) }} />
+                      <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg" dangerouslySetInnerHTML={{ __html: formData.description }} />
                     ) : (
                       <>
                         <Eye className="w-8 h-8 text-slate-300 mb-2" />
