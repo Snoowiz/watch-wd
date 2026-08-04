@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Search, Globe, Image as ImageIcon, FileText, Share2, Cookie, Chrome } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Search, Globe, Image as ImageIcon, FileText, Share2, Cookie, Chrome, Newspaper, Database } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -8,7 +8,6 @@ import { AdminCookieSettings } from './AdminCookieSettings';
 import { AdminGoogleAuthSettings } from './AdminGoogleAuthSettings';
 import { MediaPicker } from '../../components/MediaPicker';
 import { AdminFirebaseSettings } from './AdminFirebaseSettings';
-import { Database } from 'lucide-react';
 
 export function AdminSettings() {
   const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase'>('seo');
@@ -745,6 +744,17 @@ export function AdminSettings() {
 
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
              <div className="flex items-center gap-3 mb-5">
+                <Newspaper className="w-6 h-6 text-indigo-500" />
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Blog System Visibility</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Enable or disable the global blog system and public visibility</p>
+                </div>
+             </div>
+             <BlogVisibilitySettings />
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+             <div className="flex items-center gap-3 mb-5">
                 <Globe className="w-6 h-6 text-indigo-500" />
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Platform Branding</h3>
@@ -1016,6 +1026,66 @@ function PlatformBrandingSettings() {
           onClose={() => setShowPicker(false)}
         />
       )}
+    </div>
+  );
+}
+
+function BlogVisibilitySettings() {
+  const { blogSettings, setBlogSettings } = useSettingsStore();
+  const [enabled, setEnabled] = useState(blogSettings?.enabled !== false);
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    setEnabled(blogSettings?.enabled !== false);
+  }, [blogSettings]);
+
+  const handleSave = () => {
+    setBlogSettings({ enabled });
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6 text-left">
+      <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Newspaper className="w-5 h-5 text-indigo-500" />
+            <h4 className="font-bold text-slate-900 dark:text-white">Blog System Toggle</h4>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+            Enable or disable the global blog system. When disabled, all blog pages, navigation links, widgets, search results, and admin management tools will be hidden without deleting any data.
+          </p>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer shrink-0">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => {
+              setEnabled(e.target.checked);
+              setIsSaved(false);
+            }}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-indigo-600"></div>
+        </label>
+      </div>
+
+      <div className="flex items-center justify-between pt-2">
+        <span className={`text-xs font-bold px-3 py-1 rounded-full ${enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'}`}>
+          Status: {enabled ? 'Active / Visible' : 'Disabled / Hidden'}
+        </span>
+        <button
+          onClick={handleSave}
+          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
+            isSaved 
+              ? 'bg-green-500 text-white' 
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+          }`}
+        >
+          {isSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save Settings'}
+        </button>
+      </div>
     </div>
   );
 }

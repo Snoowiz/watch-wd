@@ -4,13 +4,15 @@ import {
   LogOut, Settings as GearIcon,
   Sun, Moon, Monitor, Sparkles, LayoutDashboard, Video, MessageSquare, Users
 } from 'lucide-react';
-import { useAuthStore, useThemeStore, useFeatureStore } from '../store';
+import { useAuthStore, useThemeStore, useFeatureStore, useSettingsStore } from '../store';
 
 export function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const { user, setLogoutModalOpen } = useAuthStore();
   const { theme, setTheme, isDarkMode } = useThemeStore();
   const { isFeatureActive } = useFeatureStore();
+  const { blogSettings } = useSettingsStore();
+  const blogEnabled = blogSettings?.enabled !== false;
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -91,9 +93,11 @@ export function UserDropdown() {
               <Link to="/matches" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                 <Video className="w-5 h-5 text-slate-400" /> Matches
               </Link>
-              <Link to="/blog" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                <MessageSquare className="w-5 h-5 text-slate-400" /> Blog
-              </Link>
+              {blogEnabled && (
+                <Link to="/blog" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                  <MessageSquare className="w-5 h-5 text-slate-400" /> Blog
+                </Link>
+              )}
               {isFeatureActive('community_forum') && (
                 <Link to="/forum" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                   <Users className="w-5 h-5 text-slate-400" /> Community

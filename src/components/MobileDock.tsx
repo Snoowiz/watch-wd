@@ -3,7 +3,11 @@ import { Link, useLocation } from 'react-router-dom';
 import { Home, Video, Newspaper, Share2, Facebook, Twitter, Linkedin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+import { useSettingsStore } from '../store';
+
 export function MobileDock() {
+  const { blogSettings } = useSettingsStore();
+  const blogEnabled = blogSettings?.enabled !== false;
   const [showShare, setShowShare] = useState(false);
   const location = useLocation();
 
@@ -39,9 +43,11 @@ export function MobileDock() {
                 <Link to="/matches" className={`transition-colors ${(location.pathname.startsWith('/matches') || location.pathname.startsWith('/category')) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-500'}`}>
                   <Video className="w-5 h-5" />
                 </Link>
-                <Link to="/blog" className={`transition-colors ${location.pathname.startsWith('/blog') ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-500'}`}>
-                  <Newspaper className="w-5 h-5" />
-                </Link>
+                {blogEnabled && (
+                  <Link to="/blog" className={`transition-colors ${location.pathname.startsWith('/blog') ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-500'}`}>
+                    <Newspaper className="w-5 h-5" />
+                  </Link>
+                )}
               </motion.div>
             ) : (
               <motion.div 

@@ -48,8 +48,9 @@ import { SearchPage } from './pages/SearchPage';
 export default function App() {
   const { token, setAuth, logout, user, originalUser, revertLoginAs } = useAuthStore();
   const { theme, setDarkMode } = useThemeStore();
-  const { seoSettings, platformName: storedPlatformName, preloaderEnabled, fetchPaymentSettings, fetchSettings } = useSettingsStore();
+  const { seoSettings, platformName: storedPlatformName, preloaderEnabled, blogSettings, fetchPaymentSettings, fetchSettings } = useSettingsStore();
   const platformName = storedPlatformName || 'WatchWDS';
+  const blogEnabled = blogSettings?.enabled !== false;
 
   const { setFeatures } = useFeatureStore();
   const { fetchAds } = useAdStore();
@@ -309,8 +310,17 @@ export default function App() {
                 <Route path="/forum/category/:id" element={<ForumCategory />} />
                 <Route path="/forum/topic/:id" element={<ForumTopic />} />
                 <Route path="/profile" element={<Profile />} />
-                <Route path="/blog" element={<BlogList />} />
-                <Route path="/blog/:slug" element={<BlogPostDetails />} />
+                {blogEnabled ? (
+                  <>
+                    <Route path="/blog" element={<BlogList />} />
+                    <Route path="/blog/:slug" element={<BlogPostDetails />} />
+                  </>
+                ) : (
+                  <>
+                    <Route path="/blog" element={<Navigate to="/" replace />} />
+                    <Route path="/blog/:slug" element={<Navigate to="/" replace />} />
+                  </>
+                )}
                 <Route path="/saved" element={<SavedMatches />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/checkout/success" element={<CheckoutSuccess />} />

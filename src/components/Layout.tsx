@@ -11,8 +11,9 @@ import { CookieBanner } from './CookieBanner';
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, setLogoutModalOpen } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
-  const { currencySymbol, platformName: storedPlatformName, favicon } = useSettingsStore();
+  const { currencySymbol, platformName: storedPlatformName, favicon, blogSettings } = useSettingsStore();
   const platformName = storedPlatformName || 'WatchWDS';
+  const blogEnabled = blogSettings?.enabled !== false;
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useThemeStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -74,10 +75,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Video className="w-4 h-4" />
                   Matches
                 </Link>
-                <Link to="/blog" className="text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  Blog
-                </Link>
+                {blogEnabled && (
+                  <Link to="/blog" className="text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" />
+                    Blog
+                  </Link>
+                )}
                 {isFeatureActive('community_forum') && (
                   <Link to="/forum" className="text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2">
                     <MessageSquare className="w-4 h-4" />
@@ -147,10 +150,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Video className="w-4 h-4" />
                   Matches
                 </Link>
-                <Link to="/blog" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <MessageSquare className="w-4 h-4" />
-                  Blog
-                </Link>
+                {blogEnabled && (
+                  <Link to="/blog" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                    <MessageSquare className="w-4 h-4" />
+                    Blog
+                  </Link>
+                )}
                 {isFeatureActive('community_forum') && (
                   <Link to="/forum" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                     <MessageSquare className="w-4 h-4" />

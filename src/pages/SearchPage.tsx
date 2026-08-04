@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Search, Loader2, Video, MessageSquare, BookOpen, ChevronRight, HelpCircle, ArrowRight, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+import { useSettingsStore } from '../store';
+
 interface SearchResults {
   matches: any[];
   blogs: any[];
@@ -12,6 +14,8 @@ interface SearchResults {
 }
 
 export function SearchPage() {
+  const { blogSettings } = useSettingsStore();
+  const blogEnabled = blogSettings?.enabled !== false;
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'matches' | 'blog' | 'forum' | 'kb'>('all');
   const [results, setResults] = useState<SearchResults>({ matches: [], blogs: [], forums: [], kb: [], totalCount: 0 });
@@ -72,7 +76,7 @@ export function SearchPage() {
     if (activeTab === 'all' || activeTab === 'matches') {
       results.matches.forEach(m => list.push({ ...m, _type: 'match' }));
     }
-    if (activeTab === 'all' || activeTab === 'blog') {
+    if (blogEnabled && (activeTab === 'all' || activeTab === 'blog')) {
       results.blogs.forEach(b => list.push({ ...b, _type: 'blog' }));
     }
     if (activeTab === 'all' || activeTab === 'forum') {
@@ -179,16 +183,18 @@ export function SearchPage() {
                   {results.matches.length}
                 </span>
               </button>
-              <button
-                onClick={() => setActiveTab('blog')}
-                className={`flex items-center gap-1.5 px-4 py-2 border-b-2 font-bold text-sm rounded-t-lg shrink-0 transition-colors ${activeTab === 'blog' ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
-              >
-                <BookOpen className="w-4 h-4" />
-                CMS Blogs
-                <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] font-bold rounded-full text-slate-500">
-                  {results.blogs.length}
-                </span>
-              </button>
+              {blogEnabled && (
+                <button
+                  onClick={() => setActiveTab('blog')}
+                  className={`flex items-center gap-1.5 px-4 py-2 border-b-2 font-bold text-sm rounded-t-lg shrink-0 transition-colors ${activeTab === 'blog' ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                >
+                  <BookOpen className="w-4 h-4" />
+                  CMS Blogs
+                  <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] font-bold rounded-full text-slate-500">
+                    {results.blogs.length}
+                  </span>
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('forum')}
                 className={`flex items-center gap-1.5 px-4 py-2 border-b-2 font-bold text-sm rounded-t-lg shrink-0 transition-colors ${activeTab === 'forum' ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}

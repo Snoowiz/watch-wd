@@ -438,6 +438,10 @@ interface SEOSettings {
   robotsTxt: string;
 }
 
+export interface BlogSettings {
+  enabled: boolean;
+}
+
 interface SettingsState {
   currency: string;
   setCurrency: (currency: string) => void;
@@ -458,6 +462,8 @@ interface SettingsState {
   setPreloaderEnabled: (enabled: boolean) => void;
   googleAuthSettings: GoogleAuthSettings;
   setGoogleAuthSettings: (settings: GoogleAuthSettings) => void;
+  blogSettings: BlogSettings;
+  setBlogSettings: (settings: BlogSettings) => void;
   fetchSettings: () => Promise<void>;
 }
 
@@ -573,6 +579,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       body: JSON.stringify(settings)
     }).catch(console.error);
   },
+  blogSettings: {
+    enabled: true
+  },
+  setBlogSettings: (settings) => {
+    set({ blogSettings: settings });
+    saveSettingHelper('blog', settings);
+  },
   fetchSettings: async () => {
     try {
       const brandingRes = await fetch('/api/settings/branding');
@@ -613,6 +626,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             redirectUri: ''
           }
         });
+      }
+      const blogRes = await fetch('/api/settings/blog');
+      if (blogRes.ok) {
+        const data = await blogRes.json();
+        set({ blogSettings: { enabled: data.enabled !== false } });
       }
     } catch (err) {
       console.error("Failed to fetch settings:", err);

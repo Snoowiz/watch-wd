@@ -39,6 +39,8 @@ export function AdminDashboard() {
   const { user, setLogoutModalOpen } = useAuthStore();
   const { isDarkMode, toggleDarkMode } = useThemeStore();
   const { users = [], setUsers } = useUsersStore();
+  const { blogSettings } = useSettingsStore();
+  const blogEnabled = blogSettings?.enabled !== false;
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -100,7 +102,7 @@ export function AdminDashboard() {
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/matches', icon: Video, label: 'Matches' },
     { path: '/admin/media', icon: ImageIcon, label: 'Media' },
-    { path: '/admin/blog', icon: Newspaper, label: 'Blog' },
+    ...(blogEnabled ? [{ path: '/admin/blog', icon: Newspaper, label: 'Blog' }] : []),
     { path: '/admin/plans', icon: CreditCard, label: 'Subscriptions' },
     { path: '/admin/clubs', icon: Building2, label: 'Partner Clubs' },
     { path: '/admin/ads', icon: DollarSign, label: 'Ad Manager' },
@@ -287,8 +289,12 @@ export function AdminDashboard() {
               <Route path="/creators" element={<AdminCreators />} />
               <Route path="/creators/:id" element={<CreatorDetail />} />
               <Route path="/media" element={<AdminMedia />} />
-              <Route path="/blog" element={<AdminBlogPosts />} />
-              <Route path="/blog/categories" element={<AdminBlogCategories />} />
+              {blogEnabled && (
+                <>
+                  <Route path="/blog" element={<AdminBlogPosts />} />
+                  <Route path="/blog/categories" element={<AdminBlogCategories />} />
+                </>
+              )}
               <Route path="/matches" element={<AdminMatches />} />
               <Route path="/matches/new" element={<NewMatch />} />
               <Route path="/matches/:id/edit" element={<NewMatch />} />
