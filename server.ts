@@ -3490,7 +3490,7 @@ async function startServer() {
   // === SLIDING PUZZLE CAPTCHA API ===
   const captchaStore = new Map<string, { targetX: number; createdAt: number; used: boolean }>();
   const CAPTCHA_EXPIRY_MS = 120_000; // 2 minutes
-  const CAPTCHA_TOLERANCE = 8; // pixels
+  const CAPTCHA_TOLERANCE = 25; // pixels tolerance (allows easy ~50% piece overlap pass)
 
   // Cleanup expired tokens periodically
   setInterval(() => {

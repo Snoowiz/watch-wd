@@ -237,13 +237,19 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
 
     if (!captchaToken) return;
 
+    // Calculate actual piece X position on canvas (0 to CANVAS_WIDTH - PIECE_SIZE)
+    const trackWidth = trackRef.current?.offsetWidth || CANVAS_WIDTH;
+    const maxSlide = trackWidth - 44;
+    const maxPieceX = CANVAS_WIDTH - PIECE_SIZE;
+    const pieceX = Math.round(maxSlide > 0 ? (sliderX / maxSlide) * maxPieceX : 0);
+
     // Server-side verification
     setStatus('verifying');
     try {
       const res = await fetch('/api/captcha/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: captchaToken, sliderX: Math.round(sliderX) })
+        body: JSON.stringify({ token: captchaToken, sliderX: pieceX })
       });
       const data = await res.json();
 
@@ -267,6 +273,10 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
   };
 
   if (!isOpen) return null;
+
+  const trackWidth = trackRef.current?.offsetWidth || CANVAS_WIDTH;
+  const maxSlide = trackWidth - 44;
+  const currentPieceX = maxSlide > 0 ? (sliderX / maxSlide) * (CANVAS_WIDTH - PIECE_SIZE) : 0;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -314,7 +324,7 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
                 ref={pieceCanvasRef}
                 className="absolute pointer-events-none transition-none"
                 style={{
-                  left: `${(sliderX / (CANVAS_WIDTH - 44)) * 100}%`,
+                  left: `${(currentPieceX / CANVAS_WIDTH) * 100}%`,
                   top: `${(targetY / CANVAS_HEIGHT) * 100}%`,
                   width: `${((PIECE_SIZE + 20) / CANVAS_WIDTH) * 100}%`,
                   transform: 'translateX(-5px) translateY(-5px)',
