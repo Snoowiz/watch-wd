@@ -464,6 +464,8 @@ interface SettingsState {
   setGoogleAuthSettings: (settings: GoogleAuthSettings) => void;
   blogSettings: BlogSettings;
   setBlogSettings: (settings: BlogSettings) => void;
+  captchaEnabled: boolean;
+  setCaptchaEnabled: (enabled: boolean) => void;
   fetchSettings: () => Promise<void>;
 }
 
@@ -586,6 +588,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ blogSettings: settings });
     saveSettingHelper('blog', settings);
   },
+  captchaEnabled: false,
+  setCaptchaEnabled: (enabled) => {
+    set({ captchaEnabled: enabled });
+    saveSettingHelper('captcha', { enabled });
+  },
   fetchSettings: async () => {
     try {
       const brandingRes = await fetch('/api/settings/branding');
@@ -631,6 +638,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (blogRes.ok) {
         const data = await blogRes.json();
         set({ blogSettings: { enabled: data.enabled !== false } });
+      }
+      const captchaRes = await fetch('/api/captcha/status');
+      if (captchaRes.ok) {
+        const data = await captchaRes.json();
+        set({ captchaEnabled: data.enabled === true });
       }
     } catch (err) {
       console.error("Failed to fetch settings:", err);

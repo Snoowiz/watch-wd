@@ -1,21 +1,23 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore, useSettingsStore } from '../store';
 import { AlertCircle } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
+import { SlidingPuzzleCaptcha } from '../components/SlidingPuzzleCaptcha';
 
 export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showCaptcha, setShowCaptcha] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { setAuth } = useAuthStore();
-  const { googleAuthSettings } = useSettingsStore();
+  const { googleAuthSettings, captchaEnabled } = useSettingsStore();
 
   // Determine where to redirect after login
   const redirectTo = (location.state as any)?.from || '/';
@@ -57,9 +59,9 @@ export function Login() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performLogin = async (captchaToken?: string) => {
     setError('');
+    setIsLoading(true);
     
     try {
       let device_id = localStorage.getItem('device_id');
@@ -71,7 +73,7 @@ export function Login() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, device_id })
+        body: JSON.stringify({ email, password, device_id, captchaToken })
       });
       
       const data = await res.json();
@@ -81,7 +83,27 @@ export function Login() {
       navigate(redirectTo);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    if (captchaEnabled) {
+      // Show CAPTCHA modal — login will proceed after solving
+      setShowCaptcha(true);
+    } else {
+      // No CAPTCHA required, submit directly
+      performLogin();
+    }
+  };
+
+  const handleCaptchaSuccess = (verifiedToken: string) => {
+    setShowCaptcha(false);
+    performLogin(verifiedToken);
   };
 
   const getFriendlyErrorMessage = (errMsg: string) => {
@@ -194,6 +216,13 @@ export function Login() {
           </Link>
         </p>
       </div>
+
+      {/* Sliding Puzzle CAPTCHA Modal */}
+      <SlidingPuzzleCaptcha
+        isOpen={showCaptcha}
+        onSuccess={handleCaptchaSuccess}
+        onClose={() => setShowCaptcha(false)}
+      />
     </div>
   );
 }

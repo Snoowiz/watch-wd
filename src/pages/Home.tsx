@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore, useMatchStore, useSettingsStore, useBlogStore, useSavedMatchesStore } from '../store';
-import { Video, Lock, Unlock, PlayCircle, MessageSquare, Newspaper, ExternalLink, Loader2, Calendar, Clock, ChevronRight, ChevronLeft, Bookmark } from 'lucide-react';
+import { Video, Lock, Unlock, PlayCircle, CreditCard, Newspaper, ExternalLink, Loader2, Calendar, Clock, ChevronRight, ChevronLeft, Bookmark } from 'lucide-react';
 import { getLatestSportsNews, NewsItem } from '../services/geminiService';
 import { format } from 'date-fns';
 import { stripHtml } from '../utils';
@@ -272,12 +272,12 @@ export function Home() {
             </div>
           </div>
           <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-xl transition-all group flex flex-row items-start gap-4 sm:gap-6">
-            <div className="w-12 h-12 sm:w-16 sm:h-16 shrink-0 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
-              <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8" />
+            <div className="w-12 h-12 sm:w-16 sm:h-16 shrink-0 bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+              <CreditCard className="w-6 h-6 sm:w-8 sm:h-8" />
             </div>
             <div>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mb-1 sm:mb-2 tracking-tight">Community Hub</h3>
-              <p className="text-slate-600 dark:text-slate-400 leading-relaxed font-medium text-xs sm:text-sm">Join the discussion in our forums, react to matches, and connect with other fans.</p>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mb-1 sm:mb-2 tracking-tight">Flexible Subscriptions</h3>
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed font-medium text-xs sm:text-sm">Subscribe to custom plans for unlimited access to exclusive team broadcasts, replays, and full match passes.</p>
             </div>
           </div>
         </section>

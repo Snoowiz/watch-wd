@@ -6,6 +6,7 @@ import { UserPlus, AlertCircle } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
+import { SlidingPuzzleCaptcha } from '../components/SlidingPuzzleCaptcha';
 
 export function Register() {
   const [name, setName] = useState('');
@@ -13,10 +14,11 @@ export function Register() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showCaptcha, setShowCaptcha] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { setAuth } = useAuthStore();
-  const { googleAuthSettings } = useSettingsStore();
+  const { googleAuthSettings, captchaEnabled } = useSettingsStore();
 
   // Determine where to redirect after registration
   const redirectTo = (location.state as any)?.from || '/';
@@ -58,9 +60,9 @@ export function Register() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performRegister = async (captchaToken?: string) => {
     setError('');
+    setIsLoading(true);
 
     try {
       let device_id = localStorage.getItem('device_id');
@@ -72,7 +74,7 @@ export function Register() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, device_id })
+        body: JSON.stringify({ name, email, password, device_id, captchaToken })
       });
 
       const data = await res.json();
@@ -84,7 +86,27 @@ export function Register() {
       navigate(redirectTo);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (captchaEnabled) {
+      // Show CAPTCHA modal — registration will proceed after solving
+      setShowCaptcha(true);
+    } else {
+      // No CAPTCHA required, submit directly
+      performRegister();
+    }
+  };
+
+  const handleCaptchaSuccess = (verifiedToken: string) => {
+    setShowCaptcha(false);
+    performRegister(verifiedToken);
   };
 
   const getFriendlyErrorMessage = (errMsg: string) => {
@@ -208,6 +230,13 @@ export function Register() {
           </Link>
         </p>
       </div>
+
+      {/* Sliding Puzzle CAPTCHA Modal */}
+      <SlidingPuzzleCaptcha
+        isOpen={showCaptcha}
+        onSuccess={handleCaptchaSuccess}
+        onClose={() => setShowCaptcha(false)}
+      />
     </div>
   );
 }

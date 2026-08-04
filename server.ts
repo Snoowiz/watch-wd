@@ -7,6 +7,7 @@ import fs from "fs";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
 import Stripe from "stripe";
+import crypto from "crypto";
 import dotenv from "dotenv";
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
@@ -3483,6 +3484,107 @@ async function startServer() {
     } catch (e: any) {
       console.error("Stripe webhook error:", e);
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === SLIDING PUZZLE CAPTCHA API ===
+  const captchaStore = new Map<string, { targetX: number; createdAt: number; used: boolean }>();
+  const CAPTCHA_EXPIRY_MS = 120_000; // 2 minutes
+  const CAPTCHA_TOLERANCE = 8; // pixels
+
+  // Cleanup expired tokens periodically
+  setInterval(() => {
+    const now = Date.now();
+    for (const [token, data] of captchaStore.entries()) {
+      if (now - data.createdAt > CAPTCHA_EXPIRY_MS) {
+        captchaStore.delete(token);
+      }
+    }
+  }, 60_000);
+
+  // Generate a new captcha challenge
+  app.post("/api/captcha/generate", async (_req, res) => {
+    try {
+      const token = crypto.randomBytes(32).toString('hex');
+      const CANVAS_WIDTH = 320;
+      const CANVAS_HEIGHT = 180;
+      const PIECE_SIZE = 48;
+
+      // Random target position (keeping piece within visible area)
+      const targetX = Math.floor(Math.random() * (CANVAS_WIDTH - PIECE_SIZE - 80)) + 60;
+      const targetY = Math.floor(Math.random() * (CANVAS_HEIGHT - PIECE_SIZE - 30)) + 15;
+      const imageIndex = Math.floor(Math.random() * 6);
+
+      captchaStore.set(token, { targetX, createdAt: Date.now(), used: false });
+
+      res.json({ token, targetX, targetY, imageIndex });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Verify captcha solution
+  app.post("/api/captcha/verify", async (req, res) => {
+    try {
+      const { token, sliderX } = req.body;
+
+      if (!token || sliderX === undefined) {
+        return res.status(400).json({ success: false, error: "Missing token or slider position" });
+      }
+
+      const challenge = captchaStore.get(token);
+      if (!challenge) {
+        return res.json({ success: false, error: "Invalid or expired captcha" });
+      }
+
+      // Check expiry
+      if (Date.now() - challenge.createdAt > CAPTCHA_EXPIRY_MS) {
+        captchaStore.delete(token);
+        return res.json({ success: false, error: "Captcha expired" });
+      }
+
+      // Check single-use
+      if (challenge.used) {
+        captchaStore.delete(token);
+        return res.json({ success: false, error: "Captcha already used" });
+      }
+
+      // Validate position with tolerance
+      const diff = Math.abs(Number(sliderX) - challenge.targetX);
+      if (diff <= CAPTCHA_TOLERANCE) {
+        // Mark as used
+        challenge.used = true;
+
+        // Generate a verified token (single-use proof for login/register)
+        const verifiedToken = crypto.randomBytes(24).toString('hex');
+        const hmac = crypto.createHmac('sha256', JWT_SECRET).update(verifiedToken).digest('hex');
+        const verifiedKey = `captcha_verified_${hmac}`;
+
+        // Store verified token with short expiry (30 seconds)
+        captchaStore.set(verifiedKey, { targetX: 0, createdAt: Date.now(), used: false });
+
+        // Clean up the challenge token
+        captchaStore.delete(token);
+
+        return res.json({ success: true, verifiedToken: `${verifiedToken}.${hmac}` });
+      }
+
+      // Failed — remove token to force regeneration
+      captchaStore.delete(token);
+      return res.json({ success: false, error: "Position mismatch" });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // Check if captcha is enabled (public)
+  app.get("/api/captcha/status", async (_req, res) => {
+    try {
+      const snap = await db.collection("settings").doc("captcha").get();
+      const enabled = snap.exists ? (snap.data()?.enabled !== false) : false;
+      res.json({ enabled });
+    } catch (e: any) {
+      res.json({ enabled: false });
     }
   });
 

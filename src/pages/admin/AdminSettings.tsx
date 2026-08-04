@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Search, Globe, Image as ImageIcon, FileText, Share2, Cookie, Chrome, Newspaper, Database } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Search, Globe, Image as ImageIcon, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -10,14 +10,15 @@ import { MediaPicker } from '../../components/MediaPicker';
 import { AdminFirebaseSettings } from './AdminFirebaseSettings';
 
 export function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase'>('seo');
+  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security'>('seo');
   
   // Payment States
   const { 
     currency, setCurrency,
     currencySymbol, setCurrencySymbol,
     paymentSettings, setPaymentSettings,
-    seoSettings, setSeoSettings
+    seoSettings, setSeoSettings,
+    captchaEnabled, setCaptchaEnabled
   } = useSettingsStore();
 
   const [localCurrency, setLocalCurrency] = useState(currency);
@@ -191,6 +192,17 @@ export function AdminSettings() {
         >
           <Database className="w-4 h-4 text-orange-500" />
           Firebase Config
+        </button>
+        <button
+          onClick={() => setActiveTab('security')}
+          className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
+            activeTab === 'security'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+          Security
         </button>
       </div>
 
@@ -826,6 +838,53 @@ export function AdminSettings() {
               Firebase Integration
             </h2>
             <AdminFirebaseSettings />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'security' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-4">
+              <ShieldCheck className="w-6 h-6 text-emerald-500" />
+              Security Settings
+            </h2>
+
+            {/* Sliding Puzzle CAPTCHA Toggle */}
+            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 mr-6">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">Sliding Puzzle CAPTCHA</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Require users to solve a sliding puzzle verification before logging in or registering. 
+                    This helps prevent automated bot attacks and spam account creation.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={captchaEnabled}
+                    onChange={(e) => setCaptchaEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+              <div className="mt-4 flex items-center gap-3">
+                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                  captchaEnabled 
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' 
+                    : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                }`}>
+                  {captchaEnabled ? '🛡️ CAPTCHA Active' : '⚠️ CAPTCHA Disabled'}
+                </span>
+                {captchaEnabled && (
+                  <span className="text-xs text-slate-400 dark:text-slate-500">
+                    Users must solve a puzzle before login/register
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
