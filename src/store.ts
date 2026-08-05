@@ -466,6 +466,8 @@ interface SettingsState {
   setBlogSettings: (settings: BlogSettings) => void;
   captchaEnabled: boolean;
   setCaptchaEnabled: (enabled: boolean) => void;
+  captchaTolerance: number;
+  setCaptchaTolerance: (tolerance: number) => void;
   fetchSettings: () => Promise<void>;
 }
 
@@ -589,9 +591,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSettingHelper('blog', settings);
   },
   captchaEnabled: false,
+  captchaTolerance: 25,
   setCaptchaEnabled: (enabled) => {
     set({ captchaEnabled: enabled });
-    saveSettingHelper('captcha', { enabled });
+    saveSettingHelper('captcha', { enabled, tolerance: get().captchaTolerance });
+  },
+  setCaptchaTolerance: (tolerance) => {
+    set({ captchaTolerance: tolerance });
+    saveSettingHelper('captcha', { enabled: get().captchaEnabled, tolerance });
   },
   fetchSettings: async () => {
     try {
@@ -642,7 +649,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const captchaRes = await fetch('/api/captcha/status');
       if (captchaRes.ok) {
         const data = await captchaRes.json();
-        set({ captchaEnabled: data.enabled === true });
+        set({ 
+          captchaEnabled: data.enabled === true,
+          captchaTolerance: typeof data.tolerance === 'number' ? data.tolerance : 25
+        });
       }
     } catch (err) {
       console.error("Failed to fetch settings:", err);

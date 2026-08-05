@@ -3549,9 +3549,19 @@ async function startServer() {
         return res.json({ success: false, error: "Captcha already used" });
       }
 
-      // Validate position with tolerance
+      // Validate position with tolerance (dynamically loaded from admin settings)
+      let tolerance = 25;
+      try {
+        const snap = await db.collection("settings").doc("captcha").get();
+        if (snap.exists && snap.data()?.tolerance !== undefined) {
+          tolerance = Number(snap.data()?.tolerance);
+        }
+      } catch (err) {
+        console.error("Failed to read captcha tolerance setting:", err);
+      }
+
       const diff = Math.abs(Number(sliderX) - challenge.targetX);
-      if (diff <= CAPTCHA_TOLERANCE) {
+      if (diff <= tolerance) {
         // Mark as used
         challenge.used = true;
 
@@ -3577,14 +3587,16 @@ async function startServer() {
     }
   });
 
-  // Check if captcha is enabled (public)
+  // Check if captcha is enabled and fetch tolerance setting (public)
   app.get("/api/captcha/status", async (_req, res) => {
     try {
       const snap = await db.collection("settings").doc("captcha").get();
-      const enabled = snap.exists ? (snap.data()?.enabled !== false) : false;
-      res.json({ enabled });
+      const data = snap.exists ? snap.data() : {};
+      const enabled = data?.enabled === true;
+      const tolerance = typeof data?.tolerance === 'number' ? data.tolerance : 25;
+      res.json({ enabled, tolerance });
     } catch (e: any) {
-      res.json({ enabled: false });
+      res.json({ enabled: false, tolerance: 25 });
     }
   });
 
