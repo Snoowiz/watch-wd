@@ -65,17 +65,21 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
   const sliderRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
+  const sliderXRef = useRef(0);
+  const isDraggingRef = useRef(false);
 
   const CANVAS_WIDTH = 320;
   const CANVAS_HEIGHT = 180;
   const PIECE_SIZE = 48;
-  const TOLERANCE = 8;
 
   // Initialize puzzle challenge from server
   const initPuzzle = useCallback(async () => {
     setIsLoading(true);
     setStatus('idle');
     setSliderX(0);
+    sliderXRef.current = 0;
+    isDraggingRef.current = false;
+    setIsDragging(false);
 
     try {
       const res = await fetch('/api/captcha/generate', { method: 'POST' });
@@ -215,33 +219,55 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
   }, [isOpen, initPuzzle]);
 
   // Drag handlers
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (status !== 'idle') return;
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+    e.stopPropagation();
+    isDraggingRef.current = true;
     setIsDragging(true);
-    startXRef.current = e.clientX - sliderX;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    startXRef.current = e.clientX - sliderXRef.current;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {
+      console.error('Pointer capture error:', err);
+    }
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDragging || status !== 'idle') return;
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || status !== 'idle') return;
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     const trackWidth = trackRef.current?.offsetWidth || CANVAS_WIDTH;
     const maxSlide = trackWidth - 44; // Handle width
     let newX = e.clientX - startXRef.current;
     newX = Math.max(0, Math.min(newX, maxSlide));
+    sliderXRef.current = newX;
     setSliderX(newX);
   };
 
-  const handlePointerUp = async () => {
-    if (!isDragging || status !== 'idle') return;
+  const handlePointerUp = async (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current || status !== 'idle') return;
+    isDraggingRef.current = false;
     setIsDragging(false);
 
+    if (e.currentTarget && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+
     if (!captchaToken) return;
+
+    const finalSliderX = sliderXRef.current;
 
     // Calculate actual piece X position on canvas (0 to CANVAS_WIDTH - PIECE_SIZE)
     const trackWidth = trackRef.current?.offsetWidth || CANVAS_WIDTH;
     const maxSlide = trackWidth - 44;
     const maxPieceX = CANVAS_WIDTH - PIECE_SIZE;
-    const pieceX = Math.round(maxSlide > 0 ? (sliderX / maxSlide) * maxPieceX : 0);
+    const pieceX = Math.round(maxSlide > 0 ? (finalSliderX / maxSlide) * maxPieceX : 0);
 
     // Server-side verification
     setStatus('verifying');
@@ -272,6 +298,21 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
     }
   };
 
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+
+    if (e.currentTarget && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+
+    sliderXRef.current = 0;
+    setSliderX(0);
+  };
+
   if (!isOpen) return null;
 
   const trackWidth = trackRef.current?.offsetWidth || CANVAS_WIDTH;
@@ -279,11 +320,12 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
   const currentPieceX = maxSlide > 0 ? (sliderX / maxSlide) * (CANVAS_WIDTH - PIECE_SIZE) : 0;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 select-none touch-none" style={{ touchAction: 'none' }}>
       <div
-        className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-[360px] max-w-[95vw] overflow-hidden ${
+        className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-[360px] max-w-[95vw] overflow-hidden select-none touch-none ${
           status === 'error' ? 'animate-shake' : ''
         }`}
+        style={{ touchAction: 'none' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-700">
@@ -305,30 +347,31 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
         </div>
 
         {/* Puzzle Canvas */}
-        <div className="relative px-5 pt-4">
+        <div className="relative px-5 pt-4 select-none touch-none" style={{ touchAction: 'none' }}>
           {isLoading ? (
             <div className="w-full aspect-[16/9] bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-slate-400 animate-spin" />
             </div>
           ) : (
-            <div className="relative">
+            <div className="relative select-none touch-none" style={{ touchAction: 'none' }}>
               <canvas
                 ref={canvasRef}
                 width={CANVAS_WIDTH}
                 height={CANVAS_HEIGHT}
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-700"
-                style={{ imageRendering: 'auto' }}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 pointer-events-none select-none touch-none"
+                style={{ imageRendering: 'auto', touchAction: 'none' }}
               />
               {/* Floating puzzle piece */}
               <canvas
                 ref={pieceCanvasRef}
-                className="absolute pointer-events-none transition-none"
+                className="absolute pointer-events-none transition-none select-none touch-none"
                 style={{
                   left: `${(currentPieceX / CANVAS_WIDTH) * 100}%`,
                   top: `${(targetY / CANVAS_HEIGHT) * 100}%`,
                   width: `${((PIECE_SIZE + 20) / CANVAS_WIDTH) * 100}%`,
                   transform: 'translateX(-5px) translateY(-5px)',
                   filter: status === 'success' ? 'drop-shadow(0 0 8px rgba(34,197,94,0.6))' : 'drop-shadow(2px 2px 4px rgba(0,0,0,0.3))',
+                  touchAction: 'none',
                 }}
               />
               {/* Success overlay */}
@@ -344,10 +387,10 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
         </div>
 
         {/* Slider Track */}
-        <div className="px-5 pt-4 pb-5">
+        <div className="px-5 pt-4 pb-5 select-none touch-none" style={{ touchAction: 'none' }}>
           <div
             ref={trackRef}
-            className={`relative w-full h-11 rounded-full border-2 transition-colors duration-300 ${
+            className={`relative w-full h-11 rounded-full border-2 transition-colors duration-300 select-none touch-none ${
               status === 'success'
                 ? 'bg-green-50 dark:bg-green-950/30 border-green-400 dark:border-green-500'
                 : status === 'error'
@@ -356,6 +399,7 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
                 ? 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-400 dark:border-yellow-500'
                 : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-700'
             }`}
+            style={{ touchAction: 'none' }}
           >
             {/* Progress fill */}
             <div
@@ -383,7 +427,7 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
             {/* Draggable handle */}
             <div
               ref={sliderRef}
-              className={`absolute top-1/2 -translate-y-1/2 w-10 h-10 rounded-full cursor-grab active:cursor-grabbing shadow-lg flex items-center justify-center transition-colors duration-300 select-none ${
+              className={`absolute top-1/2 -translate-y-1/2 w-10 h-10 rounded-full cursor-grab active:cursor-grabbing shadow-lg flex items-center justify-center transition-colors duration-300 select-none touch-none ${
                 status === 'success'
                   ? 'bg-green-500 text-white shadow-green-500/30'
                   : status === 'error'
@@ -392,18 +436,24 @@ export function SlidingPuzzleCaptcha({ isOpen, onSuccess, onClose }: SlidingPuzz
                   ? 'bg-indigo-600 text-white shadow-indigo-500/30 scale-110'
                   : 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-600 hover:bg-indigo-50 dark:hover:bg-slate-600'
               }`}
-              style={{ left: `${sliderX}px`, transition: isDragging ? 'none' : 'background-color 0.3s, transform 0.15s' }}
+              style={{
+                left: `${sliderX}px`,
+                touchAction: 'none',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                transition: isDragging ? 'none' : 'background-color 0.3s, transform 0.15s'
+              }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
+              onPointerCancel={handlePointerCancel}
             >
               {status === 'success' ? (
-                <Check className="w-5 h-5" strokeWidth={3} />
+                <Check className="w-5 h-5 pointer-events-none" strokeWidth={3} />
               ) : status === 'error' ? (
-                <X className="w-5 h-5" strokeWidth={3} />
+                <X className="w-5 h-5 pointer-events-none" strokeWidth={3} />
               ) : (
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-5 h-5 pointer-events-none" />
               )}
             </div>
           </div>
