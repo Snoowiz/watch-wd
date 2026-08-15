@@ -8,6 +8,7 @@ import {
   Eye, Code, Layout, Type, Plus, MessageSquare, Clock, Loader2
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
+import DOMPurify from 'dompurify';
 import 'react-quill-new/dist/quill.snow.css';
 import { MediaPicker } from '../../components/MediaPicker';
 import { compressImage } from '../../lib/imageCompressor';
@@ -288,7 +289,7 @@ export function NewMatch() {
               </div>
               <div className="bg-slate-100 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
                 {description ? (
-                  <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg" dangerouslySetInnerHTML={{ __html: description }} />
+                  <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(description) }} />
                 ) : (
                   <>
                     <Eye className="w-8 h-8 text-slate-300 mb-2" />

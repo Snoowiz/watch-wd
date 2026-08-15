@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { Search, Loader2, Video, MessageSquare, BookOpen, ChevronRight, HelpCircle, ArrowRight, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -375,7 +376,7 @@ export function SearchPage() {
                         <h3 className="font-bold sm:text-lg text-slate-900 dark:text-white group-hover:text-yellow-500 transition-colors">
                           {item.title}
                         </h3>
-                        <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 max-w-xl" dangerouslySetInnerHTML={{ __html: item.content }} />
+                        <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 max-w-xl" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.content) }} />
                       </div>
                     </div>
                     <Link

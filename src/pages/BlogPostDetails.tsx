@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { useBlogStore, useAuthStore } from '../store';
 import { Calendar, Clock, Eye, Heart, Share2, ArrowLeft, Volume2, VolumeX, MessageSquare, Tag as TagIcon, Lock } from 'lucide-react';
 import { format } from 'date-fns';
@@ -213,7 +214,7 @@ export function BlogPostDetails() {
       {/* Content */}
       <div ref={contentRef} className="prose prose-lg dark:prose-invert prose-indigo mx-auto lg:mx-0 max-w-none break-words">
         {hasAccess() ? (
-          <div dangerouslySetInnerHTML={{ __html: post.content }} className="break-words [&_p]:[overflow-wrap:anywhere] [&_p]:break-words [&_img]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:overflow-x-auto [&_table]:max-w-full" />
+          <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }} className="break-words [&_p]:[overflow-wrap:anywhere] [&_p]:break-words [&_img]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:overflow-x-auto [&_table]:max-w-full" />
         ) : (
           <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-8 sm:p-12 text-center">
             <Lock className="w-12 h-12 text-slate-400 mx-auto mb-4" />

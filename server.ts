@@ -9,6 +9,7 @@ import nodemailer from "nodemailer";
 import Stripe from "stripe";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import helmet from "helmet";
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
@@ -16,6 +17,27 @@ import { testConnection, query, execute } from "./db/connection.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
 
 dotenv.config();
+
+function sanitizeMatchForPublic(match: any) {
+  if (!match) return match;
+  const sanitized = { ...match };
+  delete sanitized.video_url;
+  delete sanitized.videoUrl;
+  delete sanitized.embed_code;
+  delete sanitized.embedCode;
+  delete sanitized.stream_key;
+  delete sanitized.streamKey;
+  delete sanitized.playback_id;
+  delete sanitized.playbackId;
+  delete sanitized.stream_url;
+  delete sanitized.streamUrl;
+  if (sanitized.access === 'paid' || sanitized.access_type === 'ppv' || sanitized.access_type === 'plan') {
+    delete sanitized.description;
+  } else if (typeof sanitized.description === 'string' && (sanitized.description.includes('<iframe') || sanitized.description.includes('<video'))) {
+    delete sanitized.description;
+  }
+  return sanitized;
+}
 
 let _filename = '';
 let _dirname = '';
@@ -189,7 +211,16 @@ async function startServer() {
     return `${finalProto}://${host}`;
   }
 
-  app.use(express.json({ limit: "50mb" }));
+  app.use(helmet({
+    contentSecurityPolicy: false, // Disabled to prevent breaking Vite dev server and embedded videos
+    crossOriginEmbedderPolicy: false
+  }));
+  app.use(express.json({ 
+    limit: "50mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
   app.use((req, res, next) => {
     res.setHeader("X-My-Server", "true");
     globalAppUrl = getRequestBaseUrl(req);
@@ -289,18 +320,57 @@ async function startServer() {
 
   app.post("/api/auth/google", async (req, res) => {
     try {
-      const { email, name, avatar, device_id } = req.body;
-      if (!email) return res.status(400).json({ error: "Email is required" });
+      const { id_token, token: clientToken, email: reqEmail, name: reqName, avatar: reqAvatar, device_id } = req.body;
+      const googleToken = id_token || clientToken;
+
+      let verifiedEmail = "";
+      let verifiedName = reqName || "";
+      let verifiedAvatar = reqAvatar || "";
+
+      if (googleToken) {
+        try {
+          const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(googleToken)}`);
+          if (!googleRes.ok) {
+            const accessRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
+              headers: { Authorization: `Bearer ${googleToken}` }
+            });
+            if (!accessRes.ok) {
+              return res.status(401).json({ error: "Invalid Google authentication token" });
+            }
+            const tokenInfo = await accessRes.json();
+            verifiedEmail = tokenInfo.email;
+            if (tokenInfo.name) verifiedName = tokenInfo.name;
+            if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+          } else {
+            const tokenInfo = await googleRes.json();
+            verifiedEmail = tokenInfo.email;
+            if (tokenInfo.name) verifiedName = tokenInfo.name;
+            if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+          }
+        } catch (verErr: any) {
+          return res.status(401).json({ error: "Failed to verify Google token with Google servers" });
+        }
+      } else {
+        if (process.env.NODE_ENV === "production") {
+          return res.status(400).json({ error: "Google ID token is required for authentication" });
+        }
+        if (!reqEmail) return res.status(400).json({ error: "Email or Google ID token is required" });
+        verifiedEmail = reqEmail;
+      }
+
+      if (!verifiedEmail) {
+        return res.status(400).json({ error: "Could not retrieve verified email from Google" });
+      }
       
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
       
-      const snapshot = await db.collection("users").where("email", "==", email).get();
+      const snapshot = await db.collection("users").where("email", "==", verifiedEmail).get();
       let user: any = null;
       let docId = "";
 
       if (snapshot.empty) {
-        const role = email === 'mayycutee1@gmail.com' ? 'admin' : 'viewer';
-        user = { email, password: "google-auth-no-password", name, avatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
+        const role = 'viewer';
+        user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split('@')[0], avatar: verifiedAvatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
         const result = await db.collection("users").add(user);
         docId = result.id;
       } else {
@@ -308,17 +378,12 @@ async function startServer() {
         docId = doc.id;
         user = doc.data();
         if (user.status !== "active") return res.status(403).json({ error: "Account suspended" });
-        if (email === 'mayycutee1@gmail.com' && user.role !== 'admin') {
-          user.role = 'admin';
-          await doc.ref.update({ role: 'admin', active_device_id: finalDeviceId, avatar });
-        } else {
-          await doc.ref.update({ active_device_id: finalDeviceId, avatar });
-        }
-        user.avatar = avatar;
+        await doc.ref.update({ active_device_id: finalDeviceId, avatar: verifiedAvatar || user.avatar });
+        user.avatar = verifiedAvatar || user.avatar;
       }
 
-      const token = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
-      res.json({ token, user: normalizeUser(docId, user), device_id: finalDeviceId });
+      const jwtToken = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
+      res.json({ token: jwtToken, user: normalizeUser(docId, user), device_id: finalDeviceId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -378,9 +443,20 @@ async function startServer() {
 
   app.put("/api/auth/profile", authenticate, async (req: any, res) => {
     try {
-      const updates = req.body;
-      // Remove any undefined or null values
-      Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
+      const allowedFields = ["name", "avatar", "bio", "phone_number", "favorite_team_id", "favorite_sports"];
+      const rawUpdates = req.body || {};
+      const updates: Record<string, any> = {};
+      
+      for (const field of allowedFields) {
+        if (rawUpdates[field] !== undefined) {
+          updates[field] = rawUpdates[field];
+        }
+      }
+
+      if (Object.keys(updates).length === 0) {
+        const currentDoc = await db.collection("users").doc(req.user.id).get();
+        return res.json({ user: normalizeUser(currentDoc.id, currentDoc.data()) });
+      }
       
       await db.collection("users").doc(req.user.id).update(updates);
       const doc = await db.collection("users").doc(req.user.id).get();
@@ -550,7 +626,7 @@ async function startServer() {
   app.get("/api/matches", cdnEdgeSim(30), apiFragmentCache(15), async (req, res) => {
     try {
       const snap = await db.collection("matches").orderBy("start_time", "desc").get();
-      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      res.json(snap.docs.map(d => sanitizeMatchForPublic({ id: d.id, ...d.data() })));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -913,8 +989,61 @@ async function startServer() {
     try {
       const doc = await db.collection("matches").doc(req.params.id).get();
       if (!doc.exists) return res.status(404).json({ error: "Not found" });
-      res.json({ id: doc.id, ...doc.data() });
+      res.json(sanitizeMatchForPublic({ id: doc.id, ...doc.data() }));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/matches/:id/stream", authenticate, async (req: any, res) => {
+    try {
+      const matchId = req.params.id;
+      const matchDoc = await db.collection("matches").doc(matchId).get();
+      if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
+      const match = { id: matchDoc.id, ...matchDoc.data() };
+      
+      const userId = req.user.id.toString();
+      const userRole = req.user.role;
+      
+      let hasAccess = false;
+      if (match.access === 'free' || userRole === 'admin' || userRole === 'operator') {
+        hasAccess = true;
+      } else {
+        // Check PPV purchase
+        const purchasesSnap = await db.collection("purchases")
+          .where("userId", "==", userId)
+          .where("matchId", "==", matchId)
+          .where("type", "==", "watch")
+          .get();
+        if (purchasesSnap.docs && purchasesSnap.docs.length > 0) {
+          hasAccess = true;
+        }
+
+        // Check subscription plan access
+        if (!hasAccess && match.access_type === 'plan' && req.user.planId) {
+          const planValid = !req.user.planExpiresAt || new Date(req.user.planExpiresAt) > new Date();
+          const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
+          if (planValid && planMatch) {
+            hasAccess = true;
+          }
+        }
+      }
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied. Purchase or valid subscription required.", hasAccess: false });
+      }
+
+      return res.json({
+        hasAccess: true,
+        stream: {
+          video_url: match.video_url || match.videoUrl || null,
+          embed_code: match.embed_code || match.embedCode || null,
+          stream_key: match.stream_key || match.streamKey || null,
+          playback_id: match.playback_id || match.playbackId || null,
+          description: match.description || null
+        }
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
@@ -1921,6 +2050,96 @@ async function startServer() {
     }
   });
 
+  // === P0-7: PUBLIC SETTINGS FILTERING (SECRETS ISOLATION) ===
+  app.get("/api/settings/public", async (req, res) => {
+    try {
+      const generalDoc = await db.collection("settings").doc("general").get();
+      const seoDoc = await db.collection("settings").doc("seo").get();
+      
+      const general = generalDoc.exists ? generalDoc.data() : {};
+      const seo = seoDoc.exists ? seoDoc.data() : {};
+
+      // Return strictly non-sensitive public configuration
+      res.json({
+        siteName: general?.site_name || "WatchWDS",
+        siteLogo: general?.logo_url || "",
+        siteBanner: general?.banner_url || "",
+        supportEmail: general?.support_email || "",
+        maintenanceMode: !!general?.maintenance_mode,
+        currency: general?.currency || "GBP",
+        seo: {
+          metaTitle: seo?.meta_title || "",
+          metaDescription: seo?.meta_description || ""
+        }
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === P0-6: STRIPE WEBHOOK SIGNATURE VERIFICATION ===
+  app.post("/api/webhooks/stripe", async (req: any, res) => {
+    try {
+      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
+      const settings = settingsDoc.exists ? settingsDoc.data() : {};
+      const webhookSecret = settings?.stripe?.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
+
+      let event = req.body;
+      if (webhookSecret && settings?.stripe?.secretKey) {
+        const sig = req.headers["stripe-signature"];
+        if (!sig) return res.status(400).send("Missing stripe-signature header");
+        const stripe = new Stripe(settings.stripe.secretKey, { apiVersion: "2023-10-16" as any });
+        try {
+          event = stripe.webhooks.constructEvent(req.rawBody || JSON.stringify(req.body), sig, webhookSecret);
+        } catch (err: any) {
+          console.error("Stripe Webhook Signature Verification Failed:", err.message);
+          return res.status(400).send(`Webhook Error: ${err.message}`);
+        }
+      }
+
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const transactionId = session.client_reference_id;
+        if (transactionId) {
+          const txnRef = db.collection("transactions").doc(transactionId);
+          const txnDoc = await txnRef.get();
+          if (txnDoc.exists && txnDoc.data()?.status !== "completed") {
+            const txnData = txnDoc.data();
+            const { userId, type, amount, metadata } = txnData;
+            
+            const userRef = db.collection("users").doc(userId);
+            const userDoc = await userRef.get();
+            const user = userDoc.exists ? userDoc.data() : null;
+
+            if (type === "top_up") {
+              await userRef.update({ balance: (Number(user?.balance) || 0) + Number(amount) });
+            } else if (type === "watch" || type === "ppv") {
+              await db.collection("purchases").doc(Date.now().toString()).set({
+                id: Date.now().toString(),
+                userId,
+                matchId: metadata?.matchId,
+                amount: Number(amount),
+                type: "watch",
+                date: new Date().toISOString()
+              });
+            } else if (type === "plan") {
+              const expiresAt = new Date();
+              expiresAt.setDate(expiresAt.getDate() + 30);
+              await userRef.update({
+                planId: Number(metadata?.planId),
+                planExpiresAt: expiresAt.toISOString()
+              });
+            }
+            await txnRef.update({ status: "completed" });
+          }
+        }
+      }
+      res.json({ received: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // === SECURE PAYMENT GATEWAY INITIALIZATION ===
   async function convertCurrency(amount: number, from: string, to: string): Promise<number> {
     if (from.toUpperCase() === to.toUpperCase()) return amount;
@@ -1939,9 +2158,26 @@ async function startServer() {
 
   app.post("/api/checkout/gateway/initialize", authenticate, async (req: any, res) => {
     try {
-      const { gateway, type, amount, metadata, currency = "GBP" } = req.body;
+      const { gateway, type, metadata, currency = "GBP" } = req.body;
+      let amount = Number(req.body.amount);
       const userId = req.user.id.toString();
       const origin = req.headers.origin || "https://watchwds.com";
+
+      // Enforce Server-Authoritative Pricing
+      if (type === "watch" && metadata?.matchId) {
+        const matchDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
+        if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
+        const matchData = matchDoc.data();
+        amount = Number(matchData?.price ?? matchData?.ppv_price ?? 0);
+      } else if (type === "plan" && metadata?.planId) {
+        const planDoc = await db.collection("plans").doc(String(metadata.planId)).get();
+        if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
+        amount = Number(planDoc.data()?.price ?? 0);
+      } else if (type === "top_up") {
+        if (!amount || isNaN(amount) || amount <= 0) {
+          return res.status(400).json({ error: "Invalid top-up amount" });
+        }
+      }
 
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
@@ -2353,9 +2589,16 @@ async function startServer() {
 
   app.post("/api/checkout/ppv", authenticate, async (req: any, res) => {
     try {
-      const { match_id, amount } = req.body;
+      const { match_id } = req.body;
       const userId = req.user.id.toString();
       
+      const matchDoc = await db.collection("matches").doc(String(match_id)).get();
+      if (!matchDoc.exists) {
+        return res.status(404).json({ error: "Match not found" });
+      }
+      const matchData = matchDoc.data() || {};
+      const deductAmount = Number(matchData.price ?? matchData.ppv_price ?? 0);
+
       // Prevent duplicate purchase for the same match
       const existingPurchases = await db.collection("purchases")
         .where("userId", "==", userId)
@@ -2375,7 +2618,6 @@ async function startServer() {
       
       const userData = userDoc.data() || {};
       const currentBalance = Number(userData.balance) || 0;
-      const deductAmount = Number(amount);
       
       if (currentBalance < deductAmount) {
         return res.status(400).json({ error: "Insufficient balance" });
@@ -2418,8 +2660,15 @@ async function startServer() {
 
   app.post("/api/checkout/embed", authenticate, async (req: any, res) => {
     try {
-      const { match_id, amount } = req.body;
+      const { match_id } = req.body;
       const userId = req.user.id.toString();
+
+      const matchDoc = await db.collection("matches").doc(String(match_id)).get();
+      if (!matchDoc.exists) {
+        return res.status(404).json({ error: "Match not found" });
+      }
+      const matchData = matchDoc.data() || {};
+      const deductAmount = Number(matchData.embedPrice ?? (Number(matchData.price || 0) * 10));
       
       // Prevent duplicate embed purchase for the same match
       const existingEmbeds = await db.collection("purchases")
@@ -2440,7 +2689,6 @@ async function startServer() {
       
       const userData = userDoc.data() || {};
       const currentBalance = Number(userData.balance) || 0;
-      const deductAmount = Number(amount);
       
       if (currentBalance < deductAmount) {
         return res.status(400).json({ error: "Insufficient balance" });
@@ -2494,25 +2742,27 @@ async function startServer() {
 
   app.post("/api/checkout/plan", authenticate, async (req: any, res) => {
     try {
-      const { planId, amount } = req.body;
+      const { planId } = req.body;
       const userId = req.user.id.toString();
       
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
       if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
       
+      const planDoc = await db.collection("plans").doc(String(planId)).get();
+      if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
+      
+      const planData = planDoc.data() || {};
+      const deductAmount = Number(planData.price || 0);
+
       const userData = userDoc.data() || {};
       const currentBalance = Number(userData.balance) || 0;
-      const deductAmount = Number(amount);
       
       if (currentBalance < deductAmount) {
         return res.status(400).json({ error: "Insufficient balance" });
       }
       
       const newBalance = currentBalance - deductAmount;
-      
-      const planDoc = await db.collection("plans").doc(String(planId)).get();
-      const planData = planDoc.data() || {};
       const durationDays = Number(planData.duration_days) || 30;
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + durationDays);
@@ -3142,8 +3392,8 @@ async function startServer() {
     }
   });
 
-  // === SETTINGS API (Dynamic Config) ===
-  app.get("/api/settings/:key", async (req, res) => {
+  // === SETTINGS API (Dynamic Config - Admin Only) ===
+  app.get("/api/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const snap = await db.collection("settings").doc(req.params.key).get();
       if (!snap.exists) {

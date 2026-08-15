@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore } from '../store';
 import { Lock, PlayCircle, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing } from 'lucide-react';
 import { format } from 'date-fns';
@@ -31,6 +32,7 @@ export function MatchDetail() {
   
   const [error, setError] = useState('');
 
+  const [streamData, setStreamData] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutData, setCheckoutData] = useState<any>(null);
@@ -76,10 +78,6 @@ export function MatchDetail() {
       navigate(`/matches/${match.slug}`, { replace: true });
     }
   }, [match, slug, navigate]);
-  
-  const processedDescription = mobileVideoStarted && match?.description 
-    ? match.description.replace(/src="([^"]+)"/g, (m, p1) => `src="${p1}${p1.includes('?') ? '&' : '?'}autoplay=1"`)
-    : match?.description;
 
   const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
     if (!dateStr) return 'TBA';
@@ -103,6 +101,39 @@ export function MatchDetail() {
   const hasAccess = !!(user ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') || match.access === 'free' || hasPlanAccess : match.access === 'free');
   const hasEmbedCode = user ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
   const embedCodePurchase = user ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
+
+  useEffect(() => {
+    if (match && hasAccess) {
+      const token = localStorage.getItem('token');
+      fetch(`/api/matches/${match.id}/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.stream) {
+            setStreamData(data.stream);
+          }
+        })
+        .catch(err => console.error("Error fetching stream data:", err));
+    } else {
+      setStreamData(null);
+    }
+  }, [match?.id, hasAccess]);
+
+  const rawStreamContent = streamData?.embed_code || streamData?.video_url || streamData?.description || match?.description || '';
+  const sanitizedStreamHtml = DOMPurify.sanitize(
+    mobileVideoStarted && rawStreamContent
+      ? rawStreamContent.replace(/src="([^"]+)"/g, (m: string, p1: string) => `src="${p1}${p1.includes('?') ? '&' : '?'}autoplay=1"`)
+      : rawStreamContent,
+    {
+      ADD_TAGS: ['iframe'],
+      ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'target', 'src', 'width', 'height', 'style', 'class']
+    }
+  );
 
   useEffect(() => {
     if (user && hasAccess && match) {
@@ -352,7 +383,7 @@ export function MatchDetail() {
         <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">
           <AdOverlay match={match} />
           {hasAccess ? (
-            match.description ? (
+            rawStreamContent ? (
               <div 
                 ref={videoContainerRef}
                 className="w-full h-full absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:border-0 flex items-center justify-center bg-slate-900"
@@ -361,10 +392,10 @@ export function MatchDetail() {
                   <div className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer bg-slate-900" onClick={handleMobilePlay}>
                     {match.thumbnail && <img src={match.thumbnail} alt={match.title} className="absolute inset-0 w-full h-full object-cover opacity-50" />}
                     <PlayCircle className="w-16 h-16 text-white drop-shadow-xl z-20 hover:scale-110 transition-transform" />
-                    <div className="absolute inset-0 -z-10" dangerouslySetInnerHTML={{ __html: match.description }} style={{ opacity: 0.1, pointerEvents: 'none' }} />
+                    <div className="absolute inset-0 -z-10" dangerouslySetInnerHTML={{ __html: sanitizedStreamHtml }} style={{ opacity: 0.1, pointerEvents: 'none' }} />
                   </div>
                 ) : (
-                  <div className="w-full h-full" dangerouslySetInnerHTML={{ __html: processedDescription || '' }} />
+                  <div className="w-full h-full" dangerouslySetInnerHTML={{ __html: sanitizedStreamHtml }} />
                 )}
               </div>
             ) : (
@@ -533,7 +564,7 @@ export function MatchDetail() {
                 <div className="prose prose-sm dark:prose-invert max-w-none break-words">
                   <div 
                     className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm"
-                    dangerouslySetInnerHTML={{ __html: match.content || match.description || 'No description provided.' }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(match.content || match.description || 'No description provided.') }}
                   />
                 </div>
                 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useCreatorStore, useNotificationStore, useMatchStore, useAuthStore } from '../../store';
 import { Check, X, FileText, Upload, Users, Video } from 'lucide-react';
 
@@ -128,7 +129,7 @@ export function StudioManagement() {
                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400">By Channel: <span className="text-indigo-600 dark:text-indigo-400 font-bold">{content.creatorName}</span></p>
                     <div 
                       className="text-sm text-slate-600 dark:text-slate-400 mt-2 line-clamp-2 max-w-xl prose prose-sm dark:prose-invert"
-                      dangerouslySetInnerHTML={{ __html: content.description || '' }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content.description || '') }}
                     />
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-1 rounded font-bold uppercase">{content.access}</span>
