@@ -44,6 +44,7 @@ import { TermsOfUse } from './pages/TermsOfUse';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { LogoutModal } from './components/LogoutModal';
 import { SearchPage } from './pages/SearchPage';
+import { SEOHeadManager } from './components/SEOHeadManager';
 
 export default function App() {
   const { token, setAuth, logout, user, originalUser, revertLoginAs } = useAuthStore();
@@ -84,74 +85,6 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  useEffect(() => {
-    // Apply global SEO Settings
-    if (seoSettings) {
-      const baseTitle = seoSettings.metaTitle || 'Watch WDS - Live Sports Streaming';
-      document.title = baseTitle.replace(/WD\s*Sportz|WatchWDS/gi, platformName);
-      
-      const updateMeta = (name: string, content: string, isProperty = false) => {
-        let el = document.querySelector(isProperty ? `meta[property="${name}"]` : `meta[name="${name}"]`);
-        if (!el) {
-          el = document.createElement('meta');
-          if (isProperty) {
-            el.setAttribute('property', name);
-          } else {
-            el.setAttribute('name', name);
-          }
-          document.head.appendChild(el);
-        }
-        el.setAttribute('content', content);
-      };
-
-      updateMeta('description', seoSettings.metaDescription);
-      updateMeta('keywords', seoSettings.metaKeywords);
-      updateMeta('og:title', seoSettings.ogTitle, true);
-      updateMeta('og:description', seoSettings.ogDescription, true);
-      if (seoSettings.ogImage) updateMeta('og:image', seoSettings.ogImage, true);
-      if (seoSettings.twitterHandle) updateMeta('twitter:site', seoSettings.twitterHandle);
-
-      // Inject Google Analytics if present
-      if (seoSettings.googleAnalyticsId) {
-        let gaScript = document.getElementById('ga-script');
-        if (!gaScript) {
-          gaScript = document.createElement('script');
-          gaScript.id = 'ga-script';
-          gaScript.setAttribute('async', '');
-          gaScript.setAttribute('src', `https://www.googletagmanager.com/gtag/js?id=${seoSettings.googleAnalyticsId}`);
-          document.head.appendChild(gaScript);
-
-          const gaInit = document.createElement('script');
-          gaInit.id = 'ga-init-script';
-          gaInit.innerHTML = `
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', '${seoSettings.googleAnalyticsId}');
-          `;
-          document.head.appendChild(gaInit);
-        }
-      }
-
-      // Inject GTM if present
-      if (seoSettings.googleTagManagerId) {
-        let gtmScript = document.getElementById('gtm-script');
-        if (!gtmScript) {
-          gtmScript = document.createElement('script');
-          gtmScript.id = 'gtm-script';
-          gtmScript.innerHTML = `
-            (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-            new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-            'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-            })(window,document,'script','dataLayer','${seoSettings.googleTagManagerId}');
-          `;
-          document.head.appendChild(gtmScript);
-        }
-      }
-    }
-  }, [seoSettings, platformName]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -260,6 +193,7 @@ export default function App() {
 
   return (
     <Router>
+      <SEOHeadManager />
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
         {originalUser && (
           <div className="bg-red-600 text-white py-2 px-4 text-center text-sm font-bold flex items-center justify-center gap-4 sticky top-0 z-[100]">

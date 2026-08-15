@@ -5,7 +5,7 @@ import {
   Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
   Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
-  UserPlus, Award, PlayCircle, Ban, Trash2, Building2
+  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -32,8 +32,10 @@ import { AdManager } from './admin/AdManager';
 import { StudioManagement } from './admin/StudioManagement';
 import { EmailManagement } from './admin/EmailManagement';
 import { CacheManagement } from './admin/CacheManagement';
+import { AdminSEO } from './admin/AdminSEO';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { Image as ImageIcon } from 'lucide-react';
+
 
 export function AdminDashboard() {
   const { user, setLogoutModalOpen } = useAuthStore();
@@ -80,6 +82,9 @@ export function AdminDashboard() {
     })),
     { id: 'match-402', type: 'match', title: 'Match #402', subtitle: 'Arena A - Completed', icon: Video, path: '/admin/matches' },
     { id: 'match-403', type: 'match', title: 'Match #403', subtitle: 'Arena B - Live', icon: Video, path: '/admin/matches' },
+    { id: 'seo-global', type: 'seo', title: 'Global SEO & Social Meta', subtitle: 'Search Engine Optimization Settings', icon: Globe, path: '/admin/seo' },
+    { id: 'seo-per-page', type: 'seo', title: 'Per-Page Meta Overrides', subtitle: 'Path Customization & Social Cards', icon: Globe, path: '/admin/seo' },
+    { id: 'seo-schema', type: 'seo', title: 'JSON-LD Schema Generator', subtitle: 'Structured Data Configuration', icon: Globe, path: '/admin/seo' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
@@ -101,6 +106,7 @@ export function AdminDashboard() {
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/matches', icon: Video, label: 'Matches' },
+    { path: '/admin/seo', icon: Globe, label: 'SEO Manager' },
     { path: '/admin/media', icon: ImageIcon, label: 'Media' },
     ...(blogEnabled ? [{ path: '/admin/blog', icon: Newspaper, label: 'Blog' }] : []),
     { path: '/admin/plans', icon: CreditCard, label: 'Subscriptions' },
@@ -113,6 +119,7 @@ export function AdminDashboard() {
     { path: '/admin/settings', icon: Settings, label: 'Settings' },
     { path: '/admin/transactions', icon: DollarSign, label: 'Transactions' },
     { path: '/admin/cache', icon: Zap, label: 'Performance Cache' },
+    { path: '/admin/features', icon: Sliders, label: 'Feature Toggles' },
   ];
 
   const handleLogout = () => {
@@ -308,6 +315,7 @@ export function AdminDashboard() {
               <Route path="/transactions" element={<AdminTransactions />} />
               <Route path="/email-system" element={<EmailManagement />} />
               <Route path="/studio" element={<StudioManagement />} />
+              <Route path="/seo" element={<AdminSEO />} />
               <Route path="/cache" element={<CacheManagement />} />
             </Routes>
           </div>
@@ -318,11 +326,15 @@ export function AdminDashboard() {
 }
 
 function AdminOverview() {
-  const { currency, currencySymbol } = useSettingsStore();
+  const { currency, currencySymbol, seoSettings, perPageSeo = [] } = useSettingsStore();
   const { users = [] } = useUsersStore();
   const { matches = [] } = useMatchStore();
   const { posts = [] } = useBlogStore();
   const { comments = [] } = useCommentStore();
+  const { creatorContent = [] } = useCreatorStore();
+
+  const { blogSettings } = useSettingsStore();
+  const blogEnabled = blogSettings?.enabled !== false;
 
   const [transactions, setTransactions] = useState<any[]>([]);
 
@@ -385,11 +397,15 @@ function AdminOverview() {
   const baseEngagement = 84;
   const engagementValue = Math.min(99, Math.max(50, baseEngagement + (totalViews > 0 ? Math.min(10, Math.floor(totalViews / 500)) : 0) + (comments.length > 0 ? Math.min(5, Math.floor(comments.length / 5)) : 0)));
 
+  // SEO Health metrics
+  const seoOverrideCount = perPageSeo.length;
+  const isSiteIndexed = seoSettings?.allowIndexing !== false;
+
   const stats = [
-    { label: 'Total Users', value: totalUsers.toLocaleString(), trend: '+12%', icon: Users, color: 'border-l-yellow-500', subtitle: `${newUsersCount} logged this week` },
+    { label: 'Total Users', value: totalUsers.toLocaleString(), trend: '+12%', icon: Users, color: 'border-l-yellow-500', subtitle: `${newUsersCount} registered this week` },
     { label: 'Active Matches', value: activeMatchesCount.toString(), trend: '+5%', icon: Video, color: 'border-l-green-500', subtitle: `${liveCount} broadcasting now` },
     { label: 'Total Revenue', value: `${getCurrencySymbol(currency)}${totalRevenue.toLocaleString()}`, trend: '+18%', icon: getCurrencyIcon(currency), color: 'border-l-yellow-500', subtitle: `${purchasesCount} live purchase(s)` },
-    { label: 'Engagement Index', value: `${engagementValue}%`, trend: '+2%', icon: Activity, color: 'border-l-blue-500', subtitle: `${totalViews.toLocaleString()} platform views` },
+    { label: 'SEO & Search Index', value: `${seoOverrideCount} Overrides`, trend: isSiteIndexed ? '100% OK' : 'NoIndex', icon: Globe, color: 'border-l-purple-500', subtitle: isSiteIndexed ? 'Search Engines Active' : 'Indexing Disabled' },
   ];
 
   const recentUsers = users.slice(-3).reverse().map(u => ({
@@ -402,6 +418,16 @@ function AdminOverview() {
         u.role === 'operator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
           'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
   }));
+
+  // Auto-discovered active platform modules
+  const activeModules = useMemo(() => [
+    { name: 'Users & Roles', count: users.length, label: 'Accounts', icon: Users, path: '/admin/users', status: 'Healthy', color: 'text-yellow-500' },
+    { name: 'Match Streamer', count: matches.length, label: 'Matches', icon: Video, path: '/admin/matches', status: liveCount > 0 ? `${liveCount} Live` : 'Active', color: 'text-green-500' },
+    { name: 'SEO Engine', count: perPageSeo.length, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
+    ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
+    { name: 'Creator Hub', count: users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },
+    { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
+  ], [users, matches, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount]);
 
   // Top Performing Content Calculators
   const mostWatchedMatch = useMemo(() => {
@@ -425,13 +451,18 @@ function AdminOverview() {
     return [...users].sort((a, b) => (b.balance || 0) - (a.balance || 0))[0];
   }, [users]);
 
+  // Highlighted SEO custom route
+  const featuredSeoPage = useMemo(() => {
+    return perPageSeo.length > 0 ? perPageSeo[0] : null;
+  }, [perPageSeo]);
+
   // Views Over Time chart data
   const viewsChartData = useMemo(() => [
-    { name: 'Jan', matches: Math.floor(totalMatchViews * 0.1), blogs: Math.floor(totalBlogViews * 0.12) },
-    { name: 'Feb', matches: Math.floor(totalMatchViews * 0.15), blogs: Math.floor(totalBlogViews * 0.18) },
-    { name: 'Mar', matches: Math.floor(totalMatchViews * 0.2), blogs: Math.floor(totalBlogViews * 0.15) },
-    { name: 'Apr', matches: Math.floor(totalMatchViews * 0.25), blogs: Math.floor(totalBlogViews * 0.22) },
-    { name: 'May', matches: Math.floor(totalMatchViews * 0.3), blogs: Math.floor(totalBlogViews * 0.33) },
+    { name: 'Jan', matches: Math.floor(totalMatchViews * 0.1), blogs: Math.floor(totalBlogViews * 0.12), seoIndex: 85 },
+    { name: 'Feb', matches: Math.floor(totalMatchViews * 0.15), blogs: Math.floor(totalBlogViews * 0.18), seoIndex: 88 },
+    { name: 'Mar', matches: Math.floor(totalMatchViews * 0.2), blogs: Math.floor(totalBlogViews * 0.15), seoIndex: 92 },
+    { name: 'Apr', matches: Math.floor(totalMatchViews * 0.25), blogs: Math.floor(totalBlogViews * 0.22), seoIndex: 95 },
+    { name: 'May', matches: Math.floor(totalMatchViews * 0.3), blogs: Math.floor(totalBlogViews * 0.33), seoIndex: 99 },
   ], [totalMatchViews, totalBlogViews]);
 
   return (
@@ -442,16 +473,52 @@ function AdminOverview() {
           <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
             Dashboard Hub
             <span className="text-xs bg-yellow-500/10 text-yellow-500 py-1 px-2.5 rounded-full font-bold uppercase tracking-widest border border-yellow-500/20">
-              Live Overview
+              Live Operations
             </span>
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">
-            Welcome back to Watch WDS base of operations. Here is a real-time summary of today's engagement metrics.
+            Welcome back to Watch WDS base of operations. Dynamic telemetry and performance overview.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-400">
           <Clock className="w-4 h-4 text-slate-400 animate-pulse" />
-          <span>Last checked: Just now</span>
+          <span>Auto-Synced</span>
+        </div>
+      </div>
+
+      {/* Auto-Discovered Platform Modules Bar */}
+      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-xl overflow-hidden relative">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/10 rounded-full filter blur-3xl -z-0"></div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-yellow-500" /> Auto-Discovered Platform Modules
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Real-time modular architecture telemetry & health inspection.</p>
+          </div>
+          <span className="text-xs font-mono bg-slate-800 border border-slate-700 text-yellow-400 px-3 py-1 rounded-lg self-start md:self-auto font-bold">
+            {activeModules.length} Active Modules
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 relative z-10">
+          {activeModules.map((mod, idx) => {
+            const Icon = mod.icon;
+            return (
+              <Link
+                key={idx}
+                to={mod.path}
+                className="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-yellow-500/50 p-3 rounded-xl transition-all group block"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <Icon className={`w-4 h-4 ${mod.color} group-hover:scale-110 transition-transform`} />
+                  <span className="text-[10px] font-mono bg-slate-900 text-slate-300 px-1.5 py-0.5 rounded font-bold">{mod.status}</span>
+                </div>
+                <div className="text-lg font-black text-white group-hover:text-yellow-400 transition-colors">{mod.count}</div>
+                <div className="text-[11px] font-bold text-slate-400 truncate">{mod.name}</div>
+              </Link>
+            );
+          })}
         </div>
       </div>
 
@@ -489,11 +556,12 @@ function AdminOverview() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
                 <h3 className="font-bold text-lg text-slate-900 dark:text-white uppercase tracking-wider">Audience & Reach Analytics</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Comparing monthly views of premium interactive matches vs platform articles.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Comparing monthly views of streams, blog articles, and SEO search indexing score.</p>
               </div>
-              <div className="flex gap-4 text-xs font-bold text-slate-500">
+              <div className="flex flex-wrap gap-3 text-xs font-bold text-slate-500">
                 <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-indigo-500 rounded-sm" /> Match Streaming</span>
                 <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-purple-500 rounded-sm" /> Blog Journalism</span>
+                <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /> SEO Index Score</span>
               </div>
             </div>
 
@@ -532,7 +600,7 @@ function AdminOverview() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* System Health Status */}
+            {/* System Health Telemetry */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/60 shadow-sm">
               <h3 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-sm flex items-center gap-2 mb-4">
                 <Activity className="w-4 h-4 text-emerald-500" />
@@ -547,17 +615,17 @@ function AdminOverview() {
                   </div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse shrink-0"></div>
+                  <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.6)] animate-pulse shrink-0"></div>
                   <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
-                    <span className="font-mono text-slate-400 uppercase tracking-wider">Caching Layers</span>
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Level 1/2/3 Active</span>
+                    <span className="font-mono text-slate-400 uppercase tracking-wider">SEO Engine & Meta</span>
+                    <span className="font-bold text-purple-600 dark:text-purple-400">Head Injected</span>
                   </div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
                   <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse shrink-0"></div>
                   <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
-                    <span className="font-mono text-slate-400 uppercase tracking-wider">Lite DB Replication</span>
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Operational</span>
+                    <span className="font-mono text-slate-400 uppercase tracking-wider">Caching Layers</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Level 1/2/3 Active</span>
                   </div>
                 </div>
               </div>
@@ -594,11 +662,11 @@ function AdminOverview() {
           </div>
         </div>
 
-        {/* CONTENT SPOTLIGHT BEN-TO GRID (Right Column) */}
+        {/* CONTENT SPOTLIGHT BENTO GRID (Right Column) */}
         <div className="space-y-6 sm:space-y-8">
 
           {/* Top Video Match */}
-          <div className="bg-indigo-600 dark:bg-indigo-950/40 rounded-2xl p-6 border border-indigo-500/35 text-white shadow-sm flex flex-col justify-between h-[155px] hover:scale-[1.01] transition-transform">
+          <div className="bg-indigo-600 dark:bg-indigo-950/40 rounded-2xl p-6 border border-indigo-500/35 text-white shadow-sm flex flex-col justify-between min-h-[155px] hover:scale-[1.01] transition-transform">
             <h3 className="font-bold text-indigo-100 text-xs uppercase tracking-wider flex items-center gap-2">
               <PlayCircle className="w-4 h-4 text-indigo-300" />
               Most Watched Broadcast
@@ -618,8 +686,34 @@ function AdminOverview() {
             )}
           </div>
 
+          {/* SEO & Search Engine Spotlight Card */}
+          <div className="bg-gradient-to-br from-purple-900/90 to-slate-900 rounded-2xl p-6 border border-purple-500/30 text-white shadow-sm flex flex-col justify-between min-h-[155px] hover:scale-[1.01] transition-transform relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-purple-200 text-xs uppercase tracking-wider flex items-center gap-2">
+                <Globe className="w-4 h-4 text-purple-400" />
+                SEO Search Engine Health
+              </h3>
+              <Link to="/admin/seo" className="text-[10px] bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded font-mono font-bold">
+                Configure →
+              </Link>
+            </div>
+            <div className="mt-3">
+              <div className="text-sm font-black tracking-tight text-white line-clamp-1">
+                {featuredSeoPage ? `Override: ${featuredSeoPage.path}` : (seoSettings?.metaTitle || 'WatchWDS Platform')}
+              </div>
+              <div className="flex items-center justify-between text-xs mt-3">
+                <span className="text-purple-300 font-mono text-[11px]">
+                  {seoOverrideCount} Custom Route(s)
+                </span>
+                <span className="font-mono text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">
+                  {isSiteIndexed ? 'Google & Bing Ready' : 'NoIndex Enabled'}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Top Engaging Match */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/60 shadow-sm flex flex-col justify-between h-[155px] hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/60 shadow-sm flex flex-col justify-between min-h-[155px] hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
             <h3 className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-emerald-500" />
               Audience Engagement High
@@ -641,27 +735,6 @@ function AdminOverview() {
             )}
           </div>
 
-          {/* Top Popular Article */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/60 shadow-sm flex flex-col justify-between h-[155px] hover:border-slate-350 dark:hover:border-slate-600 transition-colors">
-            <h3 className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
-              <Newspaper className="w-4 h-4 text-purple-500" />
-              Highest Read Article
-            </h3>
-            {mostViewedBlog ? (
-              <div className="mt-3">
-                <h4 className="text-base font-black text-slate-900 dark:text-white tracking-tight line-clamp-1">{mostViewedBlog.title}</h4>
-                <div className="flex items-center justify-between text-xs mt-3">
-                  <span className="text-slate-405 font-mono truncate max-w-[120px]">{mostViewedBlog.excerpt || 'Sports update'}</span>
-                  <span className="font-mono font-bold flex items-center gap-1 bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2.5 py-1 rounded-lg shrink-0">
-                    <Eye className="w-3.5 h-3.5" /> {(mostViewedBlog.views || 0).toLocaleString()} views
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 font-mono mt-2">No article views reported.</p>
-            )}
-          </div>
-
         </div>
       </div>
 
@@ -679,12 +752,12 @@ function AdminOverview() {
             <h3 className="font-bold text-slate-900 dark:text-white mb-1">Role Management</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400">Assign permissions, roles, and review custom admin details.</p>
           </Link>
-          <Link to="/admin/creators" className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-[2px] group block">
-            <div className="w-12 h-12 rounded-xl bg-green-50 dark:bg-green-500/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-              <MapPin className="w-6 h-6 text-green-600 dark:text-green-500" />
+          <Link to="/admin/seo" className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-[2px] group block">
+            <div className="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+              <Globe className="w-6 h-6 text-purple-600 dark:text-purple-500" />
             </div>
-            <h3 className="font-bold text-slate-900 dark:text-white mb-1">Venue Operators</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Audit system venue managers, locations, and streams broadcast.</p>
+            <h3 className="font-bold text-slate-900 dark:text-white mb-1">SEO & Social Meta</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Configure global metadata, sitemaps, JSON-LD schema & route overrides.</p>
           </Link>
           <Link to="/admin/cache" className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-[2px] group block">
             <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">

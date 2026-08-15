@@ -425,7 +425,20 @@ interface HomepageSettings {
   latestNewsEnabled: boolean;
 }
 
-interface SEOSettings {
+export interface PerPageSEOConfig {
+  id: string;
+  path: string;
+  title: string;
+  description: string;
+  keywords?: string;
+  ogImage?: string;
+  canonicalUrl?: string;
+  noIndex?: boolean;
+  noFollow?: boolean;
+  jsonLdSchema?: string;
+}
+
+export interface SEOSettings {
   metaTitle: string;
   metaDescription: string;
   metaKeywords: string;
@@ -433,9 +446,24 @@ interface SEOSettings {
   ogDescription: string;
   ogImage: string;
   twitterHandle: string;
+  twitterCardType?: 'summary' | 'summary_large_image';
   googleAnalyticsId: string;
   googleTagManagerId: string;
   robotsTxt: string;
+  allowIndexing?: boolean;
+  canonicalBaseUrl?: string;
+  googleVerification?: string;
+  bingVerification?: string;
+  yandexVerification?: string;
+  pinterestVerification?: string;
+  baiduVerification?: string;
+  customHeadHtml?: string;
+  organizationName?: string;
+  organizationLogo?: string;
+  organizationType?: string;
+  sitemapPriority?: string;
+  sitemapChangeFreq?: string;
+  sitemapExcludeRoutes?: string[];
 }
 
 export interface BlogSettings {
@@ -454,6 +482,9 @@ interface SettingsState {
   setHomepageSettings: (settings: HomepageSettings) => void;
   seoSettings: SEOSettings;
   setSeoSettings: (settings: SEOSettings) => void;
+  perPageSeo: PerPageSEOConfig[];
+  setPerPageSeo: (pages: PerPageSEOConfig[]) => void;
+  fetchPerPageSeo: () => Promise<void>;
   platformName: string;
   setPlatformName: (name: string) => void;
   favicon: string;
@@ -550,6 +581,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setSeoSettings: (settings) => {
     set({ seoSettings: settings });
     saveSettingHelper('seo', settings);
+  },
+  perPageSeo: [],
+  setPerPageSeo: (pages) => set({ perPageSeo: pages }),
+  fetchPerPageSeo: async () => {
+    try {
+      const res = await fetch('/api/seo/per-page');
+      if (res.ok) {
+        const data = await res.json();
+        set({ perPageSeo: data });
+      }
+    } catch (err) {
+      console.error("Failed to fetch per-page SEO:", err);
+    }
   },
   platformName: 'WatchWDS',
   setPlatformName: (name) => {
@@ -654,6 +698,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           captchaTolerance: typeof data.tolerance === 'number' ? data.tolerance : 25
         });
       }
+      get().fetchPerPageSeo();
     } catch (err) {
       console.error("Failed to fetch settings:", err);
     }
