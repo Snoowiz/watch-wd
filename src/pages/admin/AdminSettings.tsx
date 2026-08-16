@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Search, Globe, Image as ImageIcon, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -10,14 +10,13 @@ import { MediaPicker } from '../../components/MediaPicker';
 import { AdminFirebaseSettings } from './AdminFirebaseSettings';
 
 export function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'seo' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security'>('seo');
+  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security'>('payment');
   
   // Payment States
   const { 
     currency, setCurrency,
     currencySymbol, setCurrencySymbol,
     paymentSettings, setPaymentSettings,
-    seoSettings, setSeoSettings,
     captchaEnabled, setCaptchaEnabled,
     captchaTolerance, setCaptchaTolerance
   } = useSettingsStore();
@@ -46,8 +45,6 @@ export function AdminSettings() {
     }
   }, [activeTab, setPaymentSettings]);
 
-  const [localSeoSettings, setLocalSeoSettings] = useState(seoSettings);
-  const [isSeoSaved, setIsSeoSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
@@ -57,8 +54,6 @@ export function AdminSettings() {
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
-
-
 
   const handlePaymentSave = async () => {
     setIsPaymentSaved(true);
@@ -78,30 +73,12 @@ export function AdminSettings() {
     setTimeout(() => setIsPaymentSaved(false), 2000);
   };
 
-  const handleSeoSave = () => {
-    setSeoSettings(localSeoSettings);
-    setIsSeoSaved(true);
-    setTimeout(() => setIsSeoSaved(false), 2000);
-  };
-
-  const handleOgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLocalSeoSettings({ ...localSeoSettings, ogImage: reader.result as string });
-        setIsSeoSaved(false);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Platform Settings</h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Manage configurations, appearance, and SEO.</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Manage configurations and appearance.</p>
         </div>
       </div>
 
@@ -127,17 +104,6 @@ export function AdminSettings() {
         >
           <Layout className="w-4 h-4" />
           Appearance & Themes
-        </button>
-        <button
-          onClick={() => setActiveTab('seo')}
-          className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
-            activeTab === 'seo'
-              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-          }`}
-        >
-          <Search className="w-4 h-4" />
-          SEO Configuration
         </button>
         <button
           onClick={() => setActiveTab('pages')}
@@ -578,166 +544,6 @@ export function AdminSettings() {
                 {isPaymentSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save Payment Settings'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'seo' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-               <Search className="w-5 h-5 text-indigo-500" /> General Meta Tags
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Meta Title</label>
-                <input 
-                  type="text" 
-                  value={localSeoSettings.metaTitle}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, metaTitle: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                  placeholder="e.g., Watch WDS - Live Sports Streaming"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Meta Keywords</label>
-                <input 
-                  type="text" 
-                  value={localSeoSettings.metaKeywords}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, metaKeywords: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                  placeholder="e.g., sports, streaming, live matches"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Meta Description</label>
-                <textarea 
-                  value={localSeoSettings.metaDescription}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, metaDescription: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors min-h-[80px]"
-                  placeholder="e.g., Watch live sports, follow your favorite creators..."
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-               <Globe className="w-5 h-5 text-indigo-500" /> Open Graph & Social Media
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">OG Title</label>
-                <input 
-                  type="text" 
-                  value={localSeoSettings.ogTitle}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, ogTitle: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Twitter Handle</label>
-                <input 
-                  type="text" 
-                  value={localSeoSettings.twitterHandle}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, twitterHandle: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                  placeholder="e.g., @watchwds"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">OG Description</label>
-                <textarea 
-                  value={localSeoSettings.ogDescription}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, ogDescription: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors min-h-[80px]"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">OG Default Image URL</label>
-                <div className="flex items-center gap-4">
-                  <div className="w-32 h-20 bg-slate-100 dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
-                    {localSeoSettings.ogImage ? (
-                      <img src={localSeoSettings.ogImage} alt="OG" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon className="w-6 h-6 text-slate-400" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <input 
-                      type="text" 
-                      value={localSeoSettings.ogImage}
-                      onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, ogImage: e.target.value }); setIsSeoSaved(false); }}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors mb-2"
-                      placeholder="https://..."
-                    />
-                    <input 
-                      type="file" 
-                      ref={fileInputRef}
-                      onChange={handleOgImageUpload}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
-                    >
-                      Or upload an image
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Analytics & Crawlers</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Google Analytics ID</label>
-                <input 
-                  type="text" 
-                  value={localSeoSettings.googleAnalyticsId}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, googleAnalyticsId: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                  placeholder="G-XXXXXXXXXX"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Google Tag Manager ID</label>
-                <input 
-                  type="text" 
-                  value={localSeoSettings.googleTagManagerId}
-                  onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, googleTagManagerId: e.target.value }); setIsSeoSaved(false); }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                  placeholder="GTM-XXXXXXX"
-                />
-              </div>
-              <div className="md:col-span-2">
-                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">robots.txt config</label>
-                 <textarea 
-                   value={localSeoSettings.robotsTxt}
-                   onChange={(e) => { setLocalSeoSettings({ ...localSeoSettings, robotsTxt: e.target.value }); setIsSeoSaved(false); }}
-                   className="w-full font-mono bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors min-h-[100px]"
-                 />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-4 mb-4">
-            <button
-              onClick={handleSeoSave}
-              disabled={JSON.stringify(localSeoSettings) === JSON.stringify(seoSettings) && !isSeoSaved}
-              className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all border flex items-center gap-2 ${
-                isSeoSaved 
-                  ? 'border-transparent bg-green-500 text-white' 
-                  : JSON.stringify(localSeoSettings) !== JSON.stringify(seoSettings)
-                    ? 'border-transparent bg-indigo-600 hover:bg-indigo-700 text-white'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              {isSeoSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save SEO Configuration'}
-            </button>
           </div>
         </div>
       )}
