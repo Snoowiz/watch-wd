@@ -10,6 +10,11 @@ import Stripe from "stripe";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import helmet from "helmet";
+import dns from "dns";
+
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
@@ -1613,6 +1618,7 @@ async function startServer() {
         host: smtp.host,
         port: Number(smtp.port),
         secure: isSecure,
+        family: 4,
         auth: {
           user: smtp.auth_user,
           pass: smtp.auth_pass
@@ -1620,7 +1626,7 @@ async function startServer() {
         tls: {
           rejectUnauthorized: false
         }
-      });
+      } as any);
 
       try {
         const info = await transporter.sendMail({
