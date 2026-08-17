@@ -1476,10 +1476,10 @@ async function startServer() {
         }
       }
 
-      const templatesSnap = await db.collection("email_templates").get();
-      if (templatesSnap.empty) {
-        console.log(`[EMAIL SEEDER] Seeding ${SEED_TEMPLATES.length} default email templates...`);
-        for (const t of SEED_TEMPLATES) {
+      console.log(`[EMAIL SEEDER] Checking ${SEED_TEMPLATES.length} email templates...`);
+      for (const t of SEED_TEMPLATES) {
+        const doc = await db.collection("email_templates").doc(t.slug).get();
+        if (!doc.exists) {
           await db.collection("email_templates").doc(t.slug).set({
             ...t,
             is_active: true,
@@ -1497,8 +1497,8 @@ async function startServer() {
             last_sent_at: ""
           });
         }
-        console.log("[EMAIL SEEDER] Seeded 44 templates successfully.");
       }
+      console.log("[EMAIL SEEDER] Verified email templates successfully.");
     } catch (err: any) {
       console.error("[EMAIL SEEDER] Error during seeding:", err.message);
     }
@@ -1509,8 +1509,16 @@ async function startServer() {
     const branding = brandingDoc.exists ? brandingDoc.data() : defaultBranding;
 
     const templateDoc = await db.collection("email_templates").doc(slug).get();
-    if (!templateDoc.exists) throw new Error("Template not found: " + slug);
-    const template = templateDoc.data();
+    let template: any = templateDoc.exists ? templateDoc.data() : null;
+
+    if (!template) {
+      const seedTemplate = SEED_TEMPLATES.find((t) => t.slug === slug);
+      if (seedTemplate) {
+        template = { ...seedTemplate };
+      } else {
+        throw new Error("Template not found: " + slug);
+      }
+    }
 
     let body = template.body;
     let subject = template.subject;
