@@ -15,6 +15,21 @@ import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
 import { testConnection, query, execute } from "./db/connection.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
+import {
+  getClientIp,
+  parseBrowserInfo,
+  getLocationFromIp,
+  generateDeviceFingerprint,
+  getSecurityConfig,
+  updateSecurityConfig,
+  checkRateLimit,
+  recordLoginAttempt,
+  isDeviceTrusted,
+  detectRiskSignals,
+  createVerificationCode,
+  verifyCodeAndTrustDevice,
+  isIpWhitelistedForAdmin,
+} from "./securityManager.js";
 
 dotenv.config();
 
@@ -296,32 +311,139 @@ async function startServer() {
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { email, password, device_id } = req.body;
+      const { email, password, device_id, client_fingerprint } = req.body;
       if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
 
+      const ip = getClientIp(req);
+      const ua = req.headers["user-agent"] || "";
+      const browserInfo = parseBrowserInfo(ua);
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
+      const fingerprint = generateDeviceFingerprint(req, client_fingerprint || finalDeviceId);
+
+      // Brute-force & Lockout Check
+      const rateCheck = await checkRateLimit(email, ip);
+      if (rateCheck.locked) {
+        await recordLoginAttempt(email, ip, ua, false, "Account temporarily locked due to brute-force attempts");
+        return res.status(429).json({
+          error: `Too many failed login attempts. Your account is temporarily locked for ${rateCheck.lockoutMinutes} minutes.`,
+          locked: true,
+          lockoutMinutes: rateCheck.lockoutMinutes,
+        });
+      }
+
       const snapshot = await db.collection("users").where("email", "==", email).get();
 
-      if (snapshot.empty) return res.status(401).json({ error: "Invalid credentials" });
+      if (snapshot.empty) {
+        await recordLoginAttempt(email, ip, ua, false, "Invalid email");
+        return res.status(401).json({ error: "Invalid credentials", remainingAttempts: rateCheck.remainingAttempts - 1 });
+      }
       
       const userDoc = snapshot.docs[0];
       const user = userDoc.data();
 
-      // For google-auth users logging in via email/password intentionally without password? Not possible, but check.
-      if (user.password === "google-auth-no-password") return res.status(401).json({ error: "Please use Google to log in" });
-      if (!bcrypt.compareSync(password, user.password)) return res.status(401).json({ error: "Invalid credentials" });
+      if (user.password === "google-auth-no-password") {
+        await recordLoginAttempt(email, ip, ua, false, "Must use Google login");
+        return res.status(401).json({ error: "Please use Google to log in" });
+      }
+
+      if (!bcrypt.compareSync(password, user.password)) {
+        await recordLoginAttempt(email, ip, ua, false, "Invalid password");
+        return res.status(401).json({ error: "Invalid credentials", remainingAttempts: rateCheck.remainingAttempts - 1 });
+      }
+
+      if (user.status !== "active") {
+        await recordLoginAttempt(email, ip, ua, false, "Account suspended");
+        return res.status(403).json({ error: "Account suspended. Please contact support." });
+      }
+
+      // Admin IP Whitelist Check
+      if (user.role === "admin") {
+        const isWhitelisted = await isIpWhitelistedForAdmin(ip);
+        if (!isWhitelisted) {
+          await recordLoginAttempt(email, ip, ua, false, "Admin IP not whitelisted");
+          return res.status(403).json({ error: "Access denied: Your IP address is not whitelisted for administrator access." });
+        }
+      }
+
+      // Security Evaluation: Device Trust & Risk Signals
+      const config = await getSecurityConfig();
+      const locationObj = await getLocationFromIp(ip);
+      const trustCheck = await isDeviceTrusted(userDoc.id, fingerprint, config.trusted_device_expiry_days);
+      const riskCheck = await detectRiskSignals(userDoc.id, req, locationObj.country, fingerprint);
+
+      const requiresVerification = config.enable_device_verification && (!trustCheck.trusted || riskCheck.highRisk);
+
+      if (requiresVerification) {
+        const { codeId, code } = await createVerificationCode(userDoc.id, fingerprint, ip, browserInfo, locationObj.locationString);
+
+        // Send 6-digit code via SMTP
+        sendTemplateEmail(email, "device_verification", {
+          first_name: user.name || "User",
+          code,
+          login_time: new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "medium" }),
+          location_info: locationObj.locationString,
+          browser_info: browserInfo,
+          ip_address: ip,
+          support_email: "support@watchwds.com",
+        }).catch((err) => console.error("Failed to send verification code email:", err));
+
+        // If high risk & alerts enabled, send suspicious login alert
+        if (riskCheck.highRisk && config.enable_suspicious_login_alerts) {
+          sendTemplateEmail(email, "suspicious_login_alert", {
+            first_name: user.name || "User",
+            login_time: new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "medium" }),
+            location_info: locationObj.locationString,
+            browser_info: browserInfo,
+            ip_address: ip,
+            reason: riskCheck.signals.join("; "),
+            support_email: "support@watchwds.com",
+          }).catch((err) => console.error("Failed to send suspicious alert email:", err));
+        }
+
+        await recordLoginAttempt(email, ip, ua, true, "Pending 2FA verification code");
+
+        return res.json({
+          requires_verification: true,
+          userId: userDoc.id,
+          email: user.email,
+          temp_device_id: finalDeviceId,
+          location: locationObj.locationString,
+          browser: browserInfo,
+          fingerprint,
+          reason: trustCheck.reason || (riskCheck.signals.length > 0 ? riskCheck.signals[0] : "Verification required"),
+        });
+      }
+
+      // Trusted Device or Verification Disabled -> Complete Login
+      await recordLoginAttempt(email, ip, ua, true, "Success");
+
+      // Register device in trusted_devices table
+      const devId = "dev_" + crypto.randomBytes(12).toString("hex");
+      await execute(
+        "INSERT INTO `trusted_devices` (`id`, `user_id`, `device_fingerprint`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1) ON DUPLICATE KEY UPDATE `last_used_at` = NOW(), `ip_address` = ?, `country` = ?, `city` = ?, `is_active` = 1",
+        [devId, String(userDoc.id), fingerprint, browserInfo, ip, locationObj.country, locationObj.city, ip, locationObj.country, locationObj.city]
+      );
 
       await userDoc.ref.update({ active_device_id: finalDeviceId, status: "active" });
 
       const token = jwt.sign({ id: userDoc.id, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token, user: normalizeUser(userDoc.id, user), device_id: finalDeviceId });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+    } catch (e: any) {
+      console.error("Login error:", e);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post("/api/auth/google", async (req, res) => {
     try {
-      const { id_token, token: clientToken, email: reqEmail, name: reqName, avatar: reqAvatar, device_id } = req.body;
+      const { id_token, token: clientToken, email: reqEmail, name: reqName, avatar: reqAvatar, device_id, client_fingerprint } = req.body;
       const googleToken = id_token || clientToken;
+
+      const ip = getClientIp(req);
+      const ua = req.headers["user-agent"] || "";
+      const browserInfo = parseBrowserInfo(ua);
+      const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
+      const fingerprint = generateDeviceFingerprint(req, client_fingerprint || finalDeviceId);
 
       let verifiedEmail = "";
       let verifiedName = reqName || "";
@@ -362,8 +484,6 @@ async function startServer() {
         return res.status(400).json({ error: "Could not retrieve verified email from Google" });
       }
       
-      const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
-      
       const snapshot = await db.collection("users").where("email", "==", verifiedEmail).get();
       let user: any = null;
       let docId = "";
@@ -378,13 +498,206 @@ async function startServer() {
         docId = doc.id;
         user = doc.data();
         if (user.status !== "active") return res.status(403).json({ error: "Account suspended" });
-        await doc.ref.update({ active_device_id: finalDeviceId, avatar: verifiedAvatar || user.avatar });
-        user.avatar = verifiedAvatar || user.avatar;
       }
+
+      // Check Admin IP Whitelist
+      if (user.role === "admin") {
+        const isWhitelisted = await isIpWhitelistedForAdmin(ip);
+        if (!isWhitelisted) {
+          await recordLoginAttempt(verifiedEmail, ip, ua, false, "Admin IP not whitelisted (Google Auth)");
+          return res.status(403).json({ error: "Access denied: Your IP address is not whitelisted for administrator access." });
+        }
+      }
+
+      // Security Evaluation for existing users
+      const config = await getSecurityConfig();
+      const locationObj = await getLocationFromIp(ip);
+      const trustCheck = await isDeviceTrusted(docId, fingerprint, config.trusted_device_expiry_days);
+      const riskCheck = await detectRiskSignals(docId, req, locationObj.country, fingerprint);
+
+      const requiresVerification = config.enable_device_verification && (!trustCheck.trusted || riskCheck.highRisk);
+
+      if (requiresVerification) {
+        const { codeId, code } = await createVerificationCode(docId, fingerprint, ip, browserInfo, locationObj.locationString);
+
+        sendTemplateEmail(verifiedEmail, "device_verification", {
+          first_name: user.name || "User",
+          code,
+          login_time: new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "medium" }),
+          location_info: locationObj.locationString,
+          browser_info: browserInfo,
+          ip_address: ip,
+          support_email: "support@watchwds.com",
+        }).catch((err) => console.error("Failed to send verification code email:", err));
+
+        await recordLoginAttempt(verifiedEmail, ip, ua, true, "Google login - Pending verification code");
+
+        return res.json({
+          requires_verification: true,
+          userId: docId,
+          email: verifiedEmail,
+          temp_device_id: finalDeviceId,
+          location: locationObj.locationString,
+          browser: browserInfo,
+          fingerprint,
+        });
+      }
+
+      // Trusted Device -> Complete Google Auth
+      await recordLoginAttempt(verifiedEmail, ip, ua, true, "Google login success");
+      const devId = "dev_" + crypto.randomBytes(12).toString("hex");
+      await execute(
+        "INSERT INTO `trusted_devices` (`id`, `user_id`, `device_fingerprint`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1) ON DUPLICATE KEY UPDATE `last_used_at` = NOW(), `ip_address` = ?, `country` = ?, `city` = ?, `is_active` = 1",
+        [devId, String(docId), fingerprint, browserInfo, ip, locationObj.country, locationObj.city, ip, locationObj.country, locationObj.city]
+      );
+
+      const userRef = db.collection("users").doc(docId);
+      await userRef.update({ active_device_id: finalDeviceId, avatar: verifiedAvatar || user.avatar });
+      user.avatar = verifiedAvatar || user.avatar;
 
       const jwtToken = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token: jwtToken, user: normalizeUser(docId, user), device_id: finalDeviceId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Verify device 6-digit code route
+  app.post("/api/auth/verify-device", async (req, res) => {
+    try {
+      const { userId, code, fingerprint: clientFingerprint, temp_device_id, device_name } = req.body;
+      if (!userId || !code) return res.status(400).json({ error: "User ID and verification code are required" });
+
+      const ip = getClientIp(req);
+      const ua = req.headers["user-agent"] || "";
+      const browserInfo = device_name || parseBrowserInfo(ua);
+      const fingerprint = generateDeviceFingerprint(req, clientFingerprint || temp_device_id);
+      const locationObj = await getLocationFromIp(ip);
+
+      const result = await verifyCodeAndTrustDevice(
+        userId,
+        code,
+        fingerprint,
+        browserInfo,
+        ip,
+        locationObj.country,
+        locationObj.city
+      );
+
+      if (!result.success) {
+        await recordLoginAttempt("", ip, ua, false, `Code verification failed for user ${userId}`);
+        return res.status(400).json({ error: result.error || "Invalid or expired verification code" });
+      }
+
+      // Fetch user to generate JWT token
+      const userDoc = await db.collection("users").doc(String(userId)).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+
+      const user = userDoc.data();
+      const finalDeviceId = temp_device_id || Math.random().toString(36).substring(2, 15);
+      await userDoc.ref.update({ active_device_id: finalDeviceId, status: "active" });
+
+      await recordLoginAttempt(user.email, ip, ua, true, "Device verified successfully via 2FA");
+
+      const token = jwt.sign({ id: userDoc.id, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
+      res.json({ token, user: normalizeUser(userDoc.id, user), device_id: finalDeviceId });
+    } catch (e: any) {
+      console.error("Device verification error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Resend 6-digit verification code route
+  app.post("/api/auth/resend-code", async (req, res) => {
+    try {
+      const { userId, fingerprint: clientFingerprint } = req.body;
+      if (!userId) return res.status(400).json({ error: "User ID is required" });
+
+      const userDoc = await db.collection("users").doc(String(userId)).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+
+      const user = userDoc.data();
+      const ip = getClientIp(req);
+      const ua = req.headers["user-agent"] || "";
+      const browserInfo = parseBrowserInfo(ua);
+      const fingerprint = generateDeviceFingerprint(req, clientFingerprint);
+      const locationObj = await getLocationFromIp(ip);
+
+      const { code } = await createVerificationCode(userId, fingerprint, ip, browserInfo, locationObj.locationString);
+
+      sendTemplateEmail(user.email, "device_verification", {
+        first_name: user.name || "User",
+        code,
+        login_time: new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "medium" }),
+        location_info: locationObj.locationString,
+        browser_info: browserInfo,
+        ip_address: ip,
+        support_email: "support@watchwds.com",
+      }).catch((err) => console.error("Failed to resend verification code email:", err));
+
+      res.json({ success: true, message: "Verification code resent successfully" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Get user's trusted devices
+  app.get("/api/auth/trusted-devices", authenticate, async (req: any, res) => {
+    try {
+      const devices = await query(
+        "SELECT `id`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at` FROM `trusted_devices` WHERE `user_id` = ? AND `is_active` = 1 ORDER BY `last_used_at` DESC",
+        [String(req.user.id)]
+      );
+      res.json({ devices: devices || [] });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Revoke/Delete a trusted device
+  app.delete("/api/auth/trusted-devices/:id", authenticate, async (req: any, res) => {
+    try {
+      await execute(
+        "UPDATE `trusted_devices` SET `is_active` = 0 WHERE `id` = ? AND `user_id` = ?",
+        [req.params.id, String(req.user.id)]
+      );
+      res.json({ success: true, message: "Device revoked successfully" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin Security Settings GET
+  app.get("/api/admin/security/settings", authenticate, async (req: any, res) => {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Access denied" });
+    try {
+      const config = await getSecurityConfig();
+      res.json({ config });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin Security Settings PUT
+  app.put("/api/admin/security/settings", authenticate, async (req: any, res) => {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Access denied" });
+    try {
+      const updated = await updateSecurityConfig(req.body);
+      res.json({ config: updated, message: "Security settings saved successfully" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin Login Attempts Audit Log
+  app.get("/api/admin/security/login-attempts", authenticate, async (req: any, res) => {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Access denied" });
+    try {
+      const attempts = await query(
+        "SELECT `id`, `email`, `ip_address`, `user_agent`, `success`, `reason`, `created_at` FROM `login_attempts` ORDER BY `created_at` DESC LIMIT 100"
+      );
+      res.json({ attempts: attempts || [] });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.post("/api/auth/google/validate-credentials", authenticate, async (req: any, res) => {

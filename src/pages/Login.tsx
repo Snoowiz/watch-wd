@@ -7,6 +7,7 @@ import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
 import { SlidingPuzzleCaptcha } from '../components/SlidingPuzzleCaptcha';
+import { DeviceVerificationModal } from '../components/DeviceVerificationModal';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -21,6 +22,16 @@ export function Login() {
 
   // Determine where to redirect after login
   const redirectTo = (location.state as any)?.from || '/';
+
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationData, setVerificationData] = useState<{
+    userId: string;
+    email: string;
+    location?: string;
+    browser?: string;
+    tempDeviceId?: string;
+    fingerprint?: string;
+  } | null>(null);
 
   const handleGoogleLogin = async () => {
     try {
@@ -48,6 +59,20 @@ export function Login() {
       
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Google Login failed');
+
+      if (data.requires_verification) {
+        setVerificationData({
+          userId: data.userId,
+          email: data.email,
+          location: data.location,
+          browser: data.browser,
+          tempDeviceId: data.temp_device_id,
+          fingerprint: data.fingerprint,
+        });
+        setShowVerificationModal(true);
+        return;
+      }
+
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
       
       setAuth(data.user, data.token);
@@ -78,6 +103,19 @@ export function Login() {
       
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
+
+      if (data.requires_verification) {
+        setVerificationData({
+          userId: data.userId,
+          email: data.email,
+          location: data.location,
+          browser: data.browser,
+          tempDeviceId: data.temp_device_id,
+          fingerprint: data.fingerprint,
+        });
+        setShowVerificationModal(true);
+        return;
+      }
       
       setAuth(data.user, data.token);
       navigate(redirectTo);
@@ -223,6 +261,21 @@ export function Login() {
         onSuccess={handleCaptchaSuccess}
         onClose={() => setShowCaptcha(false)}
       />
+
+      {/* 2FA Device Verification Modal */}
+      {verificationData && (
+        <DeviceVerificationModal
+          isOpen={showVerificationModal}
+          onClose={() => setShowVerificationModal(false)}
+          userId={verificationData.userId}
+          email={verificationData.email}
+          location={verificationData.location}
+          browser={verificationData.browser}
+          tempDeviceId={verificationData.tempDeviceId}
+          fingerprint={verificationData.fingerprint}
+          redirectTo={redirectTo}
+        />
+      )}
     </div>
   );
 }

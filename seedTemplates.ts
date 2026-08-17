@@ -57,6 +57,47 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
 <p>If you didn't create an account with us, please ignore this email.</p>`
   },
   {
+    slug: "device_verification",
+    name: "Device Verification Code",
+    subject: "Security Verification Code: {{code}} - WatchWDS",
+    category: "Authentication",
+    variables_hint: "first_name, code, login_time, location_info, browser_info, ip_address, support_email",
+    body: `<h2>Device Verification Required</h2>
+<p>Hello {{first_name}},</p>
+<p>A login attempt was made on your WatchWDS account from a new or unrecognised device. Use the verification code below to authorize this device:</p>
+<div style="text-align: center; margin: 24px 0;">
+  <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #fbbf24; background-color: #0f172a; padding: 14px 28px; border-radius: 10px; display: inline-block;">{{code}}</span>
+</div>
+<p style="font-size: 14px; color: #64748b; text-align: center;">This code will expire in 10 minutes.</p>
+<table class="meta-table" style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px; width: 30%;">Time:</td><td class="value" style="color: #1e293b; padding: 8px;">{{login_time}}</td></tr>
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">Location:</td><td class="value" style="color: #1e293b; padding: 8px;">{{location_info}}</td></tr>
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">Browser/Device:</td><td class="value" style="color: #1e293b; padding: 8px;">{{browser_info}}</td></tr>
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">IP Address:</td><td class="value" style="color: #1e293b; padding: 8px;">{{ip_address}}</td></tr>
+</table>
+<p style="color: #ef4444; font-weight: 500;">If you did not attempt to log in, please change your password immediately and contact support at <a href="mailto:{{support_email}}">{{support_email}}</a>.</p>`
+  },
+  {
+    slug: "suspicious_login_alert",
+    name: "Suspicious Login Alert",
+    subject: "SECURITY ALERT: Suspicious login activity detected on WatchWDS",
+    category: "Authentication",
+    variables_hint: "first_name, login_time, location_info, browser_info, ip_address, reason, support_email",
+    body: `<h2>Security Alert: Suspicious Login Detected</h2>
+<p>Hello {{first_name}},</p>
+<p>We detected unusual login activity on your WatchWDS account:</p>
+<div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+  <p style="margin: 0; font-weight: bold; color: #991b1b;">Trigger: {{reason}}</p>
+</div>
+<table class="meta-table" style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px; width: 30%;">Time:</td><td class="value" style="color: #1e293b; padding: 8px;">{{login_time}}</td></tr>
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">Location:</td><td class="value" style="color: #1e293b; padding: 8px;">{{location_info}}</td></tr>
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">Browser:</td><td class="value" style="color: #1e293b; padding: 8px;">{{browser_info}}</td></tr>
+  <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 8px;">IP Address:</td><td class="value" style="color: #1e293b; padding: 8px;">{{ip_address}}</td></tr>
+</table>
+<p>If this was you, no action is needed. If you don't recognize this activity, please reset your password right away.</p>`
+  },
+  {
     slug: "password_reset_branding",
     name: "Password Reset Branding",
     subject: "Reset your WatchWDS account password",
