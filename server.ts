@@ -264,6 +264,11 @@ async function startServer() {
     return normalized;
   };
 
+  const getAdminEmails = (): string[] => {
+    const envAdminEmails = process.env.ADMIN_EMAILS || 'mayycutee1@gmail.com,admin@watchwds.com';
+    return envAdminEmails.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  };
+
   // === AUTHENTICATION ===
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -271,7 +276,8 @@ async function startServer() {
       const hash = bcrypt.hashSync(password, 10);
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
       
-      const role = email === 'mayycutee1@gmail.com' ? 'admin' : 'viewer';
+      const adminEmails = getAdminEmails();
+      const role = adminEmails.includes((email || '').toLowerCase()) ? 'admin' : 'viewer';
       const userData = { email, password: hash, name, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
       const result = await db.collection("users").add(userData);
       
@@ -489,7 +495,8 @@ async function startServer() {
       let docId = "";
 
       if (snapshot.empty) {
-        const role = 'viewer';
+        const adminEmails = getAdminEmails();
+        const role = adminEmails.includes((verifiedEmail || '').toLowerCase()) ? 'admin' : 'viewer';
         user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split('@')[0], avatar: verifiedAvatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
         const result = await db.collection("users").add(user);
         docId = result.id;

@@ -327,16 +327,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLogoutModalOpen: false,
   setLogoutModalOpen: (open) => set({ isLogoutModalOpen: open }),
   setAuth: (user, token) => {
-    if (user && user.email === 'mayycutee1@gmail.com') {
-      user.role = 'admin';
-    }
     localStorage.setItem('token', token);
     set({ user, token });
   },
   updateUser: (updates) => set((state) => {
-    if (state.user && state.user.email === 'mayycutee1@gmail.com') {
-      updates.role = 'admin';
-    }
     return { user: state.user ? { ...state.user, ...updates } : null };
   }),
   logout: () => {

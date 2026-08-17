@@ -13,7 +13,7 @@ export function BlogList() {
   const [draggedPostIndex, setDraggedPostIndex] = useState<number | null>(null);
 
   // Checks if user is admin
-  const isAdmin = user?.role === 'admin' || user?.email === 'mayycutee1@gmail.com';
+  const isAdmin = user?.role === 'admin';
 
   const publishedPosts = posts.filter(p => p.status === 'published');
 
