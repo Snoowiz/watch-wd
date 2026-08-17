@@ -265,7 +265,7 @@ async function startServer() {
   };
 
   const getAdminEmails = (): string[] => {
-    const envAdminEmails = process.env.ADMIN_EMAILS || 'mayycutee1@gmail.com,admin@watchwds.com';
+    const envAdminEmails = process.env.ADMIN_EMAILS || '';
     return envAdminEmails.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
   };
 
