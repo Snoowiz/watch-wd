@@ -8,6 +8,7 @@ import { AdminCookieSettings } from './AdminCookieSettings';
 import { AdminGoogleAuthSettings } from './AdminGoogleAuthSettings';
 import { MediaPicker } from '../../components/MediaPicker';
 import { AdminFirebaseSettings } from './AdminFirebaseSettings';
+import { AdminSecuritySettings } from './AdminSecuritySettings';
 
 export function AdminSettings() {
   const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security'>('payment');
@@ -654,99 +655,9 @@ export function AdminSettings() {
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
             <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-4">
               <ShieldCheck className="w-6 h-6 text-emerald-500" />
-              Security Settings
+              Security Settings & Audit Logs
             </h2>
-
-            {/* Sliding Puzzle CAPTCHA Toggle & Tolerance Adjuster */}
-            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-700 space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 mr-6">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">Sliding Puzzle CAPTCHA</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Require users to solve a sliding puzzle verification before logging in or registering. 
-                    This helps prevent automated bot attacks and spam account creation.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={captchaEnabled}
-                    onChange={(e) => setCaptchaEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-emerald-500"></div>
-                </label>
-              </div>
-
-              {/* Dynamic Alignment Tolerance Adjuster */}
-              <div className="pt-4 border-t border-slate-200/80 dark:border-slate-700/80">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                    Alignment Tolerance (Difficulty)
-                  </label>
-                  <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    ±{captchaTolerance}px ({captchaTolerance <= 10 ? 'Strict' : captchaTolerance <= 20 ? 'Medium' : captchaTolerance <= 35 ? 'Standard' : 'Lenient'})
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                  Set how precisely the user must align the puzzle piece with the notch. Lower values (e.g. ±5px) require exact precision, while higher values (e.g. ±40px) make verification easier.
-                </p>
-
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <span className="text-xs font-semibold text-slate-400">Strict (5px)</span>
-                    <input
-                      type="range"
-                      min={5}
-                      max={50}
-                      step={1}
-                      value={captchaTolerance}
-                      onChange={(e) => setCaptchaTolerance(Number(e.target.value))}
-                      className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                    />
-                    <span className="text-xs font-semibold text-slate-400">Lenient (50px)</span>
-                  </div>
-
-                  {/* Preset Buttons */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {[
-                      { label: 'Strict (±5px)', val: 5 },
-                      { label: 'Medium (±15px)', val: 15 },
-                      { label: 'Standard (±25px)', val: 25 },
-                      { label: 'Lenient (±40px)', val: 40 }
-                    ].map((preset) => (
-                      <button
-                        key={preset.val}
-                        type="button"
-                        onClick={() => setCaptchaTolerance(preset.val)}
-                        className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${
-                          captchaTolerance === preset.val
-                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
-                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <span className={`text-xs font-bold px-3 py-1 rounded-full ${
-                  captchaEnabled 
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' 
-                    : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                }`}>
-                  {captchaEnabled ? '🛡️ CAPTCHA Active' : '⚠️ CAPTCHA Disabled'}
-                </span>
-                {captchaEnabled && (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">
-                    Users must solve puzzle (±{captchaTolerance}px target tolerance) before login/register
-                  </span>
-                )}
-              </div>
-            </div>
+            <AdminSecuritySettings />
           </div>
         </div>
       )}
