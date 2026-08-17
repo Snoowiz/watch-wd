@@ -11,8 +11,8 @@ import { CookieBanner } from './CookieBanner';
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, setLogoutModalOpen } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
-  const { currencySymbol, platformName: storedPlatformName, favicon, blogSettings } = useSettingsStore();
-  const platformName = storedPlatformName || 'WatchWDS';
+  const { currencySymbol, platformName: storedPlatformName, logoUrl, favicon, blogSettings } = useSettingsStore();
+  const platformName = storedPlatformName !== undefined ? storedPlatformName : 'WatchWDS';
   const blogEnabled = blogSettings?.enabled !== false;
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useThemeStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -63,11 +63,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <Link to="/" className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-white">
-                  {platformInitials}
-                </div>
-                <span className="font-bold text-xl tracking-tight">{platformName}</span>
+              <Link to="/" className="flex items-center gap-2.5">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={platformName || 'Logo'}
+                    className="h-8 max-w-[160px] object-contain rounded-md"
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-white shrink-0">
+                    {platformInitials}
+                  </div>
+                )}
+                {platformName.trim() && (
+                  <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">{platformName}</span>
+                )}
               </Link>
               
               <div className="hidden md:ml-10 md:flex md:space-x-8">

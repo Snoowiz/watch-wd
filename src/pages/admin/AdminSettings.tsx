@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -726,31 +726,135 @@ function AppearanceSettings() {
 }
 
 function PlatformBrandingSettings() {
-  const { platformName, setPlatformName, favicon, setFavicon, preloaderEnabled, setPreloaderEnabled } = useSettingsStore();
-  const [localName, setLocalName] = useState(platformName || 'WatchWDS');
+  const { 
+    platformName, setPlatformName, 
+    logoUrl, setLogoUrl, 
+    favicon, setFavicon, 
+    preloaderEnabled, setPreloaderEnabled 
+  } = useSettingsStore();
+
+  const [localName, setLocalName] = useState(platformName !== undefined ? platformName : 'WatchWDS');
+  const [localLogoUrl, setLocalLogoUrl] = useState(logoUrl || '');
+  const [localFavicon, setLocalFavicon] = useState(favicon || '/favicon.ico');
   const [localPreloaderEnabled, setLocalPreloaderEnabled] = useState(preloaderEnabled !== false);
-  const [showPicker, setShowPicker] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<'favicon' | 'logo' | null>(null);
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
-    setLocalName(platformName || 'WatchWDS');
+    setLocalName(platformName !== undefined ? platformName : 'WatchWDS');
+    setLocalLogoUrl(logoUrl || '');
+    setLocalFavicon(favicon || '/favicon.ico');
     setLocalPreloaderEnabled(preloaderEnabled !== false);
-  }, [platformName, preloaderEnabled]);
+  }, [platformName, logoUrl, favicon, preloaderEnabled]);
 
   const handleSave = () => {
     setPlatformName(localName);
+    setLogoUrl(localLogoUrl);
+    setFavicon(localFavicon);
     setPreloaderEnabled(localPreloaderEnabled);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
 
+  // Compute initials preview if no logo is selected
+  const computedInitials = (() => {
+    const trimmed = (localName || '').trim();
+    if (!trimmed) return 'WW';
+    const words = trimmed.split(/\s+/);
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase();
+    }
+    return trimmed.slice(0, 2).toUpperCase();
+  })();
+
   return (
     <div className="space-y-6 text-left">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Site Logo Control */}
+        <div className="space-y-2 md:col-span-2 bg-slate-50/50 dark:bg-slate-900/40 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">
+            Platform Logo (Replaces default "{computedInitials}" badge)
+          </label>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+            Upload or choose a custom site logo (.png, .jpg, .jpeg, .webp, .svg). When added, this replaces the initials icon in the application header and footer.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setPickerTarget('logo')}
+              className="relative w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 transition-all overflow-hidden flex items-center justify-center bg-white dark:bg-slate-950 group shrink-0 shadow-sm"
+              title="Click to choose or upload logo from media library"
+              id="logo-picker-btn"
+            >
+              {localLogoUrl ? (
+                <img
+                  src={localLogoUrl}
+                  alt="Platform Logo Preview"
+                  className="w-full h-full object-contain p-1 group-hover:opacity-40 transition-all"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-1 text-slate-400 group-hover:text-indigo-500">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-xs shadow-md">
+                    {computedInitials}
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400">Default Badge</span>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <span className="text-xs font-black text-white px-2 py-1 bg-indigo-600 rounded-lg text-center shadow">
+                  CHANGE
+                </span>
+              </div>
+            </button>
+
+            <div className="flex-1 space-y-2.5 w-full">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPickerTarget('logo')}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Choose / Upload Logo
+                </button>
+                {localLogoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocalLogoUrl('');
+                      setIsSaved(false);
+                    }}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-colors border border-red-200 dark:border-red-900/40 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Remove Logo (Use Initials)
+                  </button>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={localLogoUrl}
+                  onChange={(e) => {
+                    setLocalLogoUrl(e.target.value);
+                    setIsSaved(false);
+                  }}
+                  placeholder="Or enter image URL directly (e.g. https://.../logo.png)"
+                  className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Name Control */}
         <div className="space-y-2">
           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">
-            Platform Name
+            Platform Text Name
           </label>
           <input
             type="text"
@@ -759,11 +863,11 @@ function PlatformBrandingSettings() {
               setLocalName(e.target.value);
               setIsSaved(false);
             }}
-            placeholder="e.g., MySportz"
+            placeholder="WatchWDS (Leave blank to hide text)"
             className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 rounded-xl text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
           />
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            This changes the display name of your platform across headers, footers, and page titles.
+            This changes the display text next to your logo in headers, footers, and browser page titles. <strong>Leave empty to hide text</strong> and show only the logo.
           </p>
         </div>
 
@@ -775,14 +879,14 @@ function PlatformBrandingSettings() {
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => setShowPicker(true)}
+              onClick={() => setPickerTarget('favicon')}
               className="relative w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 transition-all overflow-hidden flex items-center justify-center bg-slate-50 dark:bg-slate-950 group shrink-0"
               title="Click to choose favicon from your media library"
               id="favicon-picker-btn"
             >
-              {favicon ? (
+              {localFavicon ? (
                 <img
-                  src={favicon}
+                  src={localFavicon}
                   alt="Favicon"
                   className="w-10 h-10 object-contain group-hover:opacity-40 transition-all"
                   referrerPolicy="no-referrer"
@@ -797,7 +901,7 @@ function PlatformBrandingSettings() {
             <div className="flex-1">
               <button
                 type="button"
-                onClick={() => setShowPicker(true)}
+                onClick={() => setPickerTarget('favicon')}
                 className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold transition-colors border border-indigo-100 dark:border-indigo-900/40"
               >
                 Choose from Media
@@ -848,14 +952,18 @@ function PlatformBrandingSettings() {
         </button>
       </div>
 
-      {showPicker && (
+      {pickerTarget && (
         <MediaPicker
           onSelect={(url) => {
-            setFavicon(url);
-            setShowPicker(false);
+            if (pickerTarget === 'logo') {
+              setLocalLogoUrl(url);
+            } else if (pickerTarget === 'favicon') {
+              setLocalFavicon(url);
+            }
+            setPickerTarget(null);
             setIsSaved(false);
           }}
-          onClose={() => setShowPicker(false)}
+          onClose={() => setPickerTarget(null)}
         />
       )}
     </div>

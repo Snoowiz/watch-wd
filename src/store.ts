@@ -481,6 +481,8 @@ interface SettingsState {
   fetchPerPageSeo: () => Promise<void>;
   platformName: string;
   setPlatformName: (name: string) => void;
+  logoUrl: string;
+  setLogoUrl: (logoUrl: string) => void;
   favicon: string;
   setFavicon: (favicon: string) => void;
   preloaderEnabled: boolean;
@@ -592,17 +594,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   platformName: 'WatchWDS',
   setPlatformName: (name) => {
     set({ platformName: name });
-    saveSettingHelper('branding', { platformName: name, favicon: get().favicon, preloaderEnabled: get().preloaderEnabled });
+    saveSettingHelper('branding', { platformName: name, logoUrl: get().logoUrl, favicon: get().favicon, preloaderEnabled: get().preloaderEnabled });
+  },
+  logoUrl: '',
+  setLogoUrl: (logoUrl) => {
+    set({ logoUrl });
+    saveSettingHelper('branding', { platformName: get().platformName, logoUrl, favicon: get().favicon, preloaderEnabled: get().preloaderEnabled });
   },
   favicon: '/favicon.ico',
   setFavicon: (favicon) => {
     set({ favicon });
-    saveSettingHelper('branding', { platformName: get().platformName, favicon, preloaderEnabled: get().preloaderEnabled });
+    saveSettingHelper('branding', { platformName: get().platformName, logoUrl: get().logoUrl, favicon, preloaderEnabled: get().preloaderEnabled });
   },
   preloaderEnabled: true,
   setPreloaderEnabled: (enabled) => {
     set({ preloaderEnabled: enabled });
-    saveSettingHelper('branding', { platformName: get().platformName, favicon: get().favicon, preloaderEnabled: enabled });
+    saveSettingHelper('branding', { platformName: get().platformName, logoUrl: get().logoUrl, favicon: get().favicon, preloaderEnabled: enabled });
   },
   googleAuthSettings: {
     enabled: false,
@@ -644,7 +651,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (brandingRes.ok) {
         const data = await brandingRes.json();
         set({
-          platformName: data.platformName || 'WatchWDS',
+          platformName: data.platformName !== undefined ? data.platformName : 'WatchWDS',
+          logoUrl: data.logoUrl || '',
           favicon: data.favicon || '/favicon.ico',
           preloaderEnabled: data.preloaderEnabled !== false
         });
@@ -958,7 +966,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   matches: [],
   fetchMatches: async () => {
     try {
-      const res = await fetch('/api/matches');
+      const res = await fetch('/api/matches', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         set({ matches: Array.isArray(data) ? data : [] });
