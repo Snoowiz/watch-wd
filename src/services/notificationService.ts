@@ -100,7 +100,7 @@ export const subscribeToCategory = async (userId: string | number, categoryId: s
     const token = localStorage.getItem('token');
     if (!token) return true; // Fail silently or optimistically 
 
-    // Optimistically update via REST API instead of firebase directly (since mock backend is used)
+    // Optimistically update category subscriptions via REST API
     const res = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` }});
     const { user } = await res.json();
     

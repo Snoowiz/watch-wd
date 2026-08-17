@@ -4,10 +4,11 @@ import {
   Mail, Settings, FileText, Check, AlertCircle, Save, Send, 
   RefreshCw, Lock as LockIcon, User as UserIcon, Globe, Info,
   Trash2, Copy, Eye, Code, Layers, Sparkles, TrendingUp, BarChart2,
-  Plus, CheckCircle2, AlertTriangle, ExternalLink, ShieldCheck, Paintbrush
+  Plus, CheckCircle2, AlertTriangle, ExternalLink, ShieldCheck, Paintbrush, Image as ImageIcon
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import { MediaPickerModal } from '../../components/MediaPickerModal';
 
 interface EmailBranding {
   logo_url: string;
@@ -149,6 +150,7 @@ export function EmailManagement() {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [testEmail, setTestEmail] = useState('');
   const [isTesting, setIsTesting] = useState(false);
+  const [showLogoMediaPicker, setShowLogoMediaPicker] = useState(false);
 
   // Stats / Analytics
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
@@ -1053,14 +1055,71 @@ export function EmailManagement() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-0.5">Platform Logo URL</label>
-                <input 
-                  type="text"
-                  value={branding.logo_url}
-                  onChange={(e) => setBranding({...branding, logo_url: e.target.value})}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
-                />
+              <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                      Email System Header Logo
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      This logo appears at the top of all outgoing emails sent to users.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowLogoMediaPicker(true)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-950 text-xs font-bold rounded-xl shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                    <span>Choose from Media Library</span>
+                  </button>
+                </div>
+
+                {/* Logo Preview & Input controls */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-1">
+                  <div 
+                    className="w-32 h-16 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center p-2 overflow-hidden shadow-inner flex-shrink-0 relative group"
+                    style={{ backgroundColor: branding.secondary_color || '#0f172a' }}
+                  >
+                    {branding.logo_url ? (
+                      <img 
+                        src={branding.logo_url} 
+                        alt="Email Header Logo Preview" 
+                        className="max-h-full max-w-full object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-semibold">No Logo Set</span>
+                    )}
+                  </div>
+
+                  <div className="flex-1 w-full space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text"
+                        value={branding.logo_url}
+                        onChange={(e) => setBranding({...branding, logo_url: e.target.value})}
+                        placeholder="https://example.com/logo.png"
+                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
+                      />
+                      {branding.logo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setBranding({...branding, logo_url: ''})}
+                          className="px-2.5 py-2 text-xs text-slate-400 hover:text-red-500 font-semibold transition-colors"
+                          title="Remove logo"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Recommended: Transparent PNG or SVG asset (3:1 horizontal ratio).
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -1707,6 +1766,15 @@ export function EmailManagement() {
         </div>
       )}
 
+      <MediaPickerModal
+        isOpen={showLogoMediaPicker}
+        onClose={() => setShowLogoMediaPicker(false)}
+        onSelect={(url) => {
+          setBranding({ ...branding, logo_url: url });
+          setShowLogoMediaPicker(false);
+        }}
+        title="Select Email Header Logo"
+      />
     </div>
   );
 }

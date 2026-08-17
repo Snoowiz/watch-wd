@@ -71,7 +71,12 @@ try {
 const currentFilename = _filename;
 const currentDirname = _dirname;
 
-const JWT_SECRET = process.env.JWT_SECRET || "watchwds-super-secret-key-2026";
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('⚠️ Warning: JWT_SECRET environment variable is missing in production environment.');
+  }
+  return crypto.randomBytes(32).toString('hex');
+})();
 
 // MySQL database adapter (replaces Firestore)
 const db = new MySQLAdapter();

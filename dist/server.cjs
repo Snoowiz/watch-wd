@@ -1859,7 +1859,12 @@ try {
 }
 var currentFilename = _filename;
 var currentDirname = _dirname;
-var JWT_SECRET = process.env.JWT_SECRET || "watchwds-super-secret-key-2026";
+var JWT_SECRET = process.env.JWT_SECRET || (() => {
+  if (process.env.NODE_ENV === "production") {
+    console.error("\u26A0\uFE0F Warning: JWT_SECRET environment variable is missing in production environment.");
+  }
+  return import_crypto3.default.randomBytes(32).toString("hex");
+})();
 var db = new MySQLAdapter();
 function apiFragmentCache(ttlSeconds) {
   return (req, res, next) => {

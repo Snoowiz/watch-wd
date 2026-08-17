@@ -109,7 +109,7 @@ export function AdManager() {
   const totalImpressions = safeImpressions.length;
   const totalClicks = safeImpressions.filter(i => i.clicked).length;
   const avgCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : '0.00';
-  const estRevenue = (totalImpressions * 0.015 + totalClicks * 0.50).toFixed(2); // Mock est revenue
+  const estRevenue = (totalImpressions * 0.015 + totalClicks * 0.50).toFixed(2); // Estimated ad revenue
 
   return (
     <div className="space-y-6">
