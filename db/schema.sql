@@ -428,3 +428,54 @@ CREATE TABLE IF NOT EXISTS `revenue_policies` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_policy_club` (`club_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- SECURITY SYSTEM TABLES
+-- ============================================
+CREATE TABLE IF NOT EXISTS `trusted_devices` (
+  `id` varchar(100) NOT NULL PRIMARY KEY,
+  `user_id` varchar(100) NOT NULL,
+  `device_fingerprint` varchar(255) NOT NULL,
+  `device_name` varchar(255) DEFAULT '',
+  `ip_address` varchar(45) DEFAULT '',
+  `country` varchar(100) DEFAULT '',
+  `city` varchar(100) DEFAULT '',
+  `last_used_at` datetime DEFAULT current_timestamp(),
+  `created_at` datetime DEFAULT current_timestamp(),
+  `is_active` tinyint(1) DEFAULT 1,
+  KEY `idx_trusted_devices_user` (`user_id`),
+  KEY `idx_trusted_devices_fingerprint` (`device_fingerprint`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `verification_codes` (
+  `id` varchar(100) NOT NULL PRIMARY KEY,
+  `user_id` varchar(100) NOT NULL,
+  `code` varchar(10) NOT NULL,
+  `device_fingerprint` varchar(255) DEFAULT '',
+  `ip_address` varchar(45) DEFAULT '',
+  `browser_info` text DEFAULT NULL,
+  `location_info` varchar(255) DEFAULT '',
+  `expires_at` datetime NOT NULL,
+  `used` tinyint(1) DEFAULT 0,
+  `created_at` datetime DEFAULT current_timestamp(),
+  KEY `idx_verification_codes_user` (`user_id`),
+  KEY `idx_verification_codes_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `login_attempts` (
+  `id` varchar(100) NOT NULL PRIMARY KEY,
+  `email` varchar(255) NOT NULL,
+  `ip_address` varchar(45) DEFAULT '',
+  `user_agent` text DEFAULT NULL,
+  `success` tinyint(1) DEFAULT 0,
+  `reason` varchar(255) DEFAULT '',
+  `created_at` datetime DEFAULT current_timestamp(),
+  KEY `idx_login_attempts_email` (`email`),
+  KEY `idx_login_attempts_ip` (`ip_address`),
+  KEY `idx_login_attempts_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `security_settings` (
+  `key_name` varchar(100) NOT NULL PRIMARY KEY,
+  `value` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

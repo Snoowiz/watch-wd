@@ -4580,6 +4580,68 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       }
     });
 
+    // Ensure security system tables exist (trusted_devices, verification_codes, login_attempts, security_settings)
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`trusted_devices\` (
+        \`id\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`user_id\` VARCHAR(100) NOT NULL,
+        \`device_fingerprint\` VARCHAR(255) NOT NULL,
+        \`device_name\` VARCHAR(255) DEFAULT '',
+        \`ip_address\` VARCHAR(45) DEFAULT '',
+        \`country\` VARCHAR(100) DEFAULT '',
+        \`city\` VARCHAR(100) DEFAULT '',
+        \`last_used_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        \`is_active\` TINYINT(1) DEFAULT 1,
+        KEY \`idx_trusted_devices_user\` (\`user_id\`),
+        KEY \`idx_trusted_devices_fingerprint\` (\`device_fingerprint\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure trusted_devices table exists", err));
+
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`verification_codes\` (
+        \`id\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`user_id\` VARCHAR(100) NOT NULL,
+        \`code\` VARCHAR(10) NOT NULL,
+        \`device_fingerprint\` VARCHAR(255) DEFAULT '',
+        \`ip_address\` VARCHAR(45) DEFAULT '',
+        \`browser_info\` TEXT DEFAULT NULL,
+        \`location_info\` VARCHAR(255) DEFAULT '',
+        \`expires_at\` DATETIME NOT NULL,
+        \`used\` TINYINT(1) DEFAULT 0,
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY \`idx_verification_codes_user\` (\`user_id\`),
+        KEY \`idx_verification_codes_code\` (\`code\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure verification_codes table exists", err));
+
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`login_attempts\` (
+        \`id\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`email\` VARCHAR(255) NOT NULL,
+        \`ip_address\` VARCHAR(45) DEFAULT '',
+        \`user_agent\` TEXT DEFAULT NULL,
+        \`success\` TINYINT(1) DEFAULT 0,
+        \`reason\` VARCHAR(255) DEFAULT '',
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY \`idx_login_attempts_email\` (\`email\`),
+        KEY \`idx_login_attempts_ip\` (\`ip_address\`),
+        KEY \`idx_login_attempts_created\` (\`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure login_attempts table exists", err));
+
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`security_settings\` (
+        \`key_name\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`value\` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure security_settings table exists", err));
+
+    execute(`
+      INSERT IGNORE INTO \`security_settings\` (\`key_name\`, \`value\`) VALUES
+      ('config', '{"trusted_device_expiry_days":60,"max_login_attempts":5,"lockout_duration_minutes":30,"enable_suspicious_login_alerts":true,"admin_ip_whitelist":[],"enforce_admin_ip_whitelist":false,"enable_device_verification":true}');
+    `).catch(err => console.error("Failed to seed security_settings table", err));
+
     // Trigger deploy/startup cache warming
     warmCriticalCaches().catch(err => console.error("Startup Cache Warning failed", err));
   });
