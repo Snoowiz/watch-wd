@@ -939,6 +939,8 @@ export interface Match {
     frequencyOverride?: number;
     campaignIds?: number[];
   };
+  duration?: number; // Duration in minutes, defaults to 120
+  reminder_sent_10m?: boolean | number;
 }
 
 interface MatchState {

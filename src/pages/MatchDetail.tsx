@@ -194,40 +194,50 @@ export function MatchDetail() {
     }
   }, [user, match?.id]);
 
+  const [dynamicStatus, setDynamicStatus] = useState<string>(match?.status || 'upcoming');
+
   useEffect(() => {
-    if (match?.status === 'upcoming' && match.date) {
-      const targetDate = new Date(match.date).getTime();
-      
-      if (isNaN(targetDate)) {
-        setTimeRemaining(null);
-        return;
-      }
+    if (!match?.date) {
+      setTimeRemaining(null);
+      return;
+    }
 
-      const updateTimer = () => {
-        const now = new Date().getTime();
-        const distance = targetDate - now;
+    const kickoffMs = new Date(match.date).getTime();
+    if (isNaN(kickoffMs)) {
+      setTimeRemaining(null);
+      return;
+    }
 
-        if (distance < 0) {
-          setTimeRemaining(null);
-          return;
-        }
+    const durationMins = match.duration || 120;
+    const durationMs = durationMins * 60 * 1000;
 
+    const updateTimer = () => {
+      const nowMs = Date.now();
+
+      if (nowMs < kickoffMs) {
+        setDynamicStatus(match.status === 'completed' ? 'completed' : 'upcoming');
+        const distance = kickoffMs - nowMs;
         const days = Math.floor(distance / (1000 * 60 * 60 * 24));
         const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
         setTimeRemaining({ days, hours, minutes, seconds });
-      };
+      } else if (nowMs >= kickoffMs && nowMs < kickoffMs + durationMs) {
+        setDynamicStatus(match.status === 'completed' ? 'completed' : 'live');
+        const elapsed = nowMs - kickoffMs;
+        const minutes = Math.floor(elapsed / (1000 * 60));
+        const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
+        setTimeRemaining({ days: 0, hours: 0, minutes, seconds });
+      } else {
+        setDynamicStatus(match.status === 'upcoming' || match.status === 'live' ? 'completed' : match.status);
+        setTimeRemaining(null);
+      }
+    };
 
-      updateTimer();
-      const intervalId = setInterval(updateTimer, 1000);
-      
-      return () => clearInterval(intervalId);
-    } else {
-      setTimeRemaining(null);
-    }
-  }, [match?.status, match?.date]);
+    updateTimer();
+    const intervalId = setInterval(updateTimer, 1000);
+    return () => clearInterval(intervalId);
+  }, [match?.status, match?.date, match?.duration]);
 
   const handleToggleNotify = async () => {
     if (!user) {
@@ -489,9 +499,9 @@ export function MatchDetail() {
             
             <div className="flex flex-wrap items-center justify-start gap-3 w-full mt-2">
                <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest ${
-                 match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500'
+                 dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' : dynamicStatus === 'upcoming' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                }`}>
-                 {match.status}
+                 {dynamicStatus}
                </span>
                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
                  <Calendar className="w-3.5 h-3.5" />
@@ -501,11 +511,17 @@ export function MatchDetail() {
                  <Clock className="w-3.5 h-3.5" />
                  {formatDateSafe(match.date, 'h:mm a')}
                </div>
-               {timeRemaining && match.status === 'upcoming' && (
+               {timeRemaining && dynamicStatus === 'upcoming' && (
                  <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-indigo-200 dark:border-indigo-500/30 transition-all">
                    <Clock className="w-3.5 h-3.5 animate-pulse" />
                    {timeRemaining.days > 0 ? `${timeRemaining.days}d ` : ''}
                    {timeRemaining.hours.toString().padStart(2, '0')}h : {timeRemaining.minutes.toString().padStart(2, '0')}m : {timeRemaining.seconds.toString().padStart(2, '0')}s
+                 </div>
+               )}
+               {timeRemaining && dynamicStatus === 'live' && (
+                 <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm bg-red-50 dark:bg-red-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-red-200 dark:border-red-500/30 transition-all">
+                   <Clock className="w-3.5 h-3.5 animate-pulse" />
+                   LIVE {timeRemaining.minutes}' ({timeRemaining.seconds.toString().padStart(2, '0')}s)
                  </div>
                )}
             </div>

@@ -1736,6 +1736,78 @@ async function startServer() {
     }
   });
 
+  async function processMatchAutomations() {
+    try {
+      const matchesSnap = await db.collection("matches").get();
+      const allMatches = matchesSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      const nowMs = Date.now();
+      let cacheInvalidationNeeded = false;
+
+      for (const match of allMatches) {
+        if (!match.date) continue;
+        const kickoffMs = new Date(match.date).getTime();
+        if (isNaN(kickoffMs)) continue;
+
+        const durationMins = Number(match.duration) || 120;
+        const durationMs = durationMins * 60 * 1000;
+        const currentStatus = match.status;
+
+        // 1. Automatic status transition: Upcoming -> Live
+        if (nowMs >= kickoffMs && nowMs < kickoffMs + durationMs && currentStatus === 'upcoming') {
+          await db.collection("matches").doc(match.id).update({ status: 'live' });
+          cacheInvalidationNeeded = true;
+          console.log(`[AUTOMATION] Match "${match.title}" (ID: ${match.id}) transitioned: upcoming -> live`);
+        }
+
+        // 2. Automatic status transition: Live (or Upcoming) -> Completed
+        if (nowMs >= kickoffMs + durationMs && (currentStatus === 'live' || currentStatus === 'upcoming')) {
+          await db.collection("matches").doc(match.id).update({ status: 'completed' });
+          cacheInvalidationNeeded = true;
+          console.log(`[AUTOMATION] Match "${match.title}" (ID: ${match.id}) transitioned: ${currentStatus} -> completed`);
+        }
+
+        // 3. Automated 10-Minute Pre-Kickoff Email Reminders
+        const tenMinutesMs = 10 * 60 * 1000;
+        const timeToKickoff = kickoffMs - nowMs;
+
+        if (timeToKickoff > 0 && timeToKickoff <= tenMinutesMs && !match.reminder_sent_10m && (currentStatus === 'upcoming' || currentStatus === 'live')) {
+          // Mark reminder sent
+          await db.collection("matches").doc(match.id).update({ reminder_sent_10m: 1 });
+
+          const savedSnap = await db.collection("saved_matches").where("match_id", "==", String(match.id)).get();
+          const savedUserIds = savedSnap.docs.map((doc: any) => doc.data().user_id).filter(Boolean);
+
+          if (savedUserIds.length > 0) {
+            console.log(`[AUTOMATION] Sending 10m kickoff reminder for "${match.title}" to ${savedUserIds.length} users.`);
+            for (const userId of savedUserIds) {
+              try {
+                const userDoc = await db.collection("users").doc(userId).get();
+                if (userDoc.exists && userDoc.data()?.email) {
+                  const user = userDoc.data();
+                  const template = await renderEmailTemplate("match_starting_15m", {
+                    user_name: user.name || "Sports Fan",
+                    match_title: match.title,
+                    match_time: new Date(match.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    match_url: `${process.env.APP_URL || 'https://watchwds.com'}/matches/${match.slug || match.id}`
+                  });
+                  await dispatchEmail(user.email, template.subject, template.html);
+                }
+              } catch (err: any) {
+                console.error(`[AUTOMATION] Failed to send 10m kickoff reminder to user ${userId}:`, err?.message);
+              }
+            }
+          }
+        }
+      }
+
+      if (cacheInvalidationNeeded) {
+        cacheEngine.invalidateCollection("matches");
+      }
+    } catch (err: any) {
+      console.error("[AUTOMATION ERROR] Match lifecycle automation error:", err?.message);
+    }
+  }
+
   // GET EMAIL SETTINGS
   app.get("/api/admin/email/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
@@ -4671,6 +4743,12 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
     // Trigger deploy/startup cache warming
     warmCriticalCaches().catch(err => console.error("Startup Cache Warning failed", err));
+
+    // Trigger match lifecycle automation engine & set 60s background cron interval
+    processMatchAutomations().catch(err => console.error("Match automation startup check failed", err));
+    setInterval(() => {
+      processMatchAutomations().catch(err => console.error("Match automation interval error", err));
+    }, 60000);
   });
 }
 

@@ -66,6 +66,7 @@ export function NewMatch() {
   const [customDate, setCustomDate] = useState(existingMatch?.date ? new Date(existingMatch.date).toISOString().slice(0, 16) : '');
   const [liveCommenting, setLiveCommenting] = useState(existingMatch?.liveCommenting ?? true);
   const [commentAlignment, setCommentAlignment] = useState<'left' | 'center' | 'right'>(existingMatch?.commentAlignment || 'center');
+  const [duration, setDuration] = useState<number>(existingMatch?.duration || 120);
   
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -105,6 +106,7 @@ export function NewMatch() {
       setCustomDate(existingMatch.date ? new Date(existingMatch.date).toISOString().slice(0, 16) : '');
       setLiveCommenting(existingMatch.liveCommenting ?? true);
       setCommentAlignment(existingMatch.commentAlignment || 'center');
+      setDuration(existingMatch.duration || 120);
     }
   }, [existingMatch]);
 
@@ -133,6 +135,20 @@ export function NewMatch() {
         finalThumbnail = await compressImage(thumbnail);
       }
 
+      const matchTimestamp = new Date(finalDate).getTime();
+      const durationMins = Number(duration) || 120;
+      const durationMs = durationMins * 60 * 1000;
+      const nowMs = Date.now();
+
+      let computedStatus = status;
+      if (matchTimestamp > nowMs && computedStatus !== 'completed') {
+        computedStatus = 'upcoming';
+      } else if (nowMs >= matchTimestamp && nowMs < matchTimestamp + durationMs && computedStatus !== 'completed') {
+        computedStatus = 'live';
+      } else if (nowMs >= matchTimestamp + durationMs && status !== 'live' && status !== 'upcoming') {
+        computedStatus = 'completed';
+      }
+
       const matchData: Match = {
         id: (isEditing ? String(id) : String(Date.now())) as any,
         title,
@@ -144,7 +160,8 @@ export function NewMatch() {
         required_plan_id: requiredPlanId,
         club_id: clubId,
         embedPrice: ppvPrice * 10, // Default multiplier
-        status,
+        status: computedStatus as any,
+        duration: durationMins,
         thumbnail: finalThumbnail || 'https://picsum.photos/seed/default/800/450',
         content,
         description,
@@ -539,6 +556,38 @@ export function NewMatch() {
                 <option value="live">Live Now</option>
                 <option value="completed">Completed</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Match Duration (Minutes)</label>
+              <div className="flex items-center gap-2 mb-2">
+                {[90, 120, 150, 180].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setDuration(mins)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                      Number(duration) === mins
+                        ? 'bg-yellow-500 text-slate-900 border-yellow-500 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-yellow-500/50'
+                    }`}
+                  >
+                    {mins}m
+                  </button>
+                ))}
+              </div>
+              <input 
+                type="number"
+                min="15"
+                max="600"
+                value={duration}
+                onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
+                placeholder="e.g. 120"
+                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
+              />
+              <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-1">
+                Match will stay 'Live' for this duration after kick-off before automatically marking as 'Completed'.
+              </p>
             </div>
 
             <div>
