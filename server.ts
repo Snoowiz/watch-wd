@@ -3387,8 +3387,32 @@ async function startServer() {
     }
   });
 
+  // Middleware to restrict public blog API access when blog system is disabled
+  const requireBlogEnabled = async (req: any, res: any, next: any) => {
+    try {
+      const snap = await db.collection("settings").doc("blog").get();
+      const isEnabled = snap.exists ? snap.data()?.enabled === true : false;
+      if (isEnabled) return next();
+
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        try {
+          const decoded: any = jwt.verify(token, JWT_SECRET);
+          if (decoded && decoded.role === 'admin') {
+            req.user = decoded;
+            return next();
+          }
+        } catch (err) {}
+      }
+      return res.status(404).json({ error: "Blog system is disabled" });
+    } catch (e: any) {
+      return res.status(404).json({ error: "Blog system is disabled" });
+    }
+  };
+
   // === BLOG POSTS API ===
-  app.get("/api/blog/posts", async (req, res) => {
+  app.get("/api/blog/posts", requireBlogEnabled, async (req, res) => {
     try {
       const snap = await db.collection("blog_posts").orderBy("created_at", "desc").get();
       res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -3433,7 +3457,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/blog/posts/:id/view", async (req, res) => {
+  app.post("/api/blog/posts/:id/view", requireBlogEnabled, async (req, res) => {
     try {
       const doc = await db.collection("blog_posts").doc(req.params.id).get();
       if (doc.exists) {
@@ -3446,7 +3470,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/blog/posts/:id/like", async (req, res) => {
+  app.post("/api/blog/posts/:id/like", requireBlogEnabled, async (req, res) => {
     try {
       const doc = await db.collection("blog_posts").doc(req.params.id).get();
       if (doc.exists) {
@@ -3506,7 +3530,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/blog/posts/:postId/comments", async (req, res) => {
+  app.get("/api/blog/posts/:postId/comments", requireBlogEnabled, async (req, res) => {
     try {
       const matchId = `blog_${req.params.postId}`;
       const snap = await db.collection("comments").where("match_id", "==", matchId).get();
@@ -3518,7 +3542,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/blog/posts/:postId/comments", authenticate, async (req: any, res) => {
+  app.post("/api/blog/posts/:postId/comments", requireBlogEnabled, authenticate, async (req: any, res) => {
     try {
       // Fetch actual user from DB for accurate name/avatar
       const userSnap = await db.collection("users").doc(req.user.id).get();
@@ -3655,7 +3679,7 @@ async function startServer() {
   });
 
   // === BLOG CATEGORIES API (Dedicated Table) ===
-  app.get("/api/blog-categories", async (_req, res) => {
+  app.get("/api/blog-categories", requireBlogEnabled, async (_req, res) => {
     try {
       const rows = await query("SELECT * FROM blog_categories ORDER BY name ASC");
       res.json(rows);
@@ -3665,7 +3689,7 @@ async function startServer() {
   });
 
   // Also respond to old settings-based URL
-  app.get("/api/settings/blog_categories", async (_req, res) => {
+  app.get("/api/settings/blog_categories", requireBlogEnabled, async (_req, res) => {
     try {
       const rows = await query("SELECT * FROM blog_categories ORDER BY name ASC");
       res.json(rows);

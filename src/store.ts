@@ -622,7 +622,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }).catch(console.error);
   },
   blogSettings: {
-    enabled: true
+    enabled: false
   },
   setBlogSettings: (settings) => {
     set({ blogSettings: settings });
@@ -682,7 +682,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const blogRes = await fetch('/api/settings/blog');
       if (blogRes.ok) {
         const data = await blogRes.json();
-        set({ blogSettings: { enabled: data.enabled !== false } });
+        set({ blogSettings: { enabled: data.enabled === true } });
       }
       const captchaRes = await fetch('/api/captcha/status');
       if (captchaRes.ok) {

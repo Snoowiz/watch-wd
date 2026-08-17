@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { WifiOff, Loader2 } from 'lucide-react';
 import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore, useAdStore, usePurchaseStore, useMatchStore, useCategoryStore, useBlogStore } from './store';
@@ -23,12 +23,10 @@ import { Profile } from './pages/Profile';
 import { CreatorDashboard } from './pages/creator/CreatorDashboard';
 import { StudioDashboard } from './pages/creator/StudioDashboard';
 import { StudioManagement } from './pages/admin/StudioManagement';
-import { BlogList } from './pages/BlogList';
 import { NotFound } from './pages/NotFound';
 import { ServerError } from './pages/ServerError';
 import { Unauthorized } from './pages/Unauthorized';
 import { Forbidden } from './pages/Forbidden';
-import { BlogPostDetails } from './pages/BlogPostDetails';
 import { CategoryPage } from './pages/CategoryPage';
 import { SavedMatches } from './pages/SavedMatches';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
@@ -46,12 +44,15 @@ import { LogoutModal } from './components/LogoutModal';
 import { SearchPage } from './pages/SearchPage';
 import { SEOHeadManager } from './components/SEOHeadManager';
 
+const BlogList = lazy(() => import('./pages/BlogList').then(m => ({ default: m.BlogList })));
+const BlogPostDetails = lazy(() => import('./pages/BlogPostDetails').then(m => ({ default: m.BlogPostDetails })));
+
 export default function App() {
   const { token, setAuth, logout, user, originalUser, revertLoginAs } = useAuthStore();
   const { theme, setDarkMode } = useThemeStore();
   const { seoSettings, platformName: storedPlatformName, preloaderEnabled, blogSettings, fetchPaymentSettings, fetchSettings } = useSettingsStore();
   const platformName = storedPlatformName || 'WatchWDS';
-  const blogEnabled = blogSettings?.enabled !== false;
+  const blogEnabled = blogSettings?.enabled === true;
 
   const { setFeatures } = useFeatureStore();
   const { fetchAds } = useAdStore();
@@ -145,8 +146,6 @@ export default function App() {
     fetchSettings();
     fetchMatches();
     fetchMatchCategories();
-    fetchPosts();
-    fetchBlogCategories();
 
     // Fetch Ads
     fetchAds().finally(() => {
@@ -185,7 +184,15 @@ export default function App() {
     }
 
     return () => clearTimeout(timer);
-  }, [token, setAuth, logout, setFeatures, fetchAds, fetchPurchases, fetchTransactions, fetchPaymentSettings, fetchSettings, fetchMatches, fetchMatchCategories, fetchPosts, fetchBlogCategories]);
+  }, []);
+
+  // Fetch blog data whenever blog visibility is enabled
+  useEffect(() => {
+    if (blogEnabled) {
+      fetchPosts();
+      fetchBlogCategories();
+    }
+  }, [blogEnabled, fetchPosts, fetchBlogCategories]);
 
   if (preloaderEnabled !== false && initialLoading) {
     return <Preloader />;
@@ -246,8 +253,8 @@ export default function App() {
                 <Route path="/profile" element={<Profile />} />
                 {blogEnabled ? (
                   <>
-                    <Route path="/blog" element={<BlogList />} />
-                    <Route path="/blog/:slug" element={<BlogPostDetails />} />
+                    <Route path="/blog" element={<Suspense fallback={null}><BlogList /></Suspense>} />
+                    <Route path="/blog/:slug" element={<Suspense fallback={null}><BlogPostDetails /></Suspense>} />
                   </>
                 ) : (
                   <>

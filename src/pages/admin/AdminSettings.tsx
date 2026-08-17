@@ -953,11 +953,11 @@ function PlatformBrandingSettings() {
 
 function BlogVisibilitySettings() {
   const { blogSettings, setBlogSettings } = useSettingsStore();
-  const [enabled, setEnabled] = useState(blogSettings?.enabled !== false);
+  const [enabled, setEnabled] = useState(blogSettings?.enabled === true);
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
-    setEnabled(blogSettings?.enabled !== false);
+    setEnabled(blogSettings?.enabled === true);
   }, [blogSettings]);
 
   const handleSave = () => {
