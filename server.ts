@@ -3712,14 +3712,23 @@ async function startServer() {
     }
   });
 
-  // === SETTINGS API (Dynamic Config - Admin Only) ===
-  app.get("/api/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
+  // === SETTINGS API (Dynamic Config - Public Read, Admin Write) ===
+  app.get("/api/settings/:key", async (req, res) => {
     try {
       const snap = await db.collection("settings").doc(req.params.key).get();
       if (!snap.exists) {
-        return res.status(404).json({ error: "Setting not found" });
+        return res.json({});
       }
       res.json(snap.data() || {});
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/admin/settings/:key", async (req, res) => {
+    try {
+      const snap = await db.collection("settings").doc(req.params.key).get();
+      res.json(snap.exists ? snap.data() : {});
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -3728,7 +3737,8 @@ async function startServer() {
   app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       await db.collection("settings").doc(req.params.key).set(req.body);
-      res.json({ success: true, message: "Settings updated successfully" });
+      cacheEngine.invalidateCollection("settings");
+      res.json({ success: true, key: req.params.key, data: req.body });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -4387,26 +4397,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     }
   });
 
-  // === GENERAL ADMIN SETTINGS API ===
-  app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
-    try {
-      const { key } = req.params;
-      await db.collection("settings").doc(key).set(req.body);
-      res.json({ success: true, key, data: req.body });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
 
-  app.get("/api/admin/settings/:key", async (req, res) => {
-    try {
-      const { key } = req.params;
-      const snap = await db.collection("settings").doc(key).get();
-      res.json(snap.exists ? snap.data() : {});
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
 
   // === SEO MANAGEMENT API ===
   app.get("/api/seo/per-page", async (_req, res) => {
