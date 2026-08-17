@@ -1456,13 +1456,19 @@ async function startServer() {
           auth_user: "user@example.com",
           auth_pass: "",
           secure: true,
-          is_active: false,
+          is_active: true,
           from_name: "WatchWDS Support",
           from_email: "noreply@watchwds.com",
           reply_to: "support@watchwds.com",
           provider: "smtp"
         });
-        console.log("[EMAIL SEEDER] Seeded default SMTP configuration.");
+        console.log("[EMAIL SEEDER] Seeded default SMTP configuration (active).");
+      } else {
+        const smtpData = smtpDoc.data();
+        if (smtpData && (smtpData.is_active === false || smtpData.is_active === 0 || smtpData.is_active === "false")) {
+          await db.collection("email_settings").doc("smtp").update({ is_active: true });
+          console.log("[EMAIL SEEDER] Auto-activated existing SMTP configuration.");
+        }
       }
 
       const templatesSnap = await db.collection("email_templates").get();
@@ -1594,7 +1600,9 @@ async function startServer() {
     if (!settingsDoc.exists) throw new Error("No SMTP configuration found.");
     const smtp = settingsDoc.data();
 
-    if (!smtp.is_active) {
+    const isActive = smtp.is_active !== false && smtp.is_active !== 0 && String(smtp.is_active) !== "false";
+
+    if (!isActive) {
       console.log(`[STUB EMAIL SEND] System inactive. To: ${to}, Subject: ${subject}`);
       return { success: true, provider: "mock", messageId: "mock-" + Date.now() };
     }
