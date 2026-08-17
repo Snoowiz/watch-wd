@@ -110,6 +110,30 @@ export function NewMatch() {
     }
   }, [existingMatch]);
 
+  const [isManualOverride, setIsManualOverride] = useState(false);
+
+  const getCalculatedStatus = (): 'upcoming' | 'live' | 'completed' => {
+    let targetDateStr = customDate;
+    if (!targetDateStr && publishMode === 'scheduled' && scheduledDate) {
+      targetDateStr = scheduledDate;
+    }
+    if (!targetDateStr && existingMatch?.date) {
+      targetDateStr = existingMatch.date;
+    }
+    
+    if (!targetDateStr) return 'upcoming';
+
+    const matchMs = new Date(targetDateStr).getTime();
+    if (isNaN(matchMs)) return 'upcoming';
+
+    const nowMs = Date.now();
+    const durMs = (Number(duration) || 120) * 60 * 1000;
+
+    if (nowMs < matchMs) return 'upcoming';
+    if (nowMs >= matchMs && nowMs < matchMs + durMs) return 'live';
+    return 'completed';
+  };
+
   const handleSave = async () => {
     if (!title || !slug) {
       addToast('Please fill in the title and slug.', 'error');
@@ -135,19 +159,7 @@ export function NewMatch() {
         finalThumbnail = await compressImage(thumbnail);
       }
 
-      const matchTimestamp = new Date(finalDate).getTime();
-      const durationMins = Number(duration) || 120;
-      const durationMs = durationMins * 60 * 1000;
-      const nowMs = Date.now();
-
-      let computedStatus = status;
-      if (matchTimestamp > nowMs && computedStatus !== 'completed') {
-        computedStatus = 'upcoming';
-      } else if (nowMs >= matchTimestamp && nowMs < matchTimestamp + durationMs && computedStatus !== 'completed') {
-        computedStatus = 'live';
-      } else if (nowMs >= matchTimestamp + durationMs && status !== 'live' && status !== 'upcoming') {
-        computedStatus = 'completed';
-      }
+      const computedStatus = isManualOverride ? status : getCalculatedStatus();
 
       const matchData: Match = {
         id: (isEditing ? String(id) : String(Date.now())) as any,
@@ -161,7 +173,7 @@ export function NewMatch() {
         club_id: clubId,
         embedPrice: ppvPrice * 10, // Default multiplier
         status: computedStatus as any,
-        duration: durationMins,
+        duration: Number(duration) || 120,
         thumbnail: finalThumbnail || 'https://picsum.photos/seed/default/800/450',
         content,
         description,
@@ -546,16 +558,51 @@ export function NewMatch() {
             )}
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Status</label>
-              <select 
-                value={status}
-                onChange={(e) => setStatus(e.target.value as any)}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-              >
-                <option value="upcoming">Upcoming</option>
-                <option value="live">Live Now</option>
-                <option value="completed">Completed</option>
-              </select>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Match Status</label>
+                <button
+                  type="button"
+                  onClick={() => setIsManualOverride(!isManualOverride)}
+                  className="text-[11px] font-semibold text-yellow-600 dark:text-yellow-400 hover:underline"
+                >
+                  {isManualOverride ? 'Use Automated Detection' : 'Manual Override'}
+                </button>
+              </div>
+
+              {!isManualOverride ? (
+                <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    {getCalculatedStatus() === 'upcoming' && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
+                        <Clock className="w-3.5 h-3.5" /> UPCOMING (Auto)
+                      </span>
+                    )}
+                    {getCalculatedStatus() === 'live' && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> LIVE NOW (Auto)
+                      </span>
+                    )}
+                    {getCalculatedStatus() === 'completed' && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                        ✓ COMPLETED (Auto)
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      Calculated from kickoff & duration
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <select 
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as any)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
+                >
+                  <option value="upcoming">Upcoming</option>
+                  <option value="live">Live Now</option>
+                  <option value="completed">Completed</option>
+                </select>
+              )}
             </div>
 
             <div>
