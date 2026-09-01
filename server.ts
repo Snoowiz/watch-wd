@@ -1379,9 +1379,39 @@ async function startServer() {
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       const matchData = { ...req.body };
-      if (matchData.date && !matchData.startTime && !matchData.start_time) {
+      
+      // Map camelCase frontend fields to snake_case database fields
+      if (matchData.scheduledDate) {
+        matchData.start_time = matchData.scheduledDate;
+        delete matchData.scheduledDate;
+      } else if (matchData.date && !matchData.start_time) {
         matchData.start_time = matchData.date;
+        delete matchData.date;
       }
+      
+      // Map other common camelCase to snake_case
+      const fieldMappings: Record<string, string> = {
+        accessType: 'access_type',
+        ppvPrice: 'ppv_price',
+        requiredPlanId: 'required_plan_id',
+        clubId: 'club_id',
+        liveCommenting: 'live_commenting',
+        commentAlignment: 'comment_alignment',
+        adSettings: 'ad_settings'
+      };
+      
+      for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
+        if (matchData[camelKey] !== undefined) {
+          matchData[snakeKey] = matchData[camelKey];
+          delete matchData[camelKey];
+        }
+      }
+      
+      // Handle duration - ensure it's a number
+      if (matchData.duration !== undefined) {
+        matchData.duration = Number(matchData.duration) || 120;
+      }
+      
       const docRef = await db.collection("matches").add({ ...matchData, operator_id: req.user.id, created_at: new Date().toISOString() });
       
       // Invalidate cache immediately on update
@@ -1406,9 +1436,39 @@ async function startServer() {
   app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       const matchData = { ...req.body };
-      if (matchData.date && !matchData.startTime && !matchData.start_time) {
+      
+      // Map camelCase frontend fields to snake_case database fields
+      if (matchData.scheduledDate) {
+        matchData.start_time = matchData.scheduledDate;
+        delete matchData.scheduledDate;
+      } else if (matchData.date && !matchData.start_time) {
         matchData.start_time = matchData.date;
+        delete matchData.date;
       }
+      
+      // Map other common camelCase to snake_case
+      const fieldMappings: Record<string, string> = {
+        accessType: 'access_type',
+        ppvPrice: 'ppv_price',
+        requiredPlanId: 'required_plan_id',
+        clubId: 'club_id',
+        liveCommenting: 'live_commenting',
+        commentAlignment: 'comment_alignment',
+        adSettings: 'ad_settings'
+      };
+      
+      for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
+        if (matchData[camelKey] !== undefined) {
+          matchData[snakeKey] = matchData[camelKey];
+          delete matchData[camelKey];
+        }
+      }
+      
+      // Handle duration - ensure it's a number
+      if (matchData.duration !== undefined) {
+        matchData.duration = Number(matchData.duration) || 120;
+      }
+      
       await db.collection("matches").doc(req.params.id).update(matchData);
       cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
