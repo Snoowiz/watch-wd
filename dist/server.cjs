@@ -2966,8 +2966,30 @@ async function startServer() {
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
     try {
       const matchData = { ...req.body };
-      if (matchData.date && !matchData.startTime && !matchData.start_time) {
+      if (matchData.scheduledDate) {
+        matchData.start_time = matchData.scheduledDate;
+        delete matchData.scheduledDate;
+      } else if (matchData.date && !matchData.start_time) {
         matchData.start_time = matchData.date;
+        delete matchData.date;
+      }
+      const fieldMappings = {
+        accessType: "access_type",
+        ppvPrice: "ppv_price",
+        requiredPlanId: "required_plan_id",
+        clubId: "club_id",
+        liveCommenting: "live_commenting",
+        commentAlignment: "comment_alignment",
+        adSettings: "ad_settings"
+      };
+      for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
+        if (matchData[camelKey] !== void 0) {
+          matchData[snakeKey] = matchData[camelKey];
+          delete matchData[camelKey];
+        }
+      }
+      if (matchData.duration !== void 0) {
+        matchData.duration = Number(matchData.duration) || 120;
       }
       const docRef = await db.collection("matches").add({ ...matchData, operator_id: req.user.id, created_at: (/* @__PURE__ */ new Date()).toISOString() });
       cacheEngine.invalidateCollection("matches");
@@ -2989,8 +3011,30 @@ async function startServer() {
   app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
     try {
       const matchData = { ...req.body };
-      if (matchData.date && !matchData.startTime && !matchData.start_time) {
+      if (matchData.scheduledDate) {
+        matchData.start_time = matchData.scheduledDate;
+        delete matchData.scheduledDate;
+      } else if (matchData.date && !matchData.start_time) {
         matchData.start_time = matchData.date;
+        delete matchData.date;
+      }
+      const fieldMappings = {
+        accessType: "access_type",
+        ppvPrice: "ppv_price",
+        requiredPlanId: "required_plan_id",
+        clubId: "club_id",
+        liveCommenting: "live_commenting",
+        commentAlignment: "comment_alignment",
+        adSettings: "ad_settings"
+      };
+      for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
+        if (matchData[camelKey] !== void 0) {
+          matchData[snakeKey] = matchData[camelKey];
+          delete matchData[camelKey];
+        }
+      }
+      if (matchData.duration !== void 0) {
+        matchData.duration = Number(matchData.duration) || 120;
       }
       await db.collection("matches").doc(req.params.id).update(matchData);
       cacheEngine.invalidateCollection("matches");
