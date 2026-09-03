@@ -1379,12 +1379,13 @@ async function startServer() {
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       const matchData = { ...req.body };
+      delete matchData.id;
       
       // Map camelCase frontend fields to snake_case database fields
       if (matchData.scheduledDate) {
         matchData.start_time = matchData.scheduledDate;
         delete matchData.scheduledDate;
-      } else if (matchData.date && !matchData.start_time) {
+      } else if (matchData.date && !matchData.startTime && !matchData.start_time) {
         matchData.start_time = matchData.date;
         delete matchData.date;
       }
@@ -1436,12 +1437,13 @@ async function startServer() {
   app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       const matchData = { ...req.body };
+      delete matchData.id;
       
       // Map camelCase frontend fields to snake_case database fields
       if (matchData.scheduledDate) {
         matchData.start_time = matchData.scheduledDate;
         delete matchData.scheduledDate;
-      } else if (matchData.date && !matchData.start_time) {
+      } else if (matchData.date && !matchData.startTime && !matchData.start_time) {
         matchData.start_time = matchData.date;
         delete matchData.date;
       }
@@ -1468,7 +1470,6 @@ async function startServer() {
       if (matchData.duration !== undefined) {
         matchData.duration = Number(matchData.duration) || 120;
       }
-      
       await db.collection("matches").doc(req.params.id).update(matchData);
       cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
@@ -4183,6 +4184,72 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Stripe Connect Express Onboarding Link Creation
+  app.post("/api/admin/clubs/:id/onboarding-link", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const clubDoc = await db.collection("clubs").doc(String(id)).get();
+      if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
+      const club = clubDoc.data();
+
+      const paySettingsDoc = await db.collection("payment_settings").doc("main").get();
+      const paySettings = paySettingsDoc.exists ? paySettingsDoc.data() : {};
+      const stripeSecretKey = paySettings.stripeSecretKey || process.env.STRIPE_SECRET_KEY;
+      if (!stripeSecretKey) return res.status(500).json({ error: "Stripe is not configured" });
+
+      const stripe = new Stripe(stripeSecretKey, { apiVersion: '2023-10-16' as any });
+
+      let connectedAccountId = club.stripe_account_id || club.stripeAccountId;
+      
+      // If club does not have a Stripe Express account, create one
+      if (!connectedAccountId) {
+        const account = await stripe.accounts.create({
+          type: 'express',
+          country: 'GB',
+          email: club.contact_email || club.contactEmail || undefined,
+          capabilities: {
+            transfers: { requested: true },
+            card_payments: { requested: true },
+          },
+          business_profile: {
+            name: club.name,
+          }
+        });
+        connectedAccountId = account.id;
+        await db.collection("clubs").doc(String(id)).update({
+          stripeAccountId: connectedAccountId,
+          stripeOnboardingComplete: 0
+        });
+        cacheEngine.invalidateCollection("clubs");
+      }
+
+      const origin = req.headers.origin || "https://watchwds.com";
+      const accountLink = await stripe.accountLinks.create({
+        account: connectedAccountId,
+        refresh_url: `${origin}/admin/clubs?onboarding=refresh&clubId=${id}`,
+        return_url: `${origin}/admin/clubs?onboarding=success&clubId=${id}`,
+        type: 'account_onboarding',
+      });
+
+      res.json({ success: true, url: accountLink.url, accountId: connectedAccountId });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Payouts listing endpoint (Admin or Club Manager filter)
+  app.get("/api/admin/payouts", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { clubId } = req.query;
+      let snap;
+      if (clubId) {
+        snap = await db.collection("payouts").where("club_id", "==", String(clubId)).get();
+      } else {
+        snap = await db.collection("payouts").get();
+      }
+      const payouts = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(payouts);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // === REVENUE POLICIES MANAGEMENT ===
   app.get("/api/admin/revenue-policies", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
@@ -4409,6 +4476,56 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
           notifyUser(userId, "Purchase Successful", "You have unlocked PPV match access.", "success", `/matches/${metadata.fromMatchSlug || metadata.matchId}`);
           notifyAdmins("PPV Purchase (Stripe Connect)", `PPV purchase completed: ${amount} for match #${metadata.matchId}`, "system", "/admin/transactions");
+        }
+      }
+
+      // Handle direct connected account payout events
+      if (event.type === "payout.paid" || event.type === "payout.failed") {
+        const payoutObj = event.data?.object;
+        if (payoutObj) {
+          const connectedAccountId = event.account; // Account ID for connected account events
+          const stripePayoutId = payoutObj.id;
+          const amount = (payoutObj.amount || 0) / 100;
+          const currency = payoutObj.currency || 'usd';
+          const status = event.type === "payout.paid" ? "paid" : "failed";
+          const arrivalDate = payoutObj.arrival_date ? new Date(payoutObj.arrival_date * 1000).toISOString() : new Date().toISOString();
+          const failureCode = payoutObj.failure_code || null;
+          const failureMessage = payoutObj.failure_message || null;
+
+          // Find corresponding club by stripe_account_id
+          let clubId = "unknown";
+          if (connectedAccountId) {
+            const clubsSnap = await db.collection("clubs").where("stripe_account_id", "==", connectedAccountId).get();
+            if (!clubsSnap.empty) {
+              clubId = clubsSnap.docs[0].id;
+            }
+          }
+
+          // Check if payout record already exists
+          const payoutDoc = await db.collection("payouts").doc(stripePayoutId).get();
+          if (payoutDoc.exists) {
+            await db.collection("payouts").doc(stripePayoutId).update({
+              status,
+              arrivalDate,
+              failureCode,
+              failureMessage,
+              updatedAt: new Date().toISOString()
+            });
+          } else {
+            await db.collection("payouts").doc(stripePayoutId).set({
+              id: stripePayoutId,
+              clubId,
+              stripePayoutId,
+              amount,
+              currency,
+              status,
+              arrivalDate,
+              failureCode,
+              failureMessage,
+              createdAt: new Date().toISOString()
+            });
+          }
+          cacheEngine.invalidateCollection("payouts");
         }
       }
 
@@ -4729,6 +4846,25 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `).catch(err => console.error("Failed to ensure revenue_policies table exists", err));
 
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`payouts\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`club_id\` VARCHAR(100) NOT NULL,
+        \`stripe_payout_id\` VARCHAR(100) DEFAULT NULL,
+        \`amount\` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        \`currency\` VARCHAR(10) DEFAULT 'usd',
+        \`status\` VARCHAR(50) NOT NULL DEFAULT 'pending',
+        \`arrival_date\` TIMESTAMP NULL DEFAULT NULL,
+        \`failure_code\` VARCHAR(100) DEFAULT NULL,
+        \`failure_message\` TEXT DEFAULT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_payout_club\` (\`club_id\`),
+        INDEX \`idx_payout_stripe_id\` (\`stripe_payout_id\`),
+        INDEX \`idx_payout_status\` (\`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure payouts table exists", err));
+
     // Ensure club_id column exists on matches table (safe incremental upgrade)
     execute(`
       ALTER TABLE \`matches\` ADD COLUMN \`club_id\` VARCHAR(100) DEFAULT NULL
@@ -4736,6 +4872,16 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const msg = err.message || '';
       if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
         console.error("Failed to ensure matches club_id column exists:", err);
+      }
+    });
+
+    // Ensure duration column exists on matches table (safe incremental upgrade)
+    execute(`
+      ALTER TABLE \`matches\` ADD COLUMN \`duration\` INT DEFAULT 120
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure matches duration column exists:", err);
       }
     });
 

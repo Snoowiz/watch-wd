@@ -417,6 +417,26 @@ CREATE TABLE IF NOT EXISTS `clubs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
+-- PAYOUTS (Partner Club Direct Settlements)
+-- ============================================
+CREATE TABLE IF NOT EXISTS `payouts` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `club_id` VARCHAR(100) NOT NULL,
+  `stripe_payout_id` VARCHAR(255) NOT NULL,
+  `stripe_account_id` VARCHAR(255) DEFAULT NULL,
+  `amount` DECIMAL(10,2) NOT NULL,
+  `currency` VARCHAR(10) DEFAULT 'GBP',
+  `status` VARCHAR(50) DEFAULT 'pending',
+  `arrival_date` DATETIME DEFAULT NULL,
+  `failure_code` VARCHAR(255) DEFAULT NULL,
+  `failure_message` TEXT DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_payout_club` (`club_id`),
+  INDEX `idx_payout_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
 -- REVENUE POLICIES (Per-club split config)
 -- ============================================
 CREATE TABLE IF NOT EXISTS `revenue_policies` (

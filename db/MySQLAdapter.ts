@@ -26,6 +26,7 @@ const PK_MAP: Record<string, string> = {
   email_template_analytics: 'slug',
   knowledge_base: 'id', // varchar pk
   transactions: 'id',   // varchar pk
+  payouts: 'id',        // varchar pk
 };
 
 function getPkColumn(table: string): string {
@@ -52,12 +53,16 @@ function unwrapKVRow(row: any): any {
   return parseJson(val);
 }
 
-/** Build SET clause and values from a data object, skipping undefined */
+/** Build SET clause and values from a data object, skipping undefined and primary key */
 function buildSetClause(data: Record<string, any>, table: string): { clause: string; values: any[] } {
   const snakeData: Record<string, any> = {};
+  const pk = getPkColumn(table);
   for (const [k, v] of Object.entries(data)) {
     if (v !== undefined) {
-      snakeData[camelToSnake(k, table)] = v;
+      const snakeKey = camelToSnake(k, table);
+      if (snakeKey !== pk) {
+        snakeData[snakeKey] = v;
+      }
     }
   }
 
@@ -139,6 +144,11 @@ function camelToSnake(str: string, tableName?: string): string {
     contactEmail: 'contact_email',
     platformFeePercent: 'platform_fee_percent',
     clubSharePercent: 'club_share_percent',
+    stripePayoutId: 'stripe_payout_id',
+    arrivalDate: 'arrival_date',
+    failureCode: 'failure_code',
+    failureMessage: 'failure_message',
+    reminderSent10m: 'reminder_sent_10m',
     user_id: 'user_id',
     match_id: 'match_id',
     category_id: 'category_id',
@@ -220,6 +230,11 @@ function snakeToCamel(str: string, tableName?: string): string {
     contact_email: 'contactEmail',
     platform_fee_percent: 'platformFeePercent',
     club_share_percent: 'clubSharePercent',
+    stripe_payout_id: 'stripePayoutId',
+    arrival_date: 'arrivalDate',
+    failure_code: 'failureCode',
+    failure_message: 'failureMessage',
+    reminder_sent_10m: 'reminderSent10m',
   };
   return overrides[str] || str;
 }

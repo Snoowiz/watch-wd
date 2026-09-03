@@ -513,6 +513,32 @@ export function AdminClubs() {
                       )}
                     </div>
 
+                    {/* Onboarding Trigger Button */}
+                    <div className="mt-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/admin/clubs/${club.id}/onboarding-link`, {
+                              method: 'POST',
+                              headers: { Authorization: `Bearer ${token}` }
+                            });
+                            const data = await res.json();
+                            if (data.url) {
+                              window.open(data.url, '_blank');
+                            } else {
+                              alert(data.error || 'Failed to generate Stripe onboarding link');
+                            }
+                          } catch (err: any) {
+                            alert(err.message || 'Error generating onboarding link');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 px-3 py-1 rounded-lg transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        {stripeId ? 'Resume Stripe Onboarding' : 'Start Stripe Express Onboarding'}
+                      </button>
+                    </div>
+
                     {/* Revenue Bar */}
                     <div className="mt-3 flex items-center gap-3">
                       <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden flex max-w-xs">
