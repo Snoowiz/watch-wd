@@ -105,6 +105,9 @@ export async function getLocationFromIp(ip: string): Promise<{ country: string; 
  */
 export function generateDeviceFingerprint(req: any, clientFingerprint?: string): string {
   if (clientFingerprint && clientFingerprint.length >= 8) {
+    if (clientFingerprint.length === 64 && /^[0-9a-f]{64}$/i.test(clientFingerprint)) {
+      return clientFingerprint.toLowerCase();
+    }
     return crypto.createHash("sha256").update(clientFingerprint).digest("hex");
   }
   const ua = req.headers["user-agent"] || "";
@@ -301,6 +304,39 @@ export async function createVerificationCode(
 }
 
 /**
+  Save or update a trusted device record cleanly
+ */
+export async function saveOrUpdateTrustedDevice(
+  userId: string | number,
+  fingerprint: string,
+  deviceName: string,
+  ip: string,
+  country: string,
+  city: string
+): Promise<string> {
+  const existing = await query(
+    "SELECT `id` FROM `trusted_devices` WHERE `user_id` = ? AND `device_fingerprint` = ?",
+    [String(userId), fingerprint]
+  );
+
+  if (existing && existing.length > 0) {
+    const devId = existing[0].id;
+    await execute(
+      "UPDATE `trusted_devices` SET `is_active` = 1, `last_used_at` = NOW(), `ip_address` = ?, `country` = ?, `city` = ?, `device_name` = ? WHERE `id` = ?",
+      [ip, country, city, deviceName, devId]
+    );
+    return devId;
+  } else {
+    const devId = "dev_" + crypto.randomBytes(12).toString("hex");
+    await execute(
+      "INSERT INTO `trusted_devices` (`id`, `user_id`, `device_fingerprint`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)",
+      [devId, String(userId), fingerprint, deviceName, ip, country, city]
+    );
+    return devId;
+  }
+}
+
+/**
   Validate a verification code and mark device as trusted
  */
 export async function verifyCodeAndTrustDevice(
@@ -327,26 +363,8 @@ export async function verifyCodeAndTrustDevice(
     // Mark code as used
     await execute("UPDATE `verification_codes` SET `used` = 1 WHERE `id` = ?", [codeRecord.id]);
 
-    // Mark/Add device as trusted
-    const deviceId = "dev_" + crypto.randomBytes(12).toString("hex");
-    
-    // Check if device already exists
-    const existing = await query(
-      "SELECT `id` FROM `trusted_devices` WHERE `user_id` = ? AND `device_fingerprint` = ?",
-      [String(userId), fingerprint]
-    );
-
-    if (existing && existing.length > 0) {
-      await execute(
-        "UPDATE `trusted_devices` SET `is_active` = 1, `last_used_at` = NOW(), `ip_address` = ?, `country` = ?, `city` = ?, `device_name` = ? WHERE `id` = ?",
-        [ip, country, city, deviceName, existing[0].id]
-      );
-    } else {
-      await execute(
-        "INSERT INTO `trusted_devices` (`id`, `user_id`, `device_fingerprint`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)",
-        [deviceId, String(userId), fingerprint, deviceName, ip, country, city]
-      );
-    }
+    // Save or update device as trusted
+    await saveOrUpdateTrustedDevice(userId, fingerprint, deviceName, ip, country, city);
 
     return { success: true };
   } catch (e: any) {

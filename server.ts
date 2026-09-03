@@ -33,6 +33,7 @@ import {
   detectRiskSignals,
   createVerificationCode,
   verifyCodeAndTrustDevice,
+  saveOrUpdateTrustedDevice,
   isIpWhitelistedForAdmin,
 } from "./securityManager.js";
 
@@ -434,10 +435,13 @@ async function startServer() {
       await recordLoginAttempt(email, ip, ua, true, "Success");
 
       // Register device in trusted_devices table
-      const devId = "dev_" + crypto.randomBytes(12).toString("hex");
-      await execute(
-        "INSERT INTO `trusted_devices` (`id`, `user_id`, `device_fingerprint`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1) ON DUPLICATE KEY UPDATE `last_used_at` = NOW(), `ip_address` = ?, `country` = ?, `city` = ?, `is_active` = 1",
-        [devId, String(userDoc.id), fingerprint, browserInfo, ip, locationObj.country, locationObj.city, ip, locationObj.country, locationObj.city]
+      await saveOrUpdateTrustedDevice(
+        userDoc.id,
+        fingerprint,
+        browserInfo,
+        ip,
+        locationObj.country,
+        locationObj.city
       );
 
       await userDoc.ref.update({ active_device_id: finalDeviceId, status: "active" });
@@ -562,10 +566,13 @@ async function startServer() {
 
       // Trusted Device -> Complete Google Auth
       await recordLoginAttempt(verifiedEmail, ip, ua, true, "Google login success");
-      const devId = "dev_" + crypto.randomBytes(12).toString("hex");
-      await execute(
-        "INSERT INTO `trusted_devices` (`id`, `user_id`, `device_fingerprint`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1) ON DUPLICATE KEY UPDATE `last_used_at` = NOW(), `ip_address` = ?, `country` = ?, `city` = ?, `is_active` = 1",
-        [devId, String(docId), fingerprint, browserInfo, ip, locationObj.country, locationObj.city, ip, locationObj.country, locationObj.city]
+      await saveOrUpdateTrustedDevice(
+        docId,
+        fingerprint,
+        browserInfo,
+        ip,
+        locationObj.country,
+        locationObj.city
       );
 
       const userRef = db.collection("users").doc(docId);
