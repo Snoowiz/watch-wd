@@ -564,6 +564,10 @@ export interface BlogSettings {
   enabled: boolean;
 }
 
+export interface WalletSettings {
+  enabled: boolean;
+}
+
 interface SettingsState {
   currency: string;
   setCurrency: (currency: string) => void;
@@ -591,6 +595,8 @@ interface SettingsState {
   setGoogleAuthSettings: (settings: GoogleAuthSettings) => void;
   blogSettings: BlogSettings;
   setBlogSettings: (settings: BlogSettings) => void;
+  walletSettings: WalletSettings;
+  setWalletSettings: (settings: WalletSettings) => void;
   captchaEnabled: boolean;
   setCaptchaEnabled: (enabled: boolean) => void;
   captchaTolerance: number;
@@ -735,6 +741,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ blogSettings: settings });
     saveSettingHelper('blog', settings);
   },
+  walletSettings: {
+    enabled: true
+  },
+  setWalletSettings: (settings) => {
+    set({ walletSettings: settings });
+    saveSettingHelper('wallet', settings);
+    try {
+      useFeatureStore.getState().setFeatures(
+        useFeatureStore.getState().features.map(f =>
+          f.slug === 'wallet_system' ? { ...f, is_active: settings.enabled ? 1 : 0 } : f
+        )
+      );
+    } catch (e) {}
+  },
   captchaEnabled: false,
   captchaTolerance: 25,
   setCaptchaEnabled: (enabled) => {
@@ -791,6 +811,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (blogRes.ok) {
         const data = await blogRes.json();
         set({ blogSettings: { enabled: data.enabled === true } });
+      }
+      const walletRes = await fetch('/api/settings/wallet');
+      if (walletRes.ok) {
+        const data = await walletRes.json();
+        const isWalletEnabled = data.enabled !== false;
+        set({ walletSettings: { enabled: isWalletEnabled } });
+        try {
+          useFeatureStore.getState().setFeatures(
+            useFeatureStore.getState().features.map(f =>
+              f.slug === 'wallet_system' ? { ...f, is_active: isWalletEnabled ? 1 : 0 } : f
+            )
+          );
+        } catch (e) {}
       }
       const captchaRes = await fetch('/api/captcha/status');
       if (captchaRes.ok) {

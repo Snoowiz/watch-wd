@@ -2925,6 +2925,11 @@ async function startServer() {
         if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
         amount = Number(planDoc.data()?.price ?? 0);
       } else if (type === "top_up") {
+        const walletSnap = await db.collection("settings").doc("wallet").get();
+        const isWalletEnabled = walletSnap.exists ? walletSnap.data()?.enabled !== false : true;
+        if (!isWalletEnabled && req.user.role !== 'admin') {
+          return res.status(403).json({ error: "Wallet and account balance feature is currently disabled" });
+        }
         if (!amount || isNaN(amount) || amount <= 0) {
           return res.status(400).json({ error: "Invalid top-up amount" });
         }
@@ -3299,8 +3304,32 @@ async function startServer() {
     }
   });
 
+  // Middleware to restrict wallet & balance transactions when disabled by admin
+  const requireWalletEnabled = async (req: any, res: any, next: any) => {
+    try {
+      const snap = await db.collection("settings").doc("wallet").get();
+      const isEnabled = snap.exists ? snap.data()?.enabled !== false : true;
+      if (isEnabled) return next();
+
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        try {
+          const decoded: any = jwt.verify(token, JWT_SECRET);
+          if (decoded && decoded.role === 'admin') {
+            req.user = decoded;
+            return next();
+          }
+        } catch (err) {}
+      }
+      return res.status(403).json({ error: "Wallet and account balance feature is currently disabled" });
+    } catch (e: any) {
+      return res.status(403).json({ error: "Wallet and account balance feature is currently disabled" });
+    }
+  };
+
   // === CHECKOUT & WALLET API ENDPOINTS =======================
-  app.post("/api/checkout/topup", authenticate, async (req: any, res) => {
+  app.post("/api/checkout/topup", authenticate, requireWalletEnabled, async (req: any, res) => {
     try {
       const { amount, paymentMethod } = req.body;
       const userId = req.user.id.toString();
@@ -3351,7 +3380,7 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/checkout/ppv", authenticate, async (req: any, res) => {
+  app.post("/api/checkout/ppv", authenticate, requireWalletEnabled, async (req: any, res) => {
     try {
       const { match_id } = req.body;
       const userId = req.user.id.toString();
@@ -3431,7 +3460,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/checkout/embed", authenticate, async (req: any, res) => {
+  app.post("/api/checkout/embed", authenticate, requireWalletEnabled, async (req: any, res) => {
     try {
       const { match_id } = req.body;
       const userId = req.user.id.toString();
@@ -3513,7 +3542,7 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/checkout/plan", authenticate, async (req: any, res) => {
+  app.post("/api/checkout/plan", authenticate, requireWalletEnabled, async (req: any, res) => {
     try {
       const { planId } = req.body;
       const userId = req.user.id.toString();

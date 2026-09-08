@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -214,6 +214,17 @@ export function AdminSettings() {
                 This currency will be used across the entire platform for wallets, betting, and analytics.
               </p>
             </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <Wallet className="w-6 h-6 text-yellow-500" />
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">User Wallet & Balance System</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Enable or disable user digital wallet balances and deposit capabilities</p>
+              </div>
+            </div>
+            <WalletVisibilitySettings />
           </div>
 
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
@@ -572,6 +583,17 @@ export function AdminSettings() {
                 </div>
              </div>
              <BlogVisibilitySettings />
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+             <div className="flex items-center gap-3 mb-5">
+                <Wallet className="w-6 h-6 text-yellow-500" />
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">User Wallet & Balance System</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Enable or disable user digital wallet balances and deposit capabilities</p>
+                </div>
+             </div>
+             <WalletVisibilitySettings />
           </div>
 
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
@@ -1047,6 +1069,66 @@ function BlogVisibilitySettings() {
             isSaved 
               ? 'bg-green-500 text-white' 
               : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+          }`}
+        >
+          {isSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save Settings'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WalletVisibilitySettings() {
+  const { walletSettings, setWalletSettings } = useSettingsStore();
+  const [enabled, setEnabled] = useState(walletSettings?.enabled !== false);
+  const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    setEnabled(walletSettings?.enabled !== false);
+  }, [walletSettings]);
+
+  const handleSave = () => {
+    setWalletSettings({ enabled });
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6 text-left">
+      <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-yellow-500" />
+            <h4 className="font-bold text-slate-900 dark:text-white">User Wallet & Balance System Toggle</h4>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+            Enable or disable the global user wallet and account balance system. When disabled, balance badges, top-up options, and wallet checkout deductions will be hidden and locked without deleting user balances.
+          </p>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer shrink-0">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => {
+              setEnabled(e.target.checked);
+              setIsSaved(false);
+            }}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-yellow-500"></div>
+        </label>
+      </div>
+
+      <div className="flex items-center justify-between pt-2">
+        <span className={`text-xs font-bold px-3 py-1 rounded-full ${enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'}`}>
+          Status: {enabled ? 'Active / Visible' : 'Disabled / Hidden'}
+        </span>
+        <button
+          onClick={handleSave}
+          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
+            isSaved 
+              ? 'bg-green-500 text-white' 
+              : 'bg-yellow-500 hover:bg-yellow-400 text-slate-900'
           }`}
         >
           {isSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save Settings'}

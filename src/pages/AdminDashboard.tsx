@@ -1263,6 +1263,15 @@ function AdminUsers() {
 
 function AdminFeatures() {
   const { features, toggleFeature } = useFeatureStore();
+  const { setWalletSettings } = useSettingsStore();
+
+  const handleToggle = (slug: string) => {
+    toggleFeature(slug);
+    if (slug === 'wallet_system') {
+      const currentActive = features.find(f => f.slug === 'wallet_system')?.is_active === 1;
+      setWalletSettings({ enabled: !currentActive });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1278,7 +1287,7 @@ function AdminFeatures() {
                 </p>
               </div>
               <button
-                onClick={() => toggleFeature(feature.slug)}
+                onClick={() => handleToggle(feature.slug)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${feature.is_active === 1 ? 'bg-green-500' : 'bg-slate-200 dark:bg-slate-700'
                   }`}
               >

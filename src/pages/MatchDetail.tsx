@@ -16,7 +16,8 @@ export function MatchDetail() {
 
   const { user, updateUser } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
-  const { currencySymbol } = useSettingsStore();
+  const { currencySymbol, walletSettings } = useSettingsStore();
+  const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
   const { matches, addToWatchHistory } = useMatchStore();
   const { categories = [] } = useCategoryStore();
   const { purchases = [], addPurchase, addTransaction, fetchPurchases } = usePurchaseStore();
@@ -791,7 +792,7 @@ export function MatchDetail() {
               </div>
               <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Confirm Access</h3>
               <p className="text-slate-500 dark:text-slate-400 mb-8">
-                You are about to unlock this match for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span>. This will be deducted from your balance.
+                You are about to unlock this match for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span>.{walletEnabled ? ' You can pay directly or deduct from your wallet balance.' : ' Choose your payment method at checkout.'}
               </p>
               <div className="flex flex-col gap-3">
                 <button 

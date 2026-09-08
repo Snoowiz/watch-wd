@@ -11,7 +11,8 @@ import { requestNotificationPermission, subscribeToCategory, subscribeToMatch, u
 
 export function Profile() {
   const { user, updateUser } = useAuthStore();
-  const { currencySymbol } = useSettingsStore();
+  const { currencySymbol, walletSettings } = useSettingsStore();
+  const walletEnabled = walletSettings?.enabled !== false;
   const { tasks = [], completedTasks = [], completeTask, fetchTasks } = useTaskStore();
   const { watchHistory = [], matches = [] } = useMatchStore();
   const { savedMatches = [], fetchSavedMatches } = useSavedMatchesStore();
@@ -313,20 +314,22 @@ export function Profile() {
 
         <div className="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700">
         <div className="h-32 bg-gradient-to-r from-yellow-400 to-yellow-600 relative flex justify-end p-4 sm:items-center sm:px-8">
-          <div className="flex items-center gap-3 sm:gap-4 bg-black/10 dark:bg-black/20 backdrop-blur-md rounded-2xl p-2 sm:p-3 border border-white/20 shadow-sm relative z-10">
-            <div className="text-right px-1 sm:px-2">
-              <div className="text-yellow-50 text-[10px] sm:text-xs font-bold uppercase tracking-wide">Wallet Balance</div>
-              <div className="text-xl sm:text-2xl font-extrabold text-white drop-shadow-sm leading-tight mt-0.5">
-                {currencySymbol}{Number(user.balance || 0).toFixed(2)}
+          {walletEnabled && (
+            <div className="flex items-center gap-3 sm:gap-4 bg-black/10 dark:bg-black/20 backdrop-blur-md rounded-2xl p-2 sm:p-3 border border-white/20 shadow-sm relative z-10">
+              <div className="text-right px-1 sm:px-2">
+                <div className="text-yellow-50 text-[10px] sm:text-xs font-bold uppercase tracking-wide">Wallet Balance</div>
+                <div className="text-xl sm:text-2xl font-extrabold text-white drop-shadow-sm leading-tight mt-0.5">
+                  {currencySymbol}{Number(user.balance || 0).toFixed(2)}
+                </div>
               </div>
+              <button 
+                onClick={() => setIsBuyModalOpen(true)}
+                className="bg-white text-yellow-600 hover:bg-yellow-50 font-bold py-1.5 sm:py-2 px-3 sm:px-4 rounded-xl transition-colors text-sm shadow-sm"
+              >
+                Add Funds
+              </button>
             </div>
-            <button 
-              onClick={() => setIsBuyModalOpen(true)}
-              className="bg-white text-yellow-600 hover:bg-yellow-50 font-bold py-1.5 sm:py-2 px-3 sm:px-4 rounded-xl transition-colors text-sm shadow-sm"
-            >
-              Add Funds
-            </button>
-          </div>
+          )}
         </div>
         <div className="px-4 sm:px-8 pb-4 sm:pb-8 relative flex flex-col sm:block items-center text-center sm:text-left">
           {/* Main User Avatar */}

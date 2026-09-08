@@ -11,9 +11,10 @@ import { CookieBanner } from './CookieBanner';
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, setLogoutModalOpen } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
-  const { currencySymbol, platformName: storedPlatformName, logoUrl, favicon, blogSettings } = useSettingsStore();
+  const { currencySymbol, platformName: storedPlatformName, logoUrl, favicon, blogSettings, walletSettings } = useSettingsStore();
   const platformName = storedPlatformName !== undefined ? storedPlatformName : 'WatchWDS';
   const blogEnabled = blogSettings?.enabled !== false;
+  const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useThemeStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -107,7 +108,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="hidden md:flex items-center space-x-4">
               {user ? (
                 <>
-                  {isFeatureActive('wallet_system') && (
+                  {walletEnabled && (
                     <div className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1 mr-2 text-yellow-500 font-bold">
                        {currencySymbol}{Number(user.balance || 0).toFixed(2)}
                     </div>

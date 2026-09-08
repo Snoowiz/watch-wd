@@ -15,7 +15,8 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
   const navigate = useNavigate();
   const location = useLocation();
   const { user, updateUser } = useAuthStore();
-  const { currency, currencySymbol, paymentSettings } = useSettingsStore();
+  const { currency, currencySymbol, paymentSettings, walletSettings } = useSettingsStore();
+  const walletEnabled = walletSettings?.enabled !== false;
   const { addTransaction, addPurchase } = usePurchaseStore();
   
   const [amount, setAmount] = useState<number>(directCheckoutAmount || 10);
@@ -137,6 +138,22 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
                 You have received {currencySymbol}{amount}.
               </p>
             </div>
+          ) : !directCheckoutType && !walletEnabled ? (
+            <div className="text-center py-6 space-y-4">
+              <div className="w-14 h-14 bg-yellow-500/10 text-yellow-500 rounded-full flex items-center justify-center mx-auto">
+                <Wallet className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Wallet System Disabled</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
+                The platform administrator has temporarily disabled wallet top-ups. You can still purchase match access and subscriptions directly at checkout.
+              </p>
+              <button
+                onClick={onClose}
+                className="w-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-bold py-3 rounded-xl transition-colors"
+              >
+                Close
+              </button>
+            </div>
           ) : (
             <>
               <div>
@@ -171,7 +188,7 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
                     Select Payment Method
                   </label>
                   
-                  {directCheckoutType && (
+                  {directCheckoutType && walletEnabled && (
                     <button
                       onClick={() => setPaymentMethod('wallet')}
                       disabled={!user || user.balance < amount}
