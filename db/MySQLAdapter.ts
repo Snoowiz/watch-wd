@@ -80,6 +80,12 @@ function camelToSnake(str: string, tableName?: string): string {
   if (str === 'content') {
     return tableName === 'comments' ? 'text' : 'content';
   }
+  if (str === 'avatar' || str === 'userAvatar' || str === 'user_avatar') {
+    return tableName === 'comments' ? 'user_avatar' : 'avatar';
+  }
+  if (str === 'username' || str === 'userName' || str === 'user_name') {
+    return tableName === 'comments' ? 'user_name' : (tableName === 'users' ? 'name' : 'username');
+  }
   // Map of common camelCase -> snake_case overrides used in the app
   const overrides: Record<string, string> = {
     createdAt: 'created_at',
@@ -132,10 +138,6 @@ function camelToSnake(str: string, tableName?: string): string {
     authUser: 'auth_user',
     authPass: 'auth_pass',
     apiKey: 'api_key',
-    userName: 'user_name',
-    userAvatar: 'user_avatar',
-    username: 'user_name',
-    avatar: 'user_avatar',
     timestamp: 'timestamp',
     likedBy: 'liked_by',
     clubId: 'club_id',
@@ -177,6 +179,12 @@ function camelToSnake(str: string, tableName?: string): string {
 function snakeToCamel(str: string, tableName?: string): string {
   if (str === 'text') {
     return tableName === 'comments' ? 'content' : 'text';
+  }
+  if (str === 'user_avatar') {
+    return 'avatar';
+  }
+  if (str === 'user_name') {
+    return tableName === 'comments' ? 'username' : (tableName === 'users' ? 'name' : 'userName');
   }
   const overrides: Record<string, string> = {
     created_at: 'createdAt',
@@ -325,6 +333,17 @@ class DocWrapper {
       if (row.timestamp !== undefined) {
         mappedRow.timestamp = row.timestamp;
         mappedRow.createdAt = row.timestamp;
+      }
+    }
+    if (this.tableName === 'users') {
+      if (mappedRow.avatar !== undefined) {
+        mappedRow.userAvatar = mappedRow.avatar;
+        mappedRow.user_avatar = mappedRow.avatar;
+      }
+      if (mappedRow.name !== undefined) {
+        mappedRow.userName = mappedRow.name;
+        mappedRow.user_name = mappedRow.name;
+        mappedRow.username = mappedRow.name;
       }
     }
     return { id: this.id, exists: true, ref: this, data: () => mappedRow };
@@ -487,6 +506,17 @@ class CollectionWrapper {
         if (rowData.timestamp !== undefined) {
           mappedRow.timestamp = rowData.timestamp;
           mappedRow.createdAt = rowData.timestamp;
+        }
+      }
+      if (this.tableName === 'users') {
+        if (mappedRow.avatar !== undefined) {
+          mappedRow.userAvatar = mappedRow.avatar;
+          mappedRow.user_avatar = mappedRow.avatar;
+        }
+        if (mappedRow.name !== undefined) {
+          mappedRow.userName = mappedRow.name;
+          mappedRow.user_name = mappedRow.name;
+          mappedRow.username = mappedRow.name;
         }
       }
       return {

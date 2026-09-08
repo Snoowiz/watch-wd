@@ -1004,6 +1004,12 @@ function camelToSnake(str, tableName) {
   if (str === "content") {
     return tableName === "comments" ? "text" : "content";
   }
+  if (str === "avatar" || str === "userAvatar" || str === "user_avatar") {
+    return tableName === "comments" ? "user_avatar" : "avatar";
+  }
+  if (str === "username" || str === "userName" || str === "user_name") {
+    return tableName === "comments" ? "user_name" : tableName === "users" ? "name" : "username";
+  }
   const overrides = {
     createdAt: "created_at",
     updatedAt: "updated_at",
@@ -1055,10 +1061,6 @@ function camelToSnake(str, tableName) {
     authUser: "auth_user",
     authPass: "auth_pass",
     apiKey: "api_key",
-    userName: "user_name",
-    userAvatar: "user_avatar",
-    username: "user_name",
-    avatar: "user_avatar",
     timestamp: "timestamp",
     likedBy: "liked_by",
     clubId: "club_id",
@@ -1099,6 +1101,12 @@ function camelToSnake(str, tableName) {
 function snakeToCamel(str, tableName) {
   if (str === "text") {
     return tableName === "comments" ? "content" : "text";
+  }
+  if (str === "user_avatar") {
+    return "avatar";
+  }
+  if (str === "user_name") {
+    return tableName === "comments" ? "username" : tableName === "users" ? "name" : "userName";
   }
   const overrides = {
     created_at: "createdAt",
@@ -1248,6 +1256,17 @@ var DocWrapper = class {
         mappedRow.createdAt = row.timestamp;
       }
     }
+    if (this.tableName === "users") {
+      if (mappedRow.avatar !== void 0) {
+        mappedRow.userAvatar = mappedRow.avatar;
+        mappedRow.user_avatar = mappedRow.avatar;
+      }
+      if (mappedRow.name !== void 0) {
+        mappedRow.userName = mappedRow.name;
+        mappedRow.user_name = mappedRow.name;
+        mappedRow.username = mappedRow.name;
+      }
+    }
     return { id: this.id, exists: true, ref: this, data: () => mappedRow };
   }
   async set(data, _options) {
@@ -1380,6 +1399,17 @@ var CollectionWrapper = class _CollectionWrapper {
         if (rowData.timestamp !== void 0) {
           mappedRow.timestamp = rowData.timestamp;
           mappedRow.createdAt = rowData.timestamp;
+        }
+      }
+      if (this.tableName === "users") {
+        if (mappedRow.avatar !== void 0) {
+          mappedRow.userAvatar = mappedRow.avatar;
+          mappedRow.user_avatar = mappedRow.avatar;
+        }
+        if (mappedRow.name !== void 0) {
+          mappedRow.userName = mappedRow.name;
+          mappedRow.user_name = mappedRow.name;
+          mappedRow.username = mappedRow.name;
         }
       }
       return {
@@ -2081,12 +2111,12 @@ async function startServer() {
   };
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, name, device_id } = req.body;
+      const { email, password, name, device_id, avatar } = req.body;
       const hash = import_bcryptjs.default.hashSync(password, 10);
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
       const adminEmails = getAdminEmails();
       const role = adminEmails.includes((email || "").toLowerCase()) ? "admin" : "viewer";
-      const userData = { email, password: hash, name, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: (/* @__PURE__ */ new Date()).toISOString() };
+      const userData = { email, password: hash, name, avatar: avatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: (/* @__PURE__ */ new Date()).toISOString() };
       const result = await db.collection("users").add(userData);
       const token = import_jsonwebtoken.default.sign({ id: result.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       notifyAdmins("New User Registration", `${name || email} has joined the platform.`, "system", "/admin/users");
@@ -2270,7 +2300,7 @@ async function startServer() {
       if (snapshot.empty) {
         const adminEmails = getAdminEmails();
         const role = adminEmails.includes((verifiedEmail || "").toLowerCase()) ? "admin" : "viewer";
-        user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split("@")[0], avatar: verifiedAvatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: (/* @__PURE__ */ new Date()).toISOString() };
+        user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split("@")[0], avatar: verifiedAvatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: (/* @__PURE__ */ new Date()).toISOString() };
         const result = await db.collection("users").add(user);
         docId = result.id;
       } else {
@@ -2323,8 +2353,12 @@ async function startServer() {
         locationObj.city
       );
       const userRef = db.collection("users").doc(docId);
-      await userRef.update({ active_device_id: finalDeviceId, avatar: verifiedAvatar || user.avatar });
-      user.avatar = verifiedAvatar || user.avatar;
+      const userUpdate = { active_device_id: finalDeviceId };
+      if (verifiedAvatar) {
+        userUpdate.avatar = verifiedAvatar;
+        user.avatar = verifiedAvatar;
+      }
+      await userRef.update(userUpdate);
       const jwtToken = import_jsonwebtoken.default.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token: jwtToken, user: normalizeUser(docId, user), device_id: finalDeviceId });
     } catch (e) {
@@ -6286,6 +6320,14 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const msg = err.message || "";
       if (!msg.includes("Duplicate column") && !msg.includes("1060")) {
         console.error("Failed to ensure users verified column exists:", err);
+      }
+    });
+    execute(`
+      ALTER TABLE \`users\` ADD COLUMN \`avatar\` TEXT DEFAULT NULL
+    `).catch((err) => {
+      const msg = err.message || "";
+      if (!msg.includes("Duplicate column") && !msg.includes("1060")) {
+        console.error("Failed to ensure users avatar column exists:", err);
       }
     });
     execute(`

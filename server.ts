@@ -283,13 +283,13 @@ async function startServer() {
   // === AUTHENTICATION ===
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, name, device_id } = req.body;
+      const { email, password, name, device_id, avatar } = req.body;
       const hash = bcrypt.hashSync(password, 10);
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
       
       const adminEmails = getAdminEmails();
       const role = adminEmails.includes((email || '').toLowerCase()) ? 'admin' : 'viewer';
-      const userData = { email, password: hash, name, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
+      const userData = { email, password: hash, name, avatar: avatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
       const result = await db.collection("users").add(userData);
       
       const token = jwt.sign({ id: result.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
@@ -511,7 +511,7 @@ async function startServer() {
       if (snapshot.empty) {
         const adminEmails = getAdminEmails();
         const role = adminEmails.includes((verifiedEmail || '').toLowerCase()) ? 'admin' : 'viewer';
-        user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split('@')[0], avatar: verifiedAvatar, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
+        user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split('@')[0], avatar: verifiedAvatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
         const result = await db.collection("users").add(user);
         docId = result.id;
       } else {
@@ -576,8 +576,12 @@ async function startServer() {
       );
 
       const userRef = db.collection("users").doc(docId);
-      await userRef.update({ active_device_id: finalDeviceId, avatar: verifiedAvatar || user.avatar });
-      user.avatar = verifiedAvatar || user.avatar;
+      const userUpdate: Record<string, any> = { active_device_id: finalDeviceId };
+      if (verifiedAvatar) {
+        userUpdate.avatar = verifiedAvatar;
+        user.avatar = verifiedAvatar;
+      }
+      await userRef.update(userUpdate);
 
       const jwtToken = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token: jwtToken, user: normalizeUser(docId, user), device_id: finalDeviceId });
@@ -5145,6 +5149,16 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const msg = err.message || '';
       if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
         console.error("Failed to ensure users verified column exists:", err);
+      }
+    });
+
+    // Ensure users avatar column exists (safe incremental upgrade)
+    execute(`
+      ALTER TABLE \`users\` ADD COLUMN \`avatar\` TEXT DEFAULT NULL
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure users avatar column exists:", err);
       }
     });
 

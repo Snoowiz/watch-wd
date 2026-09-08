@@ -84,6 +84,13 @@ async function migrate() {
   }
 
   try {
+    await rootConn.query(`ALTER TABLE \`users\` ADD COLUMN \`avatar\` TEXT DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added avatar column to users.');
+  } catch (err: any) {
+    // Column might already exist, ignore this error
+  }
+
+  try {
     await rootConn.query(`ALTER TABLE \`comments\` ADD COLUMN \`status\` VARCHAR(50) DEFAULT 'active'`);
     console.log('  ✓ Incremental update: Added status column to comments.');
   } catch (err: any) {
