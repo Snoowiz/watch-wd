@@ -12,6 +12,8 @@ import {
   AreaChart, Area
 } from 'recharts';
 import { motion } from 'motion/react';
+import { UserAvatar } from '../components/UserAvatar';
+import { compressImage } from '../lib/imageCompressor';
 
 import { AdminMatches } from './admin/AdminMatches';
 import { NewMatch } from './admin/NewMatch';
@@ -276,13 +278,12 @@ export function AdminDashboard() {
                   <div className="text-sm font-bold text-slate-900 dark:text-white">{user.name}</div>
                   <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{user.role}</div>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-500 flex items-center justify-center overflow-hidden shrink-0">
-                  {user.avatar ? (
-                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="font-bold text-lg">{(user.name || 'U').charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
+                <UserAvatar 
+                  src={user.avatar} 
+                  name={user.name} 
+                  className="w-10 h-10 rounded-full shrink-0 shadow-sm border border-yellow-500/20"
+                  shape="circle"
+                />
               </button>
 
               {/* Dropdown Menu */}
@@ -656,15 +657,12 @@ function AdminOverview() {
               </div>
               {mostActiveUser ? (
                 <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-700 overflow-hidden shrink-0">
-                    {mostActiveUser.avatar ? (
-                      <img src={mostActiveUser.avatar} alt={mostActiveUser.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-lg font-black bg-yellow-500/10 text-yellow-500">
-                        {(mostActiveUser.name || 'U').charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                  </div>
+                  <UserAvatar 
+                    src={mostActiveUser.avatar} 
+                    name={mostActiveUser.name} 
+                    className="w-12 h-12 rounded-xl shrink-0 shadow-sm"
+                    shape="rounded"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-slate-900 dark:text-white text-sm truncate">{mostActiveUser.name}</div>
                     <div className="text-[11px] font-mono font-medium text-yellow-500 mt-0.5">{currencySymbol}{(mostActiveUser.balance || 0).toLocaleString()} Wallet Balance</div>
@@ -945,8 +943,10 @@ function AdminUsers() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditingUser({ ...editingUser, avatar: reader.result as string });
+      reader.onloadend = async () => {
+        const raw = reader.result as string;
+        const compressed = await compressImage(raw, 300, 300);
+        setEditingUser({ ...editingUser, avatar: compressed });
       };
       reader.readAsDataURL(file);
     }
@@ -1013,13 +1013,12 @@ function AdminUsers() {
                 <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-500 dark:text-slate-400 shrink-0 overflow-hidden">
-                        {u.avatar ? (
-                          <img src={u.avatar} alt={u.name} className="w-full h-full object-cover" />
-                        ) : (
-                          (u.name || 'U').charAt(0).toUpperCase()
-                        )}
-                      </div>
+                      <UserAvatar 
+                        src={u.avatar} 
+                        name={u.name} 
+                        className="w-10 h-10 rounded-full shrink-0 shadow-sm"
+                        shape="circle"
+                      />
                       <div>
                         <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                           {u.name}
@@ -1097,13 +1096,14 @@ function AdminUsers() {
               <div className="flex items-center gap-6">
                 <div
                   onClick={() => avatarInputRef.current?.click()}
-                  className="w-20 h-20 bg-slate-200 dark:bg-slate-700 rounded-xl flex items-center justify-center overflow-hidden shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                  className="w-20 h-20 rounded-xl overflow-hidden shrink-0 cursor-pointer hover:opacity-90 transition-opacity shadow-md"
                 >
-                  {editingUser.avatar ? (
-                    <img src={editingUser.avatar} alt={editingUser.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <User className="w-10 h-10 text-slate-400" />
-                  )}
+                  <UserAvatar 
+                    src={editingUser.avatar} 
+                    name={editingUser.name} 
+                    className="w-full h-full text-2xl font-black"
+                    shape="rounded"
+                  />
                 </div>
                 <input
                   type="file"

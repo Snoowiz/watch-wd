@@ -261,11 +261,18 @@ async function startServer() {
   const normalizeUser = (docId: string, data: any) => {
     if (!data) return null;
     const { password: _, plan_id, plan_expires_at, ...userData } = data;
+    const isCompleted = Boolean(Number(data.onboarding_completed ?? data.onboardingCompleted ?? 0));
     const normalized = { 
       id: docId, 
       ...userData,
       planId: plan_id,
-      planExpiresAt: plan_expires_at
+      planExpiresAt: plan_expires_at,
+      onboardingCompleted: isCompleted,
+      onboarding_completed: isCompleted ? 1 : 0,
+      avatar: data.avatar || data.user_avatar || null,
+      phone: data.phone || data.phone_number || '',
+      dob: data.dob || '',
+      gender: data.gender || ''
     };
     if (normalized.balance === undefined) {
       normalized.balance = normalized.points !== undefined ? Number(normalized.points) : 0;
@@ -289,7 +296,18 @@ async function startServer() {
       
       const adminEmails = getAdminEmails();
       const role = adminEmails.includes((email || '').toLowerCase()) ? 'admin' : 'viewer';
-      const userData = { email, password: hash, name, avatar: avatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
+      const userData = { 
+        email, 
+        password: hash, 
+        name: name || '', 
+        avatar: avatar || null, 
+        active_device_id: finalDeviceId, 
+        role, 
+        balance: 0, 
+        status: "active", 
+        onboarding_completed: 0,
+        created_at: new Date().toISOString() 
+      };
       const result = await db.collection("users").add(userData);
       
       const token = jwt.sign({ id: result.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
@@ -510,8 +528,18 @@ async function startServer() {
 
       if (snapshot.empty) {
         const adminEmails = getAdminEmails();
-        const role = adminEmails.includes((verifiedEmail || '').toLowerCase()) ? 'admin' : 'viewer';
-        user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split('@')[0], avatar: verifiedAvatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: new Date().toISOString() };
+        user = { 
+          email: verifiedEmail, 
+          password: "google-auth-no-password", 
+          name: verifiedName || verifiedEmail.split('@')[0], 
+          avatar: verifiedAvatar || null, 
+          active_device_id: finalDeviceId, 
+          role, 
+          balance: 0, 
+          status: "active", 
+          onboarding_completed: 0,
+          created_at: new Date().toISOString() 
+        };
         const result = await db.collection("users").add(user);
         docId = result.id;
       } else {
@@ -784,14 +812,26 @@ async function startServer() {
 
   app.put("/api/auth/profile", authenticate, async (req: any, res) => {
     try {
-      const allowedFields = ["name", "avatar", "bio", "phone_number", "favorite_team_id", "favorite_sports"];
       const rawUpdates = req.body || {};
       const updates: Record<string, any> = {};
       
-      for (const field of allowedFields) {
-        if (rawUpdates[field] !== undefined) {
-          updates[field] = rawUpdates[field];
-        }
+      if (rawUpdates.name !== undefined) updates.name = String(rawUpdates.name).trim();
+      if (rawUpdates.avatar !== undefined || rawUpdates.user_avatar !== undefined || rawUpdates.userAvatar !== undefined) {
+        updates.avatar = rawUpdates.avatar ?? rawUpdates.user_avatar ?? rawUpdates.userAvatar ?? null;
+      }
+      if (rawUpdates.bio !== undefined) updates.bio = rawUpdates.bio;
+      if (rawUpdates.phone !== undefined || rawUpdates.phone_number !== undefined || rawUpdates.phoneNumber !== undefined) {
+        const phoneVal = rawUpdates.phone ?? rawUpdates.phone_number ?? rawUpdates.phoneNumber ?? '';
+        updates.phone = phoneVal;
+        updates.phone_number = phoneVal;
+      }
+      if (rawUpdates.dob !== undefined) updates.dob = rawUpdates.dob;
+      if (rawUpdates.gender !== undefined) updates.gender = rawUpdates.gender;
+      if (rawUpdates.favorite_team_id !== undefined) updates.favorite_team_id = rawUpdates.favorite_team_id;
+      if (rawUpdates.favorite_sports !== undefined) updates.favorite_sports = rawUpdates.favorite_sports;
+      if (rawUpdates.onboarding_completed !== undefined || rawUpdates.onboardingCompleted !== undefined) {
+        const val = rawUpdates.onboarding_completed ?? rawUpdates.onboardingCompleted;
+        updates.onboarding_completed = val ? 1 : 0;
       }
 
       if (Object.keys(updates).length === 0) {
@@ -5890,6 +5930,31 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         console.error("Failed to ensure users avatar column exists:", err);
       }
     });
+
+    // Ensure users onboarding_completed column exists
+    execute(`
+      ALTER TABLE \`users\` ADD COLUMN \`onboarding_completed\` TINYINT(1) DEFAULT 0
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure users onboarding_completed column exists:", err);
+      }
+    });
+
+    // Ensure users phone_number column exists
+    execute(`
+      ALTER TABLE \`users\` ADD COLUMN \`phone_number\` VARCHAR(50) DEFAULT NULL
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure users phone_number column exists:", err);
+      }
+    });
+
+    // Ensure avatar column can hold high-res base64 without truncation
+    execute(`
+      ALTER TABLE \`users\` MODIFY COLUMN \`avatar\` LONGTEXT DEFAULT NULL
+    `).catch(() => {});
 
     // Ensure clubs table exists (PPV revenue split)
     execute(`

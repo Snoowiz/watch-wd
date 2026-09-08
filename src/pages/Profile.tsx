@@ -1,9 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore, useSettingsStore, useTaskStore, useMatchStore, useSavedMatchesStore, Match, usePurchaseStore, useCategoryStore } from '../store';
-import { User, Mail, Star, Activity, Camera, CheckCircle, Clock, Gift, Shield, Bookmark, Settings, Bell, BellRing, BellOff, Menu, X } from 'lucide-react';
+import { User, Mail, Star, Activity, Camera, CheckCircle, Clock, Gift, Shield, Bookmark, Settings, Bell, BellRing, BellOff, Menu, X, Upload, Trash2, Sparkles, Check } from 'lucide-react';
 import { AddFundsModal } from '../components/AddFundsModal';
 import { CompleteProfileModal } from '../components/CompleteProfileModal';
+import { UserAvatar } from '../components/UserAvatar';
+import { PRESET_AVATARS } from '../lib/presetAvatars';
+import { compressImage } from '../lib/imageCompressor';
 import { requestNotificationPermission, subscribeToCategory, subscribeToMatch, unsubscribeFromMatch, getNotificationPermission } from '../services/notificationService';
 
 export function Profile() {
@@ -17,6 +20,8 @@ export function Profile() {
   
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
   const [isCompleteProfileOpen, setIsCompleteProfileOpen] = useState(false);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [savedMatchesData, setSavedMatchesData] = useState<Match[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,29 +59,38 @@ export function Profile() {
 
   const myWatchHistory = watchHistory.filter(w => w.userId === user.id);
 
+  const saveAvatar = async (newAvatar: string | null) => {
+    setIsSavingAvatar(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ name: user.name, avatar: newAvatar })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        updateUser(data.user);
+        setIsAvatarModalOpen(false);
+      }
+    } catch (err) {
+      console.error('Failed to update avatar', err);
+    } finally {
+      setIsSavingAvatar(false);
+    }
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const newAvatar = reader.result as string;
-        try {
-          const token = localStorage.getItem('token');
-          const res = await fetch('/api/auth/profile', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ name: user.name, avatar: newAvatar })
-          });
-          const data = await res.json();
-          if (res.ok) {
-            updateUser(data.user);
-          }
-        } catch (err) {
-          console.error('Failed to update avatar', err);
-        }
+        const rawData = reader.result as string;
+        const compressed = await compressImage(rawData, 300, 300);
+        await saveAvatar(compressed);
       };
       reader.readAsDataURL(file);
     }
@@ -315,34 +329,41 @@ export function Profile() {
           </div>
         </div>
         <div className="px-4 sm:px-8 pb-4 sm:pb-8 relative flex flex-col sm:block items-center text-center sm:text-left">
-          <div className="w-24 h-24 bg-slate-200 dark:bg-slate-700 rounded-xl border-4 border-white dark:border-slate-800 absolute -top-12 left-1/2 -translate-x-1/2 sm:left-8 sm:translate-x-0 flex items-center justify-center overflow-hidden shadow-lg group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-            {user.avatar ? (
-              <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-            ) : (
-              <User className="w-12 h-12 text-slate-400" />
-            )}
-            <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center transition-colors">
-              <Camera className="w-6 h-6 text-white" />
-            </div>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleAvatarUpload} 
-              accept="image/*" 
-              className="hidden" 
+          {/* Main User Avatar */}
+          <div 
+            className="w-24 h-24 rounded-2xl border-4 border-white dark:border-slate-800 absolute -top-12 left-1/2 -translate-x-1/2 sm:left-8 sm:translate-x-0 overflow-hidden shadow-xl group cursor-pointer transition-all hover:scale-105 bg-slate-900" 
+            onClick={() => setIsAvatarModalOpen(true)}
+            title="Click to change avatar or choose preset"
+          >
+            <UserAvatar 
+              src={user.avatar} 
+              name={user.name} 
+              className="w-full h-full text-3xl font-black"
+              shape="rounded"
             />
+            {/* Hover overlay */}
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white">
+              <Camera className="w-5 h-5 mb-0.5 text-yellow-400" />
+              <span className="text-[10px] font-bold tracking-wider uppercase">Change</span>
+            </div>
+            {/* Camera badge */}
+            <div className="absolute -bottom-0.5 -right-0.5 bg-yellow-500 text-slate-950 p-1.5 rounded-lg shadow-md border-2 border-white dark:border-slate-800 flex items-center justify-center">
+              <Camera className="w-3 h-3" />
+            </div>
           </div>
+          
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 pt-16 sm:pt-3 sm:ml-32 sm:pl-2 w-full items-center sm:items-stretch">
             <div className="flex flex-col items-center sm:items-start">
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto">
-                {user.name}
-                {user.verified && <CheckCircle className="w-5 h-5 text-blue-500" />}
+              <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto flex-wrap">
+                <span>{user.name}</span>
+                {user.verified && <CheckCircle className="w-5 h-5 text-blue-500 shrink-0" />}
                 <button 
                   onClick={() => setIsCompleteProfileOpen(true)}
-                  className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded-full bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                  title="Edit Profile"
+                  className="ml-2 text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/70 hover:bg-yellow-500 hover:text-slate-950 text-slate-600 dark:text-slate-300 transition-all flex items-center gap-1.5 shadow-sm"
+                  title="Edit Profile Details"
                 >
-                  <Settings className="w-5 h-5" />
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Edit Profile</span>
                 </button>
               </h1>
               <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 mt-2 text-slate-500 dark:text-slate-400">
@@ -478,6 +499,108 @@ export function Profile() {
         isOpen={isCompleteProfileOpen} 
         onClose={() => setIsCompleteProfileOpen(false)} 
       />
+
+      {/* Dedicated Avatar Picker Modal */}
+      {isAvatarModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-8 relative shadow-2xl overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-500" />
+            
+            <button 
+              onClick={() => setIsAvatarModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                <Camera className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">Choose Your Avatar</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Pick a sports character or upload your own photo.</p>
+              </div>
+            </div>
+
+            {/* Current Preview */}
+            <div className="flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl mb-6 border border-slate-100 dark:border-slate-800">
+              <UserAvatar
+                src={user.avatar}
+                name={user.name}
+                className="w-20 h-20 rounded-2xl shadow-md border-2 border-yellow-400/50 mb-2"
+                shape="rounded"
+              />
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{user.name}</span>
+            </div>
+
+            {/* Presets Grid */}
+            <div className="mb-6">
+              <span className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2.5">
+                Sports & Streamer Presets
+              </span>
+              <div className="grid grid-cols-4 gap-2.5">
+                {PRESET_AVATARS.map((preset) => {
+                  const isSelected = user.avatar === preset.dataUrl;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      disabled={isSavingAvatar}
+                      onClick={() => saveAvatar(preset.dataUrl)}
+                      title={preset.label}
+                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all hover:scale-105 ${
+                        isSelected
+                          ? 'border-yellow-500 ring-2 ring-yellow-400/40 shadow-md'
+                          : 'border-slate-200 dark:border-slate-700 opacity-80 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={preset.dataUrl} alt={preset.label} className="w-full h-full object-cover" />
+                      {isSelected && (
+                        <div className="absolute inset-0 bg-yellow-500/30 flex items-center justify-center">
+                          <Check className="w-4 h-4 text-white drop-shadow font-black" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSavingAvatar}
+                className="w-full py-3 px-4 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Upload className="w-4 h-4 text-yellow-400" />
+                {isSavingAvatar ? 'Updating Avatar...' : 'Upload Custom Photo'}
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleAvatarUpload} 
+                accept="image/*" 
+                className="hidden" 
+              />
+
+              {user.avatar && (
+                <button
+                  type="button"
+                  onClick={() => saveAvatar(null)}
+                  disabled={isSavingAvatar}
+                  className="w-full py-2.5 px-4 rounded-xl border border-red-200 dark:border-red-900/40 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-600 dark:text-red-400 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Remove Custom Avatar (Use Vibrant Initials)
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

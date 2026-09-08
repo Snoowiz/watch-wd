@@ -3,6 +3,7 @@ import { useCommentStore, useAuthStore, Match } from '../store';
 import { Send, Heart, MessageSquare, Clock, Smile, Minimize2, Maximize2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
+import { UserAvatar } from './UserAvatar';
 
 interface MatchCommentsProps {
   match: Match;
@@ -130,13 +131,12 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
         ) : (
           matchComments.map((comment) => (
             <div key={comment.id} className="flex gap-2 sm:gap-3 items-start">
-              <div className={`${isCompact ? 'w-6 h-6 text-xs' : 'w-8 h-8 text-sm'} rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0 mt-1`}>
-                {comment.avatar ? (
-                  <img src={comment.avatar} alt={comment.username} className="w-full h-full rounded-full object-cover" />
-                ) : (
-                  (comment.username || 'U').charAt(0).toUpperCase()
-                )}
-              </div>
+              <UserAvatar 
+                src={comment.avatar} 
+                name={comment.username} 
+                className={`${isCompact ? 'w-6 h-6 text-[10px]' : 'w-8 h-8 text-xs'} rounded-full shrink-0 mt-1 shadow-sm`}
+                shape="circle"
+              />
               <div className="flex flex-col items-start max-w-[85%] sm:max-w-[75%]">
                 <div className="flex items-baseline gap-2 mb-1">
                   <span className={`font-bold ${isCompact ? 'text-xs' : 'text-sm'} text-slate-900 dark:text-white line-clamp-1`}>{comment.username}</span>

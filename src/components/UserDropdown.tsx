@@ -5,6 +5,7 @@ import {
   Sun, Moon, Monitor, Sparkles, LayoutDashboard, Video, MessageSquare, Users
 } from 'lucide-react';
 import { useAuthStore, useThemeStore, useFeatureStore, useSettingsStore } from '../store';
+import { UserAvatar } from './UserAvatar';
 
 export function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -39,15 +40,14 @@ export function UserDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 p-1 hover:opacity-80 transition-opacity rounded-full focus:outline-none"
+        className="flex items-center gap-2 p-1 hover:opacity-90 transition-opacity rounded-full focus:outline-none ring-2 ring-transparent hover:ring-yellow-400/40"
       >
-        {user.avatar ? (
-          <img src={user.avatar} alt={user.name} className="w-9 h-9 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700" />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold border border-indigo-200 dark:border-indigo-800">
-            {(user.name || 'U').charAt(0).toUpperCase()}
-          </div>
-        )}
+        <UserAvatar 
+          src={user.avatar} 
+          name={user.name} 
+          className="w-9 h-9 rounded-full border-2 border-slate-200 dark:border-slate-700 shadow-sm"
+          shape="circle"
+        />
       </button>
 
       {isOpen && (
@@ -55,13 +55,12 @@ export function UserDropdown() {
           {/* Header Section */}
           <div className="p-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
             <Link to="/profile" onClick={closeDropdown} className="flex items-center gap-3 hover:opacity-80">
-              {user.avatar ? (
-                <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 flex items-center justify-center font-bold">
-                  {(user.name || 'U').charAt(0).toUpperCase()}
-                </div>
-              )}
+              <UserAvatar 
+                src={user.avatar} 
+                name={user.name} 
+                className="w-10 h-10 rounded-full shadow-sm"
+                shape="circle"
+              />
               <div>
                 <div className="font-bold text-slate-900 dark:text-white text-sm leading-tight">{user.name}</div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5">{user.role}</div>

@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { useBlogStore, useAuthStore } from '../store';
 import { Calendar, Clock, Eye, Heart, Share2, ArrowLeft, Volume2, VolumeX, MessageSquare, Tag as TagIcon, Lock } from 'lucide-react';
 import { format } from 'date-fns';
+import { UserAvatar } from '../components/UserAvatar';
 
 export function BlogPostDetails() {
   const { slug } = useParams();
@@ -292,13 +293,12 @@ export function BlogPostDetails() {
             <div className="space-y-6">
               {postComments.map(comment => (
                 <div key={comment.id} className="flex gap-4">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex flex-shrink-0 items-center justify-center font-bold text-lg overflow-hidden border border-indigo-200 dark:border-indigo-500/30">
-                    {comment.avatar ? (
-                      <img src={comment.avatar} alt={comment.userName} className="w-full h-full object-cover" />
-                    ) : (
-                      (comment.userName || 'U').charAt(0).toUpperCase()
-                    )}
-                  </div>
+                  <UserAvatar 
+                    src={comment.avatar} 
+                    name={comment.userName} 
+                    className="w-10 h-10 rounded-full shrink-0 shadow-sm border border-slate-200 dark:border-slate-700"
+                    shape="circle"
+                  />
                   <div className="flex-1 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl rounded-tl-none p-5 shadow-sm">
                     <div className="flex items-center justify-between mb-2">
                       <div className="font-bold text-slate-900 dark:text-white">{comment.userName}</div>

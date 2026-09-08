@@ -1,8 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '../store';
-import { Camera, X } from 'lucide-react';
+import { Camera, X, Check, Sparkles, User, Calendar, Phone, Upload, ShieldCheck } from 'lucide-react';
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
+import { PRESET_AVATARS } from '../lib/presetAvatars';
+import { compressImage } from '../lib/imageCompressor';
+import { UserAvatar } from './UserAvatar';
 
 interface CompleteProfileModalProps {
   isOpen: boolean;
@@ -13,40 +16,66 @@ export function CompleteProfileModal({ isOpen, onClose }: CompleteProfileModalPr
   const { user, updateUser } = useAuthStore();
   const [name, setName] = useState(user?.name || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const [phone, setPhone] = useState(user?.phone || user?.phoneNumber || '');
   const [dob, setDob] = useState(user?.dob || '');
   const [gender, setGender] = useState(user?.gender || '');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<'presets' | 'custom'>('presets');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen && user) {
-      setName(n => n || user.name || '');
-      setAvatar(a => a || user.avatar || '');
-      setPhone(p => p || user.phone || '');
-      setDob(d => d || user.dob || '');
-      setGender(g => g || user.gender || '');
+      setName(user.name || '');
+      setAvatar(user.avatar || '');
+      setPhone(user.phone || user.phoneNumber || '');
+      setDob(user.dob || '');
+      setGender(user.gender || '');
+      setError('');
     }
   }, [isOpen, user]);
 
   if (!isOpen || !user) return null;
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatar(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      if (!file.type.startsWith('image/')) {
+        setError('Please choose a valid image file');
+        return;
+      }
+      setIsCompressing(true);
+      setError('');
+      try {
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const rawDataUrl = reader.result as string;
+          // Compress avatar to 300x300 JPEG for ultra fast loading and safe DB storage
+          const compressed = await compressImage(rawDataUrl, 300, 300);
+          setAvatar(compressed);
+          setIsCompressing(false);
+        };
+        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Avatar compression error:', err);
+        setIsCompressing(false);
+      }
     }
+  };
+
+  const handleSelectPreset = (presetUrl: string) => {
+    setAvatar(presetUrl);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone || !isValidPhoneNumber(phone)) {
-      setError('Please enter a valid phone number');
+    if (!name.trim()) {
+      setError('Please provide a display name');
+      return;
+    }
+    if (phone && !isValidPhoneNumber(phone)) {
+      setError('Please enter a valid international phone number');
       return;
     }
     setIsLoading(true);
@@ -60,135 +89,281 @@ export function CompleteProfileModal({ isOpen, onClose }: CompleteProfileModalPr
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ name, avatar, phone, dob, gender })
+        body: JSON.stringify({ 
+          name: name.trim(), 
+          avatar: avatar || null, 
+          phone: phone || '', 
+          dob: dob || '', 
+          gender: gender || '',
+          onboarding_completed: 1,
+          onboardingCompleted: true
+        })
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update profile');
 
-      updateUser(data.user);
+      // Update auth store with onboardingCompleted = true
+      updateUser({
+        ...data.user,
+        onboardingCompleted: true,
+        onboarding_completed: 1
+      });
+      localStorage.setItem('profileModalDismissed', 'true');
       onClose();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'An error occurred while saving your profile');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleSkip = () => {
+    localStorage.setItem('profileModalDismissed', 'true');
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-800 rounded-xl max-w-md w-full p-6 relative my-8">
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-        >
-          <X className="w-6 h-6" />
-        </button>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 sm:p-8 relative shadow-2xl my-8 overflow-hidden">
         
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Personal Information</h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-6">Please complete your profile details to continue.</p>
+        {/* Top Decorative Banner */}
+        <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-500" />
+
+        <button 
+          onClick={handleSkip}
+          className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          title="Close or complete later"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-2xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+              Welcome to WatchWDS!
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+              Customize your avatar and details to complete your setup.
+            </p>
+          </div>
+        </div>
 
         {error && (
-          <div className="bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 p-4 rounded-xl text-sm mb-6 border border-red-100 dark:border-red-500/20">
+          <div className="mt-4 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 p-3.5 rounded-2xl text-xs sm:text-sm border border-red-100 dark:border-red-500/20 font-medium">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="flex flex-col items-center mb-6">
-            <div 
-              className="w-24 h-24 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center overflow-hidden cursor-pointer relative group"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {avatar ? (
-                <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <Camera className="w-8 h-8 text-slate-400" />
-              )}
-              <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center transition-colors">
-                <Camera className="w-6 h-6 text-white" />
+        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+          
+          {/* Avatar Section */}
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Select Your Avatar
+              </span>
+              <div className="flex gap-1 bg-slate-200/60 dark:bg-slate-700/60 p-0.5 rounded-lg text-[11px] font-medium">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('presets')}
+                  className={`px-2.5 py-1 rounded-md transition-all ${activeTab === 'presets' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
+                >
+                  Sports Presets
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('custom')}
+                  className={`px-2.5 py-1 rounded-md transition-all ${activeTab === 'custom' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
+                >
+                  Upload Photo
+                </button>
               </div>
             </div>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleAvatarUpload} 
-              accept="image/*" 
-              className="hidden" 
-            />
-            <p className="text-sm text-slate-500 mt-2">Profile Photo (Optional)</p>
+
+            <div className="flex items-center gap-4">
+              {/* Active Avatar Preview */}
+              <div className="relative group shrink-0">
+                <UserAvatar
+                  src={avatar}
+                  name={name || user.name}
+                  alt="Avatar Preview"
+                  className="w-16 h-16 rounded-2xl shadow-md border-2 border-yellow-400/40"
+                  shape="rounded"
+                />
+                {isCompressing && (
+                  <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center">
+                    <span className="text-[10px] text-white font-bold animate-pulse">Opt...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Selector content */}
+              {activeTab === 'presets' ? (
+                <div className="flex-1 overflow-hidden">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                    {PRESET_AVATARS.map((preset) => {
+                      const isSelected = avatar === preset.dataUrl;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleSelectPreset(preset.dataUrl)}
+                          title={preset.label}
+                          className={`relative shrink-0 w-11 h-11 rounded-xl overflow-hidden border-2 transition-transform hover:scale-105 ${
+                            isSelected
+                              ? 'border-yellow-500 shadow-md ring-2 ring-yellow-400/40'
+                              : 'border-slate-200 dark:border-slate-700 opacity-80 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={preset.dataUrl} alt={preset.label} className="w-full h-full object-cover" />
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-yellow-500/30 flex items-center justify-center">
+                              <Check className="w-4 h-4 text-white drop-shadow-sm font-black" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Click a character to set as your avatar</p>
+                </div>
+              ) : (
+                <div className="flex-1">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isCompressing}
+                    className="flex items-center gap-2 px-3.5 py-2 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-600 transition-colors shadow-sm"
+                  >
+                    <Upload className="w-4 h-4 text-yellow-500" />
+                    {isCompressing ? 'Compressing...' : 'Choose from Device'}
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleAvatarUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">JPEG/PNG auto-compressed for lightning speed</p>
+                </div>
+              )}
+            </div>
           </div>
 
+          {/* Display Name */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Display Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-yellow-500 outline-none"
-              required
-            />
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              Display Name <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Alex Hunter"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition-all"
+                required
+              />
+              <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            </div>
           </div>
 
+          {/* Phone Number */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Phone Number</label>
-            <div className="react-phone-number-input-container">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              Phone Number <span className="text-slate-400 lowercase text-[10px]">(Optional)</span>
+            </label>
+            <div className="react-phone-number-input-custom relative">
               <PhoneInput
                 international
-                defaultCountry="US"
+                defaultCountry="GB"
                 value={phone}
                 onChange={(val) => setPhone(val || '')}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-yellow-500 outline-none"
+                placeholder="Enter phone number"
+                className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus-within:ring-2 focus-within:ring-yellow-500 focus-within:border-yellow-500 outline-none transition-all"
               />
             </div>
             <style>{`
-              .react-phone-number-input-container .PhoneInputInput {
+              .react-phone-number-input-custom .PhoneInputInput {
                 background: transparent;
                 border: none;
                 outline: none;
                 color: inherit;
                 width: 100%;
                 margin-left: 8px;
+                padding: 6px 0;
+                font-size: 0.875rem;
+              }
+              .react-phone-number-input-custom .PhoneInputCountrySelect {
+                background: transparent;
+                color: inherit;
               }
             `}</style>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          {/* DOB & Gender */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date of Birth</label>
-              <input
-                type="date"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-yellow-500 outline-none"
-                required
-              />
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                Date of Birth
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-yellow-500 outline-none transition-all"
+                />
+                <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+              </div>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gender</label>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                Gender
+              </label>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-yellow-500 outline-none"
-                required
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-yellow-500 outline-none transition-all"
               >
-                <option value="" disabled>Select Gender</option>
+                <option value="">Prefer not to specify</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
                 <option value="Non-binary">Non-binary</option>
                 <option value="Other">Other</option>
-                <option value="Prefer not to say">Prefer not to say</option>
               </select>
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-6 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Saving...' : 'Save Profile'}
-          </button>
+          {/* Action Buttons */}
+          <div className="pt-2 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSkip}
+              className="flex-1 py-3 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-sm transition-colors text-center"
+            >
+              Skip for Now
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading || isCompressing}
+              className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-slate-950 font-black text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-center flex items-center justify-center gap-2"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              {isLoading ? 'Saving Setup...' : 'Complete Setup'}
+            </button>
+          </div>
+
+          <p className="text-center text-[11px] text-slate-400">
+            You can always modify these preferences anytime from your Profile page.
+          </p>
         </form>
       </div>
     </div>

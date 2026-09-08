@@ -72,7 +72,8 @@ export default function App() {
     localStorage.setItem('profileModalDismissed', 'true');
   };
 
-  const showCompleteProfile = !!(user && (!user.phone || !user.dob || !user.gender) && !profileModalDismissed);
+  const isOnboardingCompleted = Boolean(user?.onboardingCompleted || user?.onboarding_completed);
+  const showCompleteProfile = Boolean(user && !isOnboardingCompleted && !profileModalDismissed);
 
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 

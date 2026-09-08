@@ -9,6 +9,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { MediaPicker } from '../../components/MediaPicker';
 import { compressImage } from '../../lib/imageCompressor';
+import { UserAvatar } from '../../components/UserAvatar';
 
 import { NotificationDropdown } from '../../components/NotificationDropdown';
 
@@ -133,13 +134,12 @@ export function CreatorDashboard() {
                   <div className="text-sm font-bold text-slate-900 dark:text-white">{user.channelName || user.name}</div>
                   <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Channel</div>
                 </div>
-                {user.avatar ? (
-                  <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover" />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
-                    {(user.name || 'U').charAt(0)}
-                  </div>
-                )}
+                <UserAvatar 
+                  src={user.avatar} 
+                  name={user.channelName || user.name} 
+                  className="w-10 h-10 rounded-full shrink-0 shadow-sm border border-yellow-500/20"
+                  shape="circle"
+                />
               </button>
               
               {/* Dropdown Menu */}

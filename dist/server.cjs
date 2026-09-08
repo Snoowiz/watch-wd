@@ -1096,6 +1096,8 @@ function camelToSnake(str, tableName) {
     lastSentAt: "last_sent_at",
     expiresAt: "expires_at",
     planExpiresAt: "plan_expires_at",
+    onboardingCompleted: "onboarding_completed",
+    phoneNumber: "phone",
     keyName: "key_name",
     featuredImage: "featured_image",
     embedUrl: "embed_url",
@@ -1206,6 +1208,8 @@ function snakeToCamel(str, tableName) {
     last_sent_at: "lastSentAt",
     expires_at: "expiresAt",
     plan_expires_at: "planExpiresAt",
+    onboarding_completed: "onboardingCompleted",
+    phone_number: "phone",
     key_name: "keyName",
     featured_image: "featuredImage",
     embed_url: "embedUrl",
@@ -2161,11 +2165,18 @@ async function startServer() {
   const normalizeUser = (docId, data) => {
     if (!data) return null;
     const { password: _, plan_id, plan_expires_at, ...userData } = data;
+    const isCompleted = Boolean(Number(data.onboarding_completed ?? data.onboardingCompleted ?? 0));
     const normalized = {
       id: docId,
       ...userData,
       planId: plan_id,
-      planExpiresAt: plan_expires_at
+      planExpiresAt: plan_expires_at,
+      onboardingCompleted: isCompleted,
+      onboarding_completed: isCompleted ? 1 : 0,
+      avatar: data.avatar || data.user_avatar || null,
+      phone: data.phone || data.phone_number || "",
+      dob: data.dob || "",
+      gender: data.gender || ""
     };
     if (normalized.balance === void 0) {
       normalized.balance = normalized.points !== void 0 ? Number(normalized.points) : 0;
@@ -2184,8 +2195,19 @@ async function startServer() {
       const hash = import_bcryptjs.default.hashSync(password, 10);
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
       const adminEmails = getAdminEmails();
-      const role = adminEmails.includes((email || "").toLowerCase()) ? "admin" : "viewer";
-      const userData = { email, password: hash, name, avatar: avatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: (/* @__PURE__ */ new Date()).toISOString() };
+      const role2 = adminEmails.includes((email || "").toLowerCase()) ? "admin" : "viewer";
+      const userData = {
+        email,
+        password: hash,
+        name: name || "",
+        avatar: avatar || null,
+        active_device_id: finalDeviceId,
+        role: role2,
+        balance: 0,
+        status: "active",
+        onboarding_completed: 0,
+        created_at: (/* @__PURE__ */ new Date()).toISOString()
+      };
       const result = await db.collection("users").add(userData);
       const token = import_jsonwebtoken.default.sign({ id: result.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
       notifyAdmins("New User Registration", `${name || email} has joined the platform.`, "system", "/admin/users");
@@ -2368,8 +2390,18 @@ async function startServer() {
       let docId = "";
       if (snapshot.empty) {
         const adminEmails = getAdminEmails();
-        const role = adminEmails.includes((verifiedEmail || "").toLowerCase()) ? "admin" : "viewer";
-        user = { email: verifiedEmail, password: "google-auth-no-password", name: verifiedName || verifiedEmail.split("@")[0], avatar: verifiedAvatar || null, active_device_id: finalDeviceId, role, balance: 0, status: "active", created_at: (/* @__PURE__ */ new Date()).toISOString() };
+        user = {
+          email: verifiedEmail,
+          password: "google-auth-no-password",
+          name: verifiedName || verifiedEmail.split("@")[0],
+          avatar: verifiedAvatar || null,
+          active_device_id: finalDeviceId,
+          role,
+          balance: 0,
+          status: "active",
+          onboarding_completed: 0,
+          created_at: (/* @__PURE__ */ new Date()).toISOString()
+        };
         const result = await db.collection("users").add(user);
         docId = result.id;
       } else {
@@ -2598,13 +2630,25 @@ async function startServer() {
   });
   app.put("/api/auth/profile", authenticate, async (req, res) => {
     try {
-      const allowedFields = ["name", "avatar", "bio", "phone_number", "favorite_team_id", "favorite_sports"];
       const rawUpdates = req.body || {};
       const updates = {};
-      for (const field of allowedFields) {
-        if (rawUpdates[field] !== void 0) {
-          updates[field] = rawUpdates[field];
-        }
+      if (rawUpdates.name !== void 0) updates.name = String(rawUpdates.name).trim();
+      if (rawUpdates.avatar !== void 0 || rawUpdates.user_avatar !== void 0 || rawUpdates.userAvatar !== void 0) {
+        updates.avatar = rawUpdates.avatar ?? rawUpdates.user_avatar ?? rawUpdates.userAvatar ?? null;
+      }
+      if (rawUpdates.bio !== void 0) updates.bio = rawUpdates.bio;
+      if (rawUpdates.phone !== void 0 || rawUpdates.phone_number !== void 0 || rawUpdates.phoneNumber !== void 0) {
+        const phoneVal = rawUpdates.phone ?? rawUpdates.phone_number ?? rawUpdates.phoneNumber ?? "";
+        updates.phone = phoneVal;
+        updates.phone_number = phoneVal;
+      }
+      if (rawUpdates.dob !== void 0) updates.dob = rawUpdates.dob;
+      if (rawUpdates.gender !== void 0) updates.gender = rawUpdates.gender;
+      if (rawUpdates.favorite_team_id !== void 0) updates.favorite_team_id = rawUpdates.favorite_team_id;
+      if (rawUpdates.favorite_sports !== void 0) updates.favorite_sports = rawUpdates.favorite_sports;
+      if (rawUpdates.onboarding_completed !== void 0 || rawUpdates.onboardingCompleted !== void 0) {
+        const val = rawUpdates.onboarding_completed ?? rawUpdates.onboardingCompleted;
+        updates.onboarding_completed = val ? 1 : 0;
       }
       if (Object.keys(updates).length === 0) {
         const currentDoc = await db.collection("users").doc(req.user.id).get();
@@ -4792,11 +4836,11 @@ async function startServer() {
   app.put("/api/admin/users/:id/details", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const userRef = db.collection("users").doc(req.params.id);
-      const { name, email, role, status, balance, verified } = req.body;
+      const { name, email, role: role2, status, balance, verified } = req.body;
       const updateData = {};
       if (name !== void 0) updateData.name = name;
       if (email !== void 0) updateData.email = email;
-      if (role !== void 0) updateData.role = role;
+      if (role2 !== void 0) updateData.role = role2;
       if (status !== void 0) updateData.status = status;
       if (balance !== void 0) updateData.balance = Number(balance) || 0;
       if (verified !== void 0) updateData.verified = verified ? 1 : 0;
@@ -7050,6 +7094,26 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!msg.includes("Duplicate column") && !msg.includes("1060")) {
         console.error("Failed to ensure users avatar column exists:", err);
       }
+    });
+    execute(`
+      ALTER TABLE \`users\` ADD COLUMN \`onboarding_completed\` TINYINT(1) DEFAULT 0
+    `).catch((err) => {
+      const msg = err.message || "";
+      if (!msg.includes("Duplicate column") && !msg.includes("1060")) {
+        console.error("Failed to ensure users onboarding_completed column exists:", err);
+      }
+    });
+    execute(`
+      ALTER TABLE \`users\` ADD COLUMN \`phone_number\` VARCHAR(50) DEFAULT NULL
+    `).catch((err) => {
+      const msg = err.message || "";
+      if (!msg.includes("Duplicate column") && !msg.includes("1060")) {
+        console.error("Failed to ensure users phone_number column exists:", err);
+      }
+    });
+    execute(`
+      ALTER TABLE \`users\` MODIFY COLUMN \`avatar\` LONGTEXT DEFAULT NULL
+    `).catch(() => {
     });
     execute(`
       CREATE TABLE IF NOT EXISTS \`clubs\` (

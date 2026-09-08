@@ -81,6 +81,7 @@ export function Register() {
       if (!res.ok) throw new Error(data.error || 'Registration failed');
 
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
+      localStorage.removeItem('profileModalDismissed');
 
       setAuth(data.user, data.token);
       navigate(redirectTo);

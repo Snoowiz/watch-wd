@@ -11,8 +11,12 @@ export interface User {
   avatar: string | null;
   status: string;
   phone?: string;
+  phoneNumber?: string;
   dob?: string;
   gender?: string;
+  onboardingCompleted?: boolean;
+  onboarding_completed?: boolean | number;
+  userAvatar?: string | null;
   planId?: number;
   planExpiresAt?: string;
   verified?: boolean;
