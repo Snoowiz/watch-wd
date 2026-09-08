@@ -33,6 +33,7 @@ import { StudioManagement } from './admin/StudioManagement';
 import { EmailManagement } from './admin/EmailManagement';
 import { CacheManagement } from './admin/CacheManagement';
 import { AdminSEO } from './admin/AdminSEO';
+import { AdminPayoutSettings } from './admin/AdminPayoutSettings';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { Image as ImageIcon } from 'lucide-react';
 
@@ -85,6 +86,8 @@ export function AdminDashboard() {
     { id: 'seo-global', type: 'seo', title: 'Global SEO & Social Meta', subtitle: 'Search Engine Optimization Settings', icon: Globe, path: '/admin/seo' },
     { id: 'seo-per-page', type: 'seo', title: 'Per-Page Meta Overrides', subtitle: 'Path Customization & Social Cards', icon: Globe, path: '/admin/seo' },
     { id: 'seo-schema', type: 'seo', title: 'JSON-LD Schema Generator', subtitle: 'Structured Data Configuration', icon: Globe, path: '/admin/seo' },
+    { id: 'finance-payouts', type: 'finance', title: 'Finance Payout Settings', subtitle: 'Club balances, threshold & auto payouts', icon: DollarSign, path: '/admin/finance' },
+    { id: 'finance-balances', type: 'finance', title: 'Club Balances & Earnings', subtitle: 'View club revenue and pending balances', icon: Building2, path: '/admin/finance' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
@@ -111,6 +114,7 @@ export function AdminDashboard() {
     ...(blogEnabled ? [{ path: '/admin/blog', icon: Newspaper, label: 'Blog' }] : []),
     { path: '/admin/plans', icon: CreditCard, label: 'Subscriptions' },
     { path: '/admin/clubs', icon: Building2, label: 'Partner Clubs' },
+    { path: '/admin/finance', icon: DollarSign, label: 'Finance & Payouts' },
     { path: '/admin/ads', icon: DollarSign, label: 'Ad Manager' },
     { path: '/admin/tasks', icon: Gift, label: 'Missions' },
     { path: '/admin/creators', icon: Briefcase, label: 'Creators' },
@@ -310,6 +314,7 @@ export function AdminDashboard() {
               <Route path="/tasks" element={<AdminTasks />} />
               <Route path="/plans" element={<AdminPlans />} />
               <Route path="/clubs" element={<AdminClubs />} />
+              <Route path="/finance" element={<AdminPayoutSettings />} />
               <Route path="/ads" element={<AdManager />} />
               <Route path="/settings" element={<AdminSettings />} />
               <Route path="/transactions" element={<AdminTransactions />} />
@@ -426,6 +431,7 @@ function AdminOverview() {
     { name: 'SEO Engine', count: perPageSeo.length, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
     ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
     { name: 'Creator Hub', count: users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },
+    { name: 'Payout Engine', count: 1, label: 'Threshold Engine', icon: DollarSign, path: '/admin/finance', status: 'Active', color: 'text-emerald-500' },
     { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
   ], [users, matches, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount]);
 

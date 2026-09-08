@@ -4280,6 +4280,250 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // === PAYOUT SETTINGS API ===
+  app.get("/api/admin/payout-settings", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const doc = await db.collection("payment_settings").doc("payout_config").get();
+      const defaults = {
+        thresholdAmount: 50,
+        schedule: "manual",
+        autoFrequencyHours: 24,
+        currency: "GBP",
+        enabled: true
+      };
+      if (!doc.exists) return res.json(defaults);
+      const data = doc.data();
+      res.json({ ...defaults, ...data });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/admin/payout-settings", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { thresholdAmount, schedule, autoFrequencyHours, currency, enabled } = req.body;
+      const config: any = {};
+      if (thresholdAmount !== undefined) config.thresholdAmount = Number(thresholdAmount);
+      if (schedule !== undefined) config.schedule = schedule;
+      if (autoFrequencyHours !== undefined) config.autoFrequencyHours = Number(autoFrequencyHours);
+      if (currency !== undefined) config.currency = currency;
+      if (enabled !== undefined) config.enabled = !!enabled;
+
+      const docRef = db.collection("payment_settings").doc("payout_config");
+      const existing = await docRef.get();
+      if (existing.exists) {
+        await docRef.update(config);
+      } else {
+        await docRef.set({
+          thresholdAmount: 50,
+          schedule: "manual",
+          autoFrequencyHours: 24,
+          currency: "GBP",
+          enabled: true,
+          ...config
+        });
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // === CLUB BALANCES & EARNINGS API ===
+  app.get("/api/admin/club-balances", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const snap = await db.collection("club_balances").get();
+      const balances = snap.docs.map((doc: any) => ({ clubId: doc.id, ...doc.data() }));
+
+      // Enrich with club names
+      const clubsSnap = await db.collection("clubs").get();
+      const clubMap: Record<string, any> = {};
+      clubsSnap.docs.forEach((d: any) => {
+        const data = d.data();
+        clubMap[d.id] = { name: data.name, slug: data.slug, logo: data.logo, stripeAccountId: data.stripeAccountId || data.stripe_account_id, stripeOnboardingComplete: data.stripeOnboardingComplete || data.stripe_onboarding_complete };
+      });
+
+      const enriched = balances.map((b: any) => ({
+        ...b,
+        clubName: clubMap[b.clubId]?.name || "Unknown",
+        clubSlug: clubMap[b.clubId]?.slug || "",
+        clubLogo: clubMap[b.clubId]?.logo || null,
+        stripeAccountId: clubMap[b.clubId]?.stripeAccountId || null,
+        stripeOnboardingComplete: clubMap[b.clubId]?.stripeOnboardingComplete || 0
+      }));
+
+      res.json(enriched);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/club-balances/:clubId", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { clubId } = req.params;
+      const balDoc = await db.collection("club_balances").doc(clubId).get();
+      const balance = balDoc.exists ? balDoc.data() : { availableBalance: 0, pendingBalance: 0, totalEarned: 0, totalPaidOut: 0, currency: "GBP" };
+
+      // Get recent earnings
+      const earningsSnap = await db.collection("club_earnings").where("club_id", "==", clubId).get();
+      const earnings = earningsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+
+      res.json({ balance: { clubId, ...balance }, earnings });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/club-earnings", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { clubId } = req.query;
+      let snap;
+      if (clubId) {
+        snap = await db.collection("club_earnings").where("club_id", "==", String(clubId)).get();
+      } else {
+        snap = await db.collection("club_earnings").get();
+      }
+      const earnings = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      res.json(earnings);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // === PAYOUT TRIGGER API ===
+  async function triggerClubPayout(clubId: string, forceOverrideThreshold = false): Promise<{ success: boolean; error?: string; payoutId?: string }> {
+    try {
+      // Load payout config
+      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
+      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true };
+      if (!config.enabled) return { success: false, error: "Payouts are disabled" };
+
+      // Load club balance
+      const balDoc = await db.collection("club_balances").doc(clubId).get();
+      if (!balDoc.exists) return { success: false, error: "No balance record for this club" };
+      const bal = balDoc.data();
+      const availableBalance = Number(bal.availableBalance || bal.available_balance) || 0;
+      const threshold = Number(config.thresholdAmount) || 50;
+
+      if (!forceOverrideThreshold && availableBalance < threshold) {
+        return { success: false, error: `Balance ${availableBalance} below threshold ${threshold}` };
+      }
+      if (availableBalance <= 0) return { success: false, error: "No available balance" };
+
+      // Load club for stripe account
+      const clubDoc = await db.collection("clubs").doc(clubId).get();
+      if (!clubDoc.exists) return { success: false, error: "Club not found" };
+      const club = clubDoc.data();
+      const stripeAccountId = club.stripe_account_id || club.stripeAccountId;
+      if (!stripeAccountId) return { success: false, error: "Club has no Stripe connected account" };
+      const onboarded = club.stripe_onboarding_complete || club.stripeOnboardingComplete;
+      if (!onboarded) return { success: false, error: "Club Stripe onboarding not complete" };
+
+      // Load platform Stripe key
+      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
+      const settings = settingsDoc.exists ? settingsDoc.data() : {};
+      const stripeSecretKey = settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY;
+      if (!stripeSecretKey) return { success: false, error: "Stripe not configured" };
+
+      const stripe = new Stripe(stripeSecretKey, { apiVersion: "2023-10-16" as any });
+      const payoutCurrency = (config.currency || "GBP").toLowerCase();
+      const amountCents = Math.round(availableBalance * 100);
+
+      // Create payout on the connected account
+      const payout = await stripe.payouts.create(
+        { amount: amountCents, currency: payoutCurrency },
+        { stripeAccount: stripeAccountId }
+      );
+
+      // Record payout in DB
+      const payoutId = `po_${Date.now()}_${clubId}`;
+      await db.collection("payouts").doc(payoutId).set({
+        id: payoutId,
+        clubId,
+        stripePayoutId: payout.id,
+        stripeAccountId,
+        amount: availableBalance,
+        currency: payoutCurrency.toUpperCase(),
+        status: "pending",
+        method: forceOverrideThreshold ? "manual" : "auto",
+        arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000).toISOString() : null,
+        createdAt: new Date().toISOString()
+      });
+
+      // Move balance from available to pending
+      const pendingBal = Number(bal.pendingBalance || bal.pending_balance) || 0;
+      await db.collection("club_balances").doc(clubId).update({
+        availableBalance: 0,
+        pendingBalance: pendingBal + availableBalance
+      });
+
+      cacheEngine.invalidateCollection("payouts");
+      cacheEngine.invalidateCollection("club_balances");
+
+      return { success: true, payoutId };
+    } catch (e: any) {
+      console.error(`Payout trigger error for club ${clubId}:`, e.message);
+      return { success: false, error: e.message };
+    }
+  }
+
+  app.post("/api/admin/payouts/trigger", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { clubId, forceOverrideThreshold } = req.body;
+      if (!clubId) return res.status(400).json({ error: "clubId required" });
+      const result = await triggerClubPayout(String(clubId), !!forceOverrideThreshold);
+      if (result.success) {
+        notifyAdmins("Manual Payout Triggered", `Payout initiated for club ${clubId}`, "system", "/admin/finance");
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/admin/payouts/trigger-all", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
+      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, enabled: true };
+      if (!config.enabled) return res.status(400).json({ error: "Payouts are disabled" });
+
+      const threshold = Number(config.thresholdAmount) || 50;
+      const balancesSnap = await db.collection("club_balances").get();
+      const results: any[] = [];
+
+      for (const doc of balancesSnap.docs) {
+        const bal = doc.data();
+        const availBal = Number(bal.availableBalance || bal.available_balance) || 0;
+        if (availBal >= threshold) {
+          const result = await triggerClubPayout(doc.id, false);
+          results.push({ clubId: doc.id, ...result });
+        }
+      }
+
+      notifyAdmins("Batch Payouts Triggered", `Processed ${results.length} eligible club(s)`, "system", "/admin/finance");
+      res.json({ success: true, processed: results.length, results });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // === SCHEDULED PAYOUT ENGINE ===
+  async function processScheduledPayouts() {
+    try {
+      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
+      if (!configDoc.exists) return;
+      const config = configDoc.data();
+      if (config.schedule !== "auto" || !config.enabled) return;
+
+      const threshold = Number(config.thresholdAmount) || 50;
+      const balancesSnap = await db.collection("club_balances").get();
+      let triggered = 0;
+
+      for (const doc of balancesSnap.docs) {
+        const bal = doc.data();
+        const availBal = Number(bal.availableBalance || bal.available_balance) || 0;
+        if (availBal >= threshold) {
+          const result = await triggerClubPayout(doc.id, false);
+          if (result.success) triggered++;
+        }
+      }
+
+      if (triggered > 0) {
+        console.log(`[PayoutEngine] Auto-triggered ${triggered} payout(s)`);
+      }
+    } catch (e: any) {
+      console.error("[PayoutEngine] Scheduled payout error:", e.message);
+    }
+  }
+
   // === STRIPE CONNECT PPV CHECKOUT ===
   app.post("/api/checkout/gateway/connect-ppv", authenticate, async (req: any, res) => {
     try {
@@ -4483,6 +4727,55 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
           notifyUser(userId, "Purchase Successful", "You have unlocked PPV match access.", "success", `/matches/${metadata.fromMatchSlug || metadata.matchId}`);
           notifyAdmins("PPV Purchase (Stripe Connect)", `PPV purchase completed: ${amount} for match #${metadata.matchId}`, "system", "/admin/transactions");
+
+          // === COMMISSION RECORDING: Record club earnings and credit balance ===
+          if (metadata?.clubId) {
+            try {
+              const grossAmount = Number(amount) || 0;
+              const feePercent = Number(metadata.platformFeePercent) || 20;
+              const platformCommission = Math.round(grossAmount * (feePercent / 100) * 100) / 100;
+              const clubNetAmount = Math.round((grossAmount - platformCommission) * 100) / 100;
+
+              // Insert earning record (audit trail)
+              const earningId = `earn_${Date.now()}_${metadata.clubId}`;
+              await db.collection("club_earnings").doc(earningId).set({
+                id: earningId,
+                clubId: metadata.clubId,
+                matchId: metadata.matchId,
+                transactionId: txnId,
+                grossAmount,
+                platformCommission,
+                clubNetAmount,
+                commissionRate: feePercent,
+                type: "ppv",
+                createdAt: new Date().toISOString()
+              });
+
+              // Upsert club_balances — credit available balance
+              const balanceDoc = await db.collection("club_balances").doc(metadata.clubId).get();
+              if (balanceDoc.exists) {
+                const bal = balanceDoc.data();
+                await db.collection("club_balances").doc(metadata.clubId).update({
+                  availableBalance: (Number(bal.availableBalance || bal.available_balance) || 0) + clubNetAmount,
+                  totalEarned: (Number(bal.totalEarned || bal.total_earned) || 0) + clubNetAmount
+                });
+              } else {
+                await db.collection("club_balances").doc(metadata.clubId).set({
+                  clubId: metadata.clubId,
+                  availableBalance: clubNetAmount,
+                  pendingBalance: 0,
+                  totalEarned: clubNetAmount,
+                  totalPaidOut: 0,
+                  currency: "GBP"
+                });
+              }
+
+              cacheEngine.invalidateCollection("club_earnings");
+              cacheEngine.invalidateCollection("club_balances");
+            } catch (commErr: any) {
+              console.error("Commission recording error:", commErr.message);
+            }
+          }
         }
       }
 
@@ -4533,6 +4826,38 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             });
           }
           cacheEngine.invalidateCollection("payouts");
+
+          // === UPDATE CLUB BALANCES based on payout outcome ===
+          if (clubId !== "unknown") {
+            try {
+              const balDoc = await db.collection("club_balances").doc(clubId).get();
+              if (balDoc.exists) {
+                const bal = balDoc.data();
+                const pendingBal = Number(bal.pendingBalance || bal.pending_balance) || 0;
+                const availBal = Number(bal.availableBalance || bal.available_balance) || 0;
+                const totalPaid = Number(bal.totalPaidOut || bal.total_paid_out) || 0;
+
+                if (status === "paid") {
+                  // Payout succeeded — debit pending, credit total_paid_out
+                  await db.collection("club_balances").doc(clubId).update({
+                    pendingBalance: Math.max(0, pendingBal - amount),
+                    totalPaidOut: totalPaid + amount
+                  });
+                  notifyAdmins("Payout Completed", `Payout of ${amount} ${currency.toUpperCase()} to club paid successfully.`, "success", "/admin/finance");
+                } else if (status === "failed") {
+                  // Payout failed — move amount back from pending to available
+                  await db.collection("club_balances").doc(clubId).update({
+                    pendingBalance: Math.max(0, pendingBal - amount),
+                    availableBalance: availBal + amount
+                  });
+                  notifyAdmins("Payout Failed", `Payout of ${amount} ${currency.toUpperCase()} failed: ${failureMessage || failureCode || 'Unknown error'}`, "error", "/admin/finance");
+                }
+                cacheEngine.invalidateCollection("club_balances");
+              }
+            } catch (balErr: any) {
+              console.error("Club balance update on payout event error:", balErr.message);
+            }
+          }
         }
       }
 
@@ -4872,6 +5197,47 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `).catch(err => console.error("Failed to ensure payouts table exists", err));
 
+    // Ensure club_balances table exists (payout engine ledger)
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`club_balances\` (
+        \`club_id\` VARCHAR(100) PRIMARY KEY,
+        \`available_balance\` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        \`pending_balance\` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        \`total_earned\` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        \`total_paid_out\` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        \`currency\` VARCHAR(10) DEFAULT 'GBP',
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure club_balances table exists", err));
+
+    // Ensure club_earnings table exists (per-transaction audit trail)
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`club_earnings\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`club_id\` VARCHAR(100) NOT NULL,
+        \`match_id\` VARCHAR(100) DEFAULT NULL,
+        \`transaction_id\` VARCHAR(100) DEFAULT NULL,
+        \`gross_amount\` DECIMAL(10,2) NOT NULL,
+        \`platform_commission\` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        \`club_net_amount\` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        \`commission_rate\` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+        \`type\` VARCHAR(50) DEFAULT 'ppv',
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_earning_club\` (\`club_id\`),
+        INDEX \`idx_earning_match\` (\`match_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure club_earnings table exists", err));
+
+    // Ensure payouts.method column exists (manual vs auto)
+    execute(`
+      ALTER TABLE \`payouts\` ADD COLUMN \`method\` VARCHAR(50) DEFAULT 'auto'
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure payouts method column exists:", err);
+      }
+    });
+
     // Ensure club_id column exists on matches table (safe incremental upgrade)
     execute(`
       ALTER TABLE \`matches\` ADD COLUMN \`club_id\` VARCHAR(100) DEFAULT NULL
@@ -4962,6 +5328,12 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     setInterval(() => {
       processMatchAutomations().catch(err => console.error("Match automation interval error", err));
     }, 60000);
+
+    // Trigger scheduled payout engine check & set periodic 5-minute background interval
+    processScheduledPayouts().catch(err => console.error("Payout engine startup check failed", err));
+    setInterval(() => {
+      processScheduledPayouts().catch(err => console.error("Payout engine interval error", err));
+    }, 300000);
   });
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Building2, Plus, Edit3, Trash2, Save, X, CheckCircle, XCircle, 
   DollarSign, Link as LinkIcon, Mail, Loader2, Percent, Shield,
@@ -36,6 +37,7 @@ interface RevenuePolicy {
 export function AdminClubs() {
   const [clubs, setClubs] = useState<Club[]>([]);
   const [policies, setPolicies] = useState<RevenuePolicy[]>([]);
+  const [balances, setBalances] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingClub, setEditingClub] = useState<Club | null>(null);
@@ -58,9 +60,10 @@ export function AdminClubs() {
   const fetchClubs = async () => {
     setLoading(true);
     try {
-      const [clubsRes, policiesRes] = await Promise.all([
+      const [clubsRes, policiesRes, balancesRes] = await Promise.all([
         fetch('/api/admin/clubs', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/admin/revenue-policies', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/admin/revenue-policies', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/admin/club-balances', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       if (clubsRes.ok) {
         const data = await clubsRes.json();
@@ -69,6 +72,14 @@ export function AdminClubs() {
       if (policiesRes.ok) {
         const data = await policiesRes.json();
         setPolicies(Array.isArray(data) ? data : []);
+      }
+      if (balancesRes.ok) {
+        const bData = await balancesRes.json();
+        const bMap: Record<string, any> = {};
+        if (Array.isArray(bData)) {
+          bData.forEach((b: any) => { bMap[b.clubId] = b; });
+        }
+        setBalances(bMap);
       }
     } catch (err) {
       console.error('Failed to fetch clubs:', err);
@@ -209,13 +220,22 @@ export function AdminClubs() {
             Manage partner clubs, Stripe Connected Accounts, and PPV revenue splits.
           </p>
         </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-violet-600/20 flex items-center gap-2 text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Add Club
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/admin/finance"
+            className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 text-sm"
+          >
+            <DollarSign className="w-4 h-4" />
+            Finance & Payouts
+          </Link>
+          <button
+            onClick={() => { resetForm(); setShowForm(true); }}
+            className="bg-violet-600 hover:bg-violet-500 text-white font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-violet-600/20 flex items-center gap-2 text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Add Club
+          </button>
+        </div>
       </div>
 
       {/* Info Banner */}
@@ -549,6 +569,36 @@ export function AdminClubs() {
                         Platform {platformFee}% / Club {clubShare}%
                       </span>
                     </div>
+
+                    {/* Club Balance & Payout Status */}
+                    {balances[club.id] && (
+                      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap items-center gap-4 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-500 dark:text-slate-400">Available Balance:</span>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            £{(Number(balances[club.id].availableBalance) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-500 dark:text-slate-400">Pending:</span>
+                          <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
+                            £{(Number(balances[club.id].pendingBalance) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-500 dark:text-slate-400">Total Paid:</span>
+                          <span className="font-mono text-slate-700 dark:text-slate-300">
+                            £{(Number(balances[club.id].totalPaidOut) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <Link
+                          to="/admin/finance"
+                          className="text-violet-600 dark:text-violet-400 font-bold hover:underline ml-auto flex items-center gap-1 text-[11px]"
+                        >
+                          Payout Engine &rarr;
+                        </Link>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}
