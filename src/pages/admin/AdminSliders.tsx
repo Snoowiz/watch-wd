@@ -22,20 +22,31 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 export function AdminSliders({ embedded = false }: { embedded?: boolean }) {
-  const { sliders, addSlider, updateSlider, deleteSlider } = useSliderStore();
+  const { sliders, fetchSliders, addSlider, updateSlider, deleteSlider, saveSlidersToDatabase, isLoading } = useSliderStore();
   const { showConfirm, addToast, updateToast } = useUIStore();
   const [activeGroupId, setActiveGroupId] = useState<string | null>(sliders[0]?.id || null);
 
+  useEffect(() => {
+    fetchSliders();
+  }, [fetchSliders]);
+
+  useEffect(() => {
+    if (!activeGroupId && sliders.length > 0) {
+      setActiveGroupId(sliders[0].id);
+    }
+  }, [sliders, activeGroupId]);
+
   const activeGroup = sliders.find(s => s.id === activeGroupId) || sliders[0];
 
-  const handleAddGroup = () => {
+  const handleAddGroup = async () => {
     addSlider({
       name: 'New Slider Group',
       autoSlide: true,
       interval: 5,
       slides: []
     });
-    addToast('New slider group created!', 'success');
+    await saveSlidersToDatabase();
+    addToast('New slider group created and saved to database!', 'success');
   };
 
   const handleDeleteGroup = (id: string) => {
@@ -51,12 +62,12 @@ export function AdminSliders({ embedded = false }: { embedded?: boolean }) {
       onConfirm: async () => {
         const toastId = addToast('Deleting slider group...', 'loading');
         try {
-          await new Promise((resolve) => setTimeout(resolve, 800));
           deleteSlider(id);
+          await saveSlidersToDatabase();
           if (activeGroupId === id) {
-            setActiveGroupId(sliders[0]?.id || null);
+            setActiveGroupId(sliders.filter(s => s.id !== id)[0]?.id || null);
           }
-          updateToast(toastId, { message: 'Slider group deleted successfully!', type: 'success' });
+          updateToast(toastId, { message: 'Slider group deleted successfully from database!', type: 'success' });
         } catch (err) {
           updateToast(toastId, { message: 'Failed to delete slider group.', type: 'error' });
         }
@@ -134,7 +145,11 @@ export function AdminSliders({ embedded = false }: { embedded?: boolean }) {
         {/* Content area */}
         <div className="lg:col-span-3">
           {activeGroup ? (
-            <SliderGroupEditor group={activeGroup} onUpdate={(updates) => updateSlider(activeGroup.id, updates)} />
+            <SliderGroupEditor 
+              group={activeGroup} 
+              onUpdate={(updates) => updateSlider(activeGroup.id, updates)} 
+              onSaveToDb={saveSlidersToDatabase}
+            />
           ) : (
             <div className="h-64 flex items-center justify-center bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
               <p className="text-slate-500 dark:text-slate-400">Select or create a slider group to edit.</p>
@@ -146,19 +161,37 @@ export function AdminSliders({ embedded = false }: { embedded?: boolean }) {
   );
 }
 
-function SliderGroupEditor({ group, onUpdate }: { group: SliderGroup, onUpdate: (updates: Partial<SliderGroup>) => void }) {
+function SliderGroupEditor({ 
+  group, 
+  onUpdate,
+  onSaveToDb
+}: { 
+  group: SliderGroup; 
+  onUpdate: (updates: Partial<SliderGroup>) => void;
+  onSaveToDb: () => Promise<boolean>;
+}) {
   const [localGroup, setLocalGroup] = useState<SliderGroup>(group);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const { addToast } = useUIStore();
 
   // Sync when group prop changes
   useEffect(() => {
     setLocalGroup(group);
   }, [group]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setIsSaving(true);
     onUpdate(localGroup);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+    const success = await onSaveToDb();
+    setIsSaving(false);
+    if (success) {
+      setIsSaved(true);
+      addToast('Sliders saved to database successfully!', 'success');
+      setTimeout(() => setIsSaved(false), 2500);
+    } else {
+      addToast('Failed to save sliders to database.', 'error');
+    }
   };
 
   const handleAddSlide = () => {
@@ -227,11 +260,22 @@ function SliderGroupEditor({ group, onUpdate }: { group: SliderGroup, onUpdate: 
             </span>
             <button
               onClick={handleSave}
+              disabled={isSaving}
               className={`px-4 py-2 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
-                isSaved ? 'bg-green-500 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                isSaved 
+                  ? 'bg-green-500 text-white' 
+                  : isSaving 
+                  ? 'bg-indigo-400 text-white cursor-wait' 
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
               }`}
             >
-              {isSaved ? <><CheckCircle className="w-4 h-4" /> Saved</> : <><Save className="w-4 h-4" /> Save All Changes</>}
+              {isSaving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Saving to Database...</>
+              ) : isSaved ? (
+                <><CheckCircle className="w-4 h-4" /> Saved to DB</>
+              ) : (
+                <><Save className="w-4 h-4" /> Save All Changes</>
+              )}
             </button>
           </div>
         </div>

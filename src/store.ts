@@ -1710,15 +1710,35 @@ export interface SliderGroup {
 
 interface SliderState {
   sliders: SliderGroup[];
+  isLoading: boolean;
+  fetchSliders: () => Promise<void>;
   setSliders: (sliders: SliderGroup[]) => void;
   addSlider: (slider: Omit<SliderGroup, 'id' | 'shortcode'>) => void;
   updateSlider: (id: string, slider: Partial<SliderGroup>) => void;
   deleteSlider: (id: string) => void;
+  saveSlidersToDatabase: () => Promise<boolean>;
 }
+
+const syncSlidersToBackend = async (sliders: SliderGroup[]) => {
+  const token = localStorage.getItem('token');
+  if (!token || token === 'undefined' || token === 'null') return;
+  try {
+    await fetch('/api/admin/sliders', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ sliders })
+    });
+  } catch (err) {
+    console.error('Failed to sync sliders to database:', err);
+  }
+};
 
 export const useSliderStore = create<SliderState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       sliders: [
         {
           id: 'default-hero',
@@ -1739,22 +1759,65 @@ export const useSliderStore = create<SliderState>()(
           ]
         }
       ],
-      setSliders: (sliders) => set({ sliders }),
-      addSlider: (slider) =>
-        set((state) => {
-          const id = Math.random().toString(36).substring(7);
-          return {
-            sliders: [...state.sliders, { ...slider, id, shortcode: `[slider id="${id}"]` }]
-          };
-        }),
-      updateSlider: (id, updates) =>
-        set((state) => ({
-          sliders: state.sliders.map((s) => (s.id === id ? { ...s, ...updates } : s))
-        })),
-      deleteSlider: (id) =>
-        set((state) => ({
-          sliders: state.sliders.filter((s) => s.id !== id)
-        }))
+      isLoading: false,
+      fetchSliders: async () => {
+        try {
+          set({ isLoading: true });
+          const res = await fetch('/api/sliders');
+          if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.sliders) && data.sliders.length > 0) {
+              set({ sliders: data.sliders, isLoading: false });
+              return;
+            }
+          }
+          set({ isLoading: false });
+        } catch (err) {
+          console.error('Failed to fetch sliders from database:', err);
+          set({ isLoading: false });
+        }
+      },
+      setSliders: (sliders) => {
+        set({ sliders });
+        syncSlidersToBackend(sliders);
+      },
+      addSlider: (slider) => {
+        const id = Math.random().toString(36).substring(7);
+        const newSliders = [
+          ...get().sliders,
+          { ...slider, id, shortcode: `[slider id="${id}"]` }
+        ];
+        set({ sliders: newSliders });
+        syncSlidersToBackend(newSliders);
+      },
+      updateSlider: (id, updates) => {
+        const newSliders = get().sliders.map((s) => (s.id === id ? { ...s, ...updates } : s));
+        set({ sliders: newSliders });
+        syncSlidersToBackend(newSliders);
+      },
+      deleteSlider: (id) => {
+        const newSliders = get().sliders.filter((s) => s.id !== id);
+        set({ sliders: newSliders });
+        syncSlidersToBackend(newSliders);
+      },
+      saveSlidersToDatabase: async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return false;
+        try {
+          const res = await fetch('/api/admin/sliders', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ sliders: get().sliders })
+          });
+          return res.ok;
+        } catch (err) {
+          console.error('Failed to save sliders to database:', err);
+          return false;
+        }
+      }
     }),
     { name: 'slider-storage' }
   )

@@ -6,7 +6,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { WifiOff, Loader2 } from 'lucide-react';
-import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore, useAdStore, usePurchaseStore, useMatchStore, useCategoryStore, useBlogStore } from './store';
+import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore, useAdStore, usePurchaseStore, useMatchStore, useCategoryStore, useBlogStore, useSliderStore } from './store';
 import { Preloader } from './components/Preloader';
 import { Layout } from './components/Layout';
 import { UIFeedbackProvider } from './components/UIFeedbackProvider';
@@ -61,6 +61,7 @@ export default function App() {
   const { fetchMatches } = useMatchStore();
   const { fetchCategories: fetchMatchCategories } = useCategoryStore();
   const { fetchPosts, fetchCategories: fetchBlogCategories } = useBlogStore();
+  const { fetchSliders } = useSliderStore();
   const [initialLoading, setInitialLoading] = useState(true);
   const [profileModalDismissed, setProfileModalDismissed] = useState(
     () => localStorage.getItem('profileModalDismissed') === 'true'
@@ -147,6 +148,7 @@ export default function App() {
     fetchSettings();
     fetchMatches();
     fetchMatchCategories();
+    fetchSliders();
 
     // Fetch Ads
     fetchAds().finally(() => {

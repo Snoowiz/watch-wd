@@ -5081,6 +5081,60 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     }
   });
 
+  // === SLIDER BUILDER API ===
+  const DEFAULT_SLIDERS = [
+    {
+      id: "default-hero",
+      name: "Homepage Hero",
+      shortcode: '[slider id="default-hero"]',
+      autoSlide: true,
+      interval: 5,
+      slides: [
+        {
+          id: "slide-1",
+          title: "Grassroots Sports, Live & Direct.",
+          subtitle: "WatchWDS brings you the best of local and grassroots sports streaming.",
+          image: "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80",
+          link: "/matches",
+          buttonText: "Watch Now",
+          isActive: true,
+        }
+      ]
+    }
+  ];
+
+  app.get("/api/sliders", async (_req, res) => {
+    try {
+      const doc = await db.collection("settings").doc("sliders").get();
+      if (doc.exists) {
+        const data = doc.data();
+        const slidersList = Array.isArray(data) ? data : (data?.sliders || DEFAULT_SLIDERS);
+        return res.json({ success: true, sliders: slidersList });
+      }
+      res.json({ success: true, sliders: DEFAULT_SLIDERS });
+    } catch (err: any) {
+      console.error("Error fetching sliders:", err);
+      res.status(500).json({ error: err.message, sliders: DEFAULT_SLIDERS });
+    }
+  });
+
+  app.put("/api/admin/sliders", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { sliders } = req.body;
+      const slidersArray = Array.isArray(sliders) ? sliders : (Array.isArray(req.body) ? req.body : null);
+      if (!slidersArray) {
+        return res.status(400).json({ error: "Invalid sliders payload: must be an array of slider groups" });
+      }
+
+      await db.collection("settings").doc("sliders").set({ sliders: slidersArray });
+      console.log(`[SLIDER BUILDER] Saved ${slidersArray.length} slider groups to database`);
+      res.json({ success: true, message: "Sliders saved to database successfully", sliders: slidersArray });
+    } catch (err: any) {
+      console.error("Error saving sliders:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // === USER FEEDBACK & REVIEWS API ===
 
   // In-memory rate limiting map for feedback submissions (IP -> array of timestamps)
@@ -5894,6 +5948,11 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       INSERT IGNORE INTO \`settings\` (\`key_name\`, \`value\`) VALUES
       ('feedback_config', '{"enabled":true,"allow_guest":true,"trigger_type":"delay","trigger_delay_seconds":15,"pages_before_prompt":3,"cooldown_days_after_submit":30,"cooldown_days_after_dismiss":1,"cooldown_days_after_later":7,"categories":["Website Experience","Video/Streaming","Payment","Account","Performance","Bug Report","Suggestion","Other"],"notify_admin_email":true}');
     `).catch(err => console.error("Failed to seed feedback_config in settings", err));
+
+    execute(`
+      INSERT IGNORE INTO \`settings\` (\`key_name\`, \`value\`) VALUES
+      ('sliders', '{"sliders":[{"id":"default-hero","name":"Homepage Hero","shortcode":"[slider id=\\"default-hero\\"]","autoSlide":true,"interval":5,"slides":[{"id":"slide-1","title":"Grassroots Sports, Live & Direct.","subtitle":"WatchWDS brings you the best of local and grassroots sports streaming.","image":"https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80","link":"/matches","buttonText":"Watch Now","isActive":true}]}]}');
+    `).catch(err => console.error("Failed to seed sliders in settings", err));
 
     // Trigger deploy/startup cache warming
     warmCriticalCaches().catch(err => console.error("Startup Cache Warning failed", err));

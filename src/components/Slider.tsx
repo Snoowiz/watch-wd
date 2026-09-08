@@ -9,7 +9,12 @@ interface SliderProps {
 }
 
 export function Slider({ id }: SliderProps) {
-  const { sliders } = useSliderStore();
+  const { sliders, fetchSliders } = useSliderStore();
+
+  useEffect(() => {
+    fetchSliders();
+  }, [fetchSliders]);
+
   const sliderGroup = sliders.find(s => s.id === id);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
