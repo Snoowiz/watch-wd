@@ -5359,6 +5359,152 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
+  const DEFAULT_HOMEPAGE_BLOCKS = [
+    {
+      id: "block-hero",
+      type: "hero_slider",
+      enabled: true,
+      title: "Hero Banner",
+      layout: "slider",
+      sortBy: "latest",
+      maxItems: 5,
+      filters: {},
+      config: { sliderId: "default-hero" }
+    },
+    {
+      id: "block-featured",
+      type: "featured_broadcasts",
+      enabled: true,
+      title: "Featured Broadcasts",
+      subtitle: "Don't miss the most anticipated upcoming matches.",
+      layout: "carousel",
+      sortBy: "latest",
+      maxItems: 9,
+      showViewAll: true,
+      viewAllUrl: "/matches",
+      filters: {}
+    },
+    {
+      id: "block-blogs",
+      type: "latest_blogs",
+      enabled: true,
+      title: "Latest from the Blog",
+      subtitle: "Insights, news, and updates",
+      layout: "carousel",
+      sortBy: "latest",
+      maxItems: 6,
+      showViewAll: true,
+      viewAllUrl: "/blog",
+      filters: {}
+    },
+    {
+      id: "block-features",
+      type: "features_grid",
+      enabled: true,
+      title: "Platform Features",
+      layout: "grid",
+      sortBy: "latest",
+      maxItems: 3,
+      filters: {}
+    }
+  ];
+  app.get("/api/homepage-builder", async (req, res) => {
+    try {
+      const snap = await db.collection("settings").doc("homepage_builder").get();
+      const isPreview = req.query.preview === "draft";
+      if (!snap.exists) {
+        return res.json({
+          blocks: DEFAULT_HOMEPAGE_BLOCKS,
+          status: "published",
+          publishedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          version: 1
+        });
+      }
+      const data = snap.data() || {};
+      const blocks = isPreview && data.draftBlocks && data.draftBlocks.length > 0 ? data.draftBlocks : data.blocks && data.blocks.length > 0 ? data.blocks : DEFAULT_HOMEPAGE_BLOCKS;
+      res.json({
+        blocks,
+        status: data.status || "published",
+        publishedAt: data.publishedAt || null,
+        updatedAt: data.updatedAt || (/* @__PURE__ */ new Date()).toISOString(),
+        version: data.version || 1
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/admin/homepage-builder", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const snap = await db.collection("settings").doc("homepage_builder").get();
+      if (!snap.exists) {
+        return res.json({
+          blocks: DEFAULT_HOMEPAGE_BLOCKS,
+          draftBlocks: DEFAULT_HOMEPAGE_BLOCKS,
+          status: "published",
+          publishedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          version: 1
+        });
+      }
+      const data = snap.data() || {};
+      res.json({
+        blocks: data.blocks || DEFAULT_HOMEPAGE_BLOCKS,
+        draftBlocks: data.draftBlocks || data.blocks || DEFAULT_HOMEPAGE_BLOCKS,
+        status: data.status || "published",
+        publishedAt: data.publishedAt || null,
+        updatedAt: data.updatedAt || (/* @__PURE__ */ new Date()).toISOString(),
+        version: data.version || 1
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.put("/api/admin/homepage-builder", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { blocks, draftBlocks, status, publishNow } = req.body;
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const snap = await db.collection("settings").doc("homepage_builder").get();
+      const current = snap.exists ? snap.data() : {};
+      const isPublish = status === "published" || publishNow === true;
+      const finalBlocks = isPublish ? draftBlocks || blocks || current.blocks || DEFAULT_HOMEPAGE_BLOCKS : current.blocks || DEFAULT_HOMEPAGE_BLOCKS;
+      const finalDraftBlocks = draftBlocks || blocks || current.draftBlocks || finalBlocks;
+      const payload = {
+        blocks: finalBlocks,
+        draftBlocks: finalDraftBlocks,
+        status: isPublish ? "published" : "draft",
+        publishedAt: isPublish ? now : current.publishedAt || null,
+        updatedAt: now,
+        version: (current.version || 0) + 1
+      };
+      await db.collection("settings").doc("homepage_builder").set(payload);
+      cacheEngine.invalidateCollection("settings");
+      res.json({ success: true, ...payload });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/homepage-builder/publish", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const snap = await db.collection("settings").doc("homepage_builder").get();
+      const current = snap.exists ? snap.data() : {};
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const activeBlocks = current.draftBlocks && current.draftBlocks.length > 0 ? current.draftBlocks : current.blocks || DEFAULT_HOMEPAGE_BLOCKS;
+      const payload = {
+        blocks: activeBlocks,
+        draftBlocks: activeBlocks,
+        status: "published",
+        publishedAt: now,
+        updatedAt: now,
+        version: (current.version || 0) + 1
+      };
+      await db.collection("settings").doc("homepage_builder").set(payload);
+      cacheEngine.invalidateCollection("settings");
+      res.json({ success: true, ...payload });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/sitemap.xml", async (req, res) => {
     try {
       const origin = req.headers.host ? `${req.protocol}://${req.headers.host}` : "https://watchwds.com";

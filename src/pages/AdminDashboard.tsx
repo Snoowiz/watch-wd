@@ -5,7 +5,7 @@ import {
   Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
   Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
-  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe
+  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -35,6 +35,7 @@ import { CacheManagement } from './admin/CacheManagement';
 import { AdminSEO } from './admin/AdminSEO';
 import { AdminPayoutSettings } from './admin/AdminPayoutSettings';
 import { AdminFeedback } from './admin/AdminFeedback';
+import { AdminHomepageBuilder } from './admin/AdminHomepageBuilder';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { Image as ImageIcon } from 'lucide-react';
 
@@ -87,6 +88,7 @@ export function AdminDashboard() {
     { id: 'seo-global', type: 'seo', title: 'Global SEO & Social Meta', subtitle: 'Search Engine Optimization Settings', icon: Globe, path: '/admin/seo' },
     { id: 'seo-per-page', type: 'seo', title: 'Per-Page Meta Overrides', subtitle: 'Path Customization & Social Cards', icon: Globe, path: '/admin/seo' },
     { id: 'seo-schema', type: 'seo', title: 'JSON-LD Schema Generator', subtitle: 'Structured Data Configuration', icon: Globe, path: '/admin/seo' },
+    { id: 'homepage-builder', type: 'page', title: 'Homepage Builder', subtitle: 'Drag-and-drop homepage content block builder', icon: LayoutGrid, path: '/admin/homepage' },
     { id: 'finance-payouts', type: 'finance', title: 'Finance Payout Settings', subtitle: 'Club balances, threshold & auto payouts', icon: DollarSign, path: '/admin/finance' },
     { id: 'finance-balances', type: 'finance', title: 'Club Balances & Earnings', subtitle: 'View club revenue and pending balances', icon: Building2, path: '/admin/finance' },
     { id: 'feedback-hub', type: 'feedback', title: 'User Feedback & Reviews', subtitle: 'Ratings, CSAT scores, customer reviews & replies', icon: MessageSquare, path: '/admin/feedback' },
@@ -109,6 +111,7 @@ export function AdminDashboard() {
 
   const navItems = [
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/admin/homepage', icon: LayoutGrid, label: 'Homepage Builder' },
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/matches', icon: Video, label: 'Matches' },
     { path: '/admin/feedback', icon: MessageSquare, label: 'User Feedback' },
@@ -309,6 +312,7 @@ export function AdminDashboard() {
                   <Route path="/blog/categories" element={<AdminBlogCategories />} />
                 </>
               )}
+              <Route path="/homepage" element={<AdminHomepageBuilder />} />
               <Route path="/matches" element={<AdminMatches />} />
               <Route path="/matches/new" element={<NewMatch />} />
               <Route path="/matches/:id/edit" element={<NewMatch />} />

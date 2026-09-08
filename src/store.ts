@@ -414,6 +414,102 @@ interface PaymentSettings {
   };
 }
 
+export type BlockType = 
+  | 'hero_slider'
+  | 'featured_broadcasts'
+  | 'live_matches'
+  | 'upcoming_matches'
+  | 'completed_matches'
+  | 'latest_blogs'
+  | 'competitions'
+  | 'clubs'
+  | 'ads'
+  | 'features_grid'
+  | 'spacer'
+  | 'custom_text';
+
+export interface HomepageBlockFilter {
+  categoryIds?: number[];
+  clubIds?: string[];
+  status?: ('upcoming' | 'live' | 'completed')[];
+  access?: ('free' | 'paid')[];
+  dateRange?: { start?: string; end?: string };
+}
+
+export interface HomepageBlock {
+  id: string;
+  type: BlockType;
+  enabled: boolean;
+  title: string;
+  subtitle?: string;
+  layout: 'carousel' | 'grid' | 'list' | 'slider';
+  sortBy: 'latest' | 'popular' | 'most_commented' | 'custom';
+  maxItems: number;
+  filters?: HomepageBlockFilter;
+  showViewAll?: boolean;
+  viewAllUrl?: string;
+  config?: Record<string, any>;
+}
+
+export interface HomepageBuilderConfig {
+  blocks: HomepageBlock[];
+  draftBlocks?: HomepageBlock[];
+  status: 'published' | 'draft';
+  publishedAt?: string | null;
+  updatedAt: string;
+  version: number;
+}
+
+export const DEFAULT_HOMEPAGE_BLOCKS: HomepageBlock[] = [
+  {
+    id: "block-hero",
+    type: "hero_slider",
+    enabled: true,
+    title: "Hero Banner",
+    layout: "slider",
+    sortBy: "latest",
+    maxItems: 5,
+    filters: {},
+    config: { sliderId: "default-hero" }
+  },
+  {
+    id: "block-featured",
+    type: "featured_broadcasts",
+    enabled: true,
+    title: "Featured Broadcasts",
+    subtitle: "Don't miss the most anticipated upcoming matches.",
+    layout: "carousel",
+    sortBy: "latest",
+    maxItems: 9,
+    showViewAll: true,
+    viewAllUrl: "/matches",
+    filters: {}
+  },
+  {
+    id: "block-blogs",
+    type: "latest_blogs",
+    enabled: true,
+    title: "Latest from the Blog",
+    subtitle: "Insights, news, and updates",
+    layout: "carousel",
+    sortBy: "latest",
+    maxItems: 6,
+    showViewAll: true,
+    viewAllUrl: "/blog",
+    filters: {}
+  },
+  {
+    id: "block-features",
+    type: "features_grid",
+    enabled: true,
+    title: "Platform Features",
+    layout: "grid",
+    sortBy: "latest",
+    maxItems: 3,
+    filters: {}
+  }
+];
+
 interface HomepageSettings {
   featuresSectionEnabled: boolean;
   latestNewsEnabled: boolean;
@@ -1822,3 +1918,389 @@ export const useSliderStore = create<SliderState>()(
     { name: 'slider-storage' }
   )
 );
+
+export function createDefaultBlock(type: BlockType): HomepageBlock {
+  const id = `block-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  switch (type) {
+    case 'hero_slider':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Hero Banner',
+        layout: 'slider',
+        sortBy: 'latest',
+        maxItems: 5,
+        filters: {},
+        config: { sliderId: 'default-hero' }
+      };
+    case 'featured_broadcasts':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Featured Broadcasts',
+        subtitle: "Don't miss the most anticipated upcoming matches.",
+        layout: 'carousel',
+        sortBy: 'latest',
+        maxItems: 9,
+        showViewAll: true,
+        viewAllUrl: '/matches',
+        filters: {}
+      };
+    case 'live_matches':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Live Matches',
+        subtitle: 'Watch matches streaming live right now',
+        layout: 'carousel',
+        sortBy: 'latest',
+        maxItems: 6,
+        showViewAll: true,
+        viewAllUrl: '/matches',
+        filters: { status: ['live'] }
+      };
+    case 'upcoming_matches':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Upcoming Matches',
+        subtitle: 'Schedule of upcoming games and streams',
+        layout: 'carousel',
+        sortBy: 'latest',
+        maxItems: 8,
+        showViewAll: true,
+        viewAllUrl: '/matches',
+        filters: { status: ['upcoming'] }
+      };
+    case 'completed_matches':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Replays & Highlights',
+        subtitle: 'Catch up on full match recordings and replays',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 6,
+        showViewAll: true,
+        viewAllUrl: '/matches',
+        filters: { status: ['completed'] }
+      };
+    case 'latest_blogs':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Latest from the Blog',
+        subtitle: 'Insights, news, and updates',
+        layout: 'carousel',
+        sortBy: 'latest',
+        maxItems: 6,
+        showViewAll: true,
+        viewAllUrl: '/blog',
+        filters: {}
+      };
+    case 'competitions':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Top Competitions',
+        subtitle: 'Explore matches across our featured leagues and tournaments',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 6,
+        showViewAll: true,
+        viewAllUrl: '/matches',
+        filters: {}
+      };
+    case 'clubs':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Partner Clubs',
+        subtitle: 'Official club channels and live streams',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 8,
+        showViewAll: true,
+        viewAllUrl: '/clubs',
+        filters: {}
+      };
+    case 'ads':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Sponsored',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 1,
+        filters: {},
+        config: {
+          bannerImageUrl: '',
+          targetUrl: '',
+          altText: 'Advertisement',
+          targetBlank: true
+        }
+      };
+    case 'features_grid':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Platform Features',
+        subtitle: 'Everything you need to follow your favorite sports',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 3,
+        filters: {}
+      };
+    case 'spacer':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Divider',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 1,
+        filters: {},
+        config: { height: 'md', showDivider: true }
+      };
+    case 'custom_text':
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Welcome to WatchWDS',
+        subtitle: 'The Home of Grassroots and Professional Live Sports',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 1,
+        filters: {},
+        config: {
+          content: 'Watch live matches, support your club with pay-per-view access, or subscribe to team packages for uninterrupted streaming anywhere, anytime.',
+          buttonText: 'Browse All Matches',
+          buttonUrl: '/matches',
+          alignment: 'center'
+        }
+      };
+    default:
+      return {
+        id,
+        type,
+        enabled: true,
+        title: 'Content Section',
+        layout: 'grid',
+        sortBy: 'latest',
+        maxItems: 6,
+        filters: {}
+      };
+  }
+}
+
+export interface HomepageBuilderStore {
+  config: HomepageBuilderConfig | null;
+  draftBlocks: HomepageBlock[];
+  isLoading: boolean;
+  isSaving: boolean;
+  isDirty: boolean;
+  fetchConfig: (previewDraft?: boolean) => Promise<void>;
+  fetchAdminConfig: () => Promise<void>;
+  saveDraft: () => Promise<boolean>;
+  publish: () => Promise<boolean>;
+  setDraftBlocks: (blocks: HomepageBlock[]) => void;
+  reorderBlocks: (oldIndex: number, newIndex: number) => void;
+  updateBlock: (blockId: string, updates: Partial<HomepageBlock>) => void;
+  toggleBlock: (blockId: string) => void;
+  addBlock: (type: BlockType) => void;
+  removeBlock: (blockId: string) => void;
+  duplicateBlock: (blockId: string) => void;
+  resetToDefault: () => void;
+}
+
+export const useHomepageBuilderStore = create<HomepageBuilderStore>()((set, get) => ({
+  config: null,
+  draftBlocks: DEFAULT_HOMEPAGE_BLOCKS,
+  isLoading: false,
+  isSaving: false,
+  isDirty: false,
+
+  fetchConfig: async (previewDraft = false) => {
+    set({ isLoading: true });
+    try {
+      const url = `/api/homepage-builder${previewDraft ? '?preview=draft' : ''}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data: HomepageBuilderConfig = await res.json();
+        set({
+          config: data,
+          draftBlocks: data.blocks && data.blocks.length > 0 ? data.blocks : DEFAULT_HOMEPAGE_BLOCKS,
+          isLoading: false
+        });
+      } else {
+        set({ isLoading: false });
+      }
+    } catch (err) {
+      console.error('Failed to fetch homepage builder config:', err);
+      set({ isLoading: false });
+    }
+  },
+
+  fetchAdminConfig: async () => {
+    set({ isLoading: true });
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/admin/homepage-builder', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const activeBlocks = data.draftBlocks && data.draftBlocks.length > 0 
+          ? data.draftBlocks 
+          : (data.blocks && data.blocks.length > 0 ? data.blocks : DEFAULT_HOMEPAGE_BLOCKS);
+        set({
+          config: data,
+          draftBlocks: activeBlocks,
+          isLoading: false,
+          isDirty: false
+        });
+      } else {
+        set({ isLoading: false });
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin homepage builder config:', err);
+      set({ isLoading: false });
+    }
+  },
+
+  saveDraft: async () => {
+    set({ isSaving: true });
+    const token = localStorage.getItem('token');
+    if (!token) {
+      set({ isSaving: false });
+      return false;
+    }
+    try {
+      const res = await fetch('/api/admin/homepage-builder', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          draftBlocks: get().draftBlocks,
+          status: 'draft'
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({
+          config: data,
+          isSaving: false,
+          isDirty: false
+        });
+        return true;
+      }
+      set({ isSaving: false });
+      return false;
+    } catch (err) {
+      console.error('Failed to save draft homepage layout:', err);
+      set({ isSaving: false });
+      return false;
+    }
+  },
+
+  publish: async () => {
+    set({ isSaving: true });
+    const token = localStorage.getItem('token');
+    if (!token) {
+      set({ isSaving: false });
+      return false;
+    }
+    try {
+      const res = await fetch('/api/admin/homepage-builder', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          blocks: get().draftBlocks,
+          draftBlocks: get().draftBlocks,
+          status: 'published',
+          publishNow: true
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({
+          config: data,
+          isSaving: false,
+          isDirty: false
+        });
+        return true;
+      }
+      set({ isSaving: false });
+      return false;
+    } catch (err) {
+      console.error('Failed to publish homepage layout:', err);
+      set({ isSaving: false });
+      return false;
+    }
+  },
+
+  setDraftBlocks: (blocks) => {
+    set({ draftBlocks: blocks, isDirty: true });
+  },
+
+  reorderBlocks: (oldIndex, newIndex) => {
+    const list = [...get().draftBlocks];
+    const [moved] = list.splice(oldIndex, 1);
+    list.splice(newIndex, 0, moved);
+    set({ draftBlocks: list, isDirty: true });
+  },
+
+  updateBlock: (blockId, updates) => {
+    const list = get().draftBlocks.map((b) => (b.id === blockId ? { ...b, ...updates } : b));
+    set({ draftBlocks: list, isDirty: true });
+  },
+
+  toggleBlock: (blockId) => {
+    const list = get().draftBlocks.map((b) => (b.id === blockId ? { ...b, enabled: !b.enabled } : b));
+    set({ draftBlocks: list, isDirty: true });
+  },
+
+  addBlock: (type) => {
+    const newBlock = createDefaultBlock(type);
+    set({ draftBlocks: [...get().draftBlocks, newBlock], isDirty: true });
+  },
+
+  removeBlock: (blockId) => {
+    set({ draftBlocks: get().draftBlocks.filter((b) => b.id !== blockId), isDirty: true });
+  },
+
+  duplicateBlock: (blockId) => {
+    const block = get().draftBlocks.find((b) => b.id === blockId);
+    if (!block) return;
+    const duplicated: HomepageBlock = {
+      ...JSON.parse(JSON.stringify(block)),
+      id: `block-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      title: `${block.title} (Copy)`
+    };
+    const index = get().draftBlocks.findIndex((b) => b.id === blockId);
+    const list = [...get().draftBlocks];
+    list.splice(index + 1, 0, duplicated);
+    set({ draftBlocks: list, isDirty: true });
+  },
+
+  resetToDefault: () => {
+    set({ draftBlocks: DEFAULT_HOMEPAGE_BLOCKS, isDirty: true });
+  }
+}));

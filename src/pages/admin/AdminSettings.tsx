@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -681,7 +682,32 @@ function AppearanceSettings() {
 
   return (
     <div className="space-y-6 text-left">
-      <div className="space-y-4">
+      {/* Homepage Builder Banner Callout */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-yellow-500/10 via-amber-500/5 to-indigo-500/10 border border-yellow-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="p-2.5 rounded-xl bg-yellow-500 text-slate-900 shrink-0 shadow-sm">
+            <LayoutGrid className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">
+              Visual Homepage Builder Active
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Drag, drop, and configure dynamic content blocks like broadcasts, live matches, leagues, blogs, and ads.
+            </p>
+          </div>
+        </div>
+        <Link
+          to="/admin/homepage"
+          className="px-5 py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-black text-xs uppercase tracking-wider inline-flex items-center gap-2 shrink-0 transition-all shadow-sm"
+        >
+          <span>Open Builder</span>
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+      </div>
+
+      <div className="space-y-4 pt-2">
+        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Quick Section Visibility</h4>
         <label className="flex items-center cursor-pointer">
           <input
             type="checkbox"
@@ -718,7 +744,7 @@ function AppearanceSettings() {
               : 'bg-indigo-600 hover:bg-indigo-700 text-white'
           }`}
         >
-          {isSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Update Homepage'}
+          {isSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Update Quick Settings'}
         </button>
       </div>
     </div>
