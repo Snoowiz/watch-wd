@@ -10,6 +10,7 @@ import { useAuthStore, useFeatureStore, useThemeStore, useSettingsStore, useAdSt
 import { Preloader } from './components/Preloader';
 import { Layout } from './components/Layout';
 import { UIFeedbackProvider } from './components/UIFeedbackProvider';
+import { FeedbackProvider } from './components/FeedbackProvider';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -200,88 +201,90 @@ export default function App() {
 
   return (
     <Router>
-      <SEOHeadManager />
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-        {originalUser && (
-          <div className="bg-red-600 text-white py-2 px-4 text-center text-sm font-bold flex items-center justify-center gap-4 sticky top-0 z-[100]">
-            <span>Logged in as: {user?.name} (Admin: {originalUser.name})</span>
-            <button 
-              onClick={revertLoginAs}
-              className="bg-white text-red-600 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors"
-            >
-              Revert to Admin
-            </button>
-          </div>
-        )}
-        <CompleteProfileModal 
-          isOpen={showCompleteProfile} 
-          onClose={handleDismissProfileModal} 
-        />
-        <LogoutModal />
-        {isOffline && (
-          <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-5">
-            <div className="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg border border-slate-700 font-bold text-sm flex items-center gap-3">
-              <div className="relative">
-                <WifiOff className="w-5 h-5 text-red-400" />
-                <Loader2 className="w-3 h-3 text-red-200 animate-spin absolute -bottom-1 -right-1" />
-              </div>
-              <div>
-                <p>You are offline</p>
-                <p className="text-xs text-slate-400 font-normal">Reconnecting...</p>
+      <FeedbackProvider>
+        <SEOHeadManager />
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+          {originalUser && (
+            <div className="bg-red-600 text-white py-2 px-4 text-center text-sm font-bold flex items-center justify-center gap-4 sticky top-0 z-[100]">
+              <span>Logged in as: {user?.name} (Admin: {originalUser.name})</span>
+              <button 
+                onClick={revertLoginAs}
+                className="bg-white text-red-600 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                Revert to Admin
+              </button>
+            </div>
+          )}
+          <CompleteProfileModal 
+            isOpen={showCompleteProfile} 
+            onClose={handleDismissProfileModal} 
+          />
+          <LogoutModal />
+          {isOffline && (
+            <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-5">
+              <div className="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg border border-slate-700 font-bold text-sm flex items-center gap-3">
+                <div className="relative">
+                  <WifiOff className="w-5 h-5 text-red-400" />
+                  <Loader2 className="w-3 h-3 text-red-200 animate-spin absolute -bottom-1 -right-1" />
+                </div>
+                <div>
+                  <p>You are offline</p>
+                  <p className="text-xs text-slate-400 font-normal">Reconnecting...</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        <Routes>
-          <Route path="/admin/*" element={<AdminDashboard />} />
-          <Route path="/creator/*" element={<CreatorDashboard />} />
-          <Route path="*" element={
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/matches" element={<Matches />} />
-                <Route path="/matches/:slug" element={<MatchDetail />} />
-                <Route path="/category/:slug" element={<CategoryPage />} />
-                <Route path="/search" element={<SearchPage />} />
-                <Route path="/forum" element={<Forum />} />
-                <Route path="/forum/category/:id" element={<ForumCategory />} />
-                <Route path="/forum/topic/:id" element={<ForumTopic />} />
-                <Route path="/profile" element={<Profile />} />
-                {blogEnabled ? (
-                  <>
-                    <Route path="/blog" element={<Suspense fallback={null}><BlogList /></Suspense>} />
-                    <Route path="/blog/:slug" element={<Suspense fallback={null}><BlogPostDetails /></Suspense>} />
-                  </>
-                ) : (
-                  <>
-                    <Route path="/blog" element={<Navigate to="/" replace />} />
-                    <Route path="/blog/:slug" element={<Navigate to="/" replace />} />
-                  </>
-                )}
-                <Route path="/saved" element={<SavedMatches />} />
-                <Route path="/checkout" element={<Checkout />} />
-                <Route path="/checkout/success" element={<CheckoutSuccess />} />
-                <Route path="/checkout/cancel" element={<CheckoutCancel />} />
-                <Route path="/plans" element={<Plans />} />
-                <Route path="/my-plans" element={<MyPlans />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/terms" element={<TermsOfUse />} />
-                <Route path="/privacy" element={<PrivacyPolicy />} />
-                <Route path="/creator/studio" element={<StudioDashboard />} />
-                <Route path="/401" element={<Unauthorized />} />
-                <Route path="/403" element={<Forbidden />} />
-                <Route path="/500" element={<ServerError />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Layout>
-          } />
-        </Routes>
-        <UIFeedbackProvider />
-      </div>
+          )}
+          <Routes>
+            <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="/creator/*" element={<CreatorDashboard />} />
+            <Route path="*" element={
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/matches" element={<Matches />} />
+                  <Route path="/matches/:slug" element={<MatchDetail />} />
+                  <Route path="/category/:slug" element={<CategoryPage />} />
+                  <Route path="/search" element={<SearchPage />} />
+                  <Route path="/forum" element={<Forum />} />
+                  <Route path="/forum/category/:id" element={<ForumCategory />} />
+                  <Route path="/forum/topic/:id" element={<ForumTopic />} />
+                  <Route path="/profile" element={<Profile />} />
+                  {blogEnabled ? (
+                    <>
+                      <Route path="/blog" element={<Suspense fallback={null}><BlogList /></Suspense>} />
+                      <Route path="/blog/:slug" element={<Suspense fallback={null}><BlogPostDetails /></Suspense>} />
+                    </>
+                  ) : (
+                    <>
+                      <Route path="/blog" element={<Navigate to="/" replace />} />
+                      <Route path="/blog/:slug" element={<Navigate to="/" replace />} />
+                    </>
+                  )}
+                  <Route path="/saved" element={<SavedMatches />} />
+                  <Route path="/checkout" element={<Checkout />} />
+                  <Route path="/checkout/success" element={<CheckoutSuccess />} />
+                  <Route path="/checkout/cancel" element={<CheckoutCancel />} />
+                  <Route path="/plans" element={<Plans />} />
+                  <Route path="/my-plans" element={<MyPlans />} />
+                  <Route path="/about" element={<About />} />
+                  <Route path="/terms" element={<TermsOfUse />} />
+                  <Route path="/privacy" element={<PrivacyPolicy />} />
+                  <Route path="/creator/studio" element={<StudioDashboard />} />
+                  <Route path="/401" element={<Unauthorized />} />
+                  <Route path="/403" element={<Forbidden />} />
+                  <Route path="/500" element={<ServerError />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Layout>
+            } />
+          </Routes>
+          <UIFeedbackProvider />
+        </div>
+      </FeedbackProvider>
     </Router>
   );
 }

@@ -704,6 +704,51 @@ var SEED_TEMPLATES = [
     body: `<h2>Summer on WatchWDS</h2>
 <p>Hello {{first_name}},</p>
 <p>The Summer Season is heating up with over 150 live championship match events scheduled over the next 45 days. Log in now and reserve your championship match seating early!</p>`
+  },
+  {
+    slug: "feedback_response",
+    name: "Feedback Response",
+    subject: "Update on your WatchWDS feedback",
+    category: "Support",
+    variables_hint: "user_name, rating, category, feedback_text, response_text, admin_name, website_url",
+    body: `<h2>Response to Your Feedback</h2>
+<p>Hello {{user_name}},</p>
+<p>Thank you for taking the time to share your feedback with the <strong>WatchWDS</strong> team. We carefully review every submission to continuously improve your experience.</p>
+<div style="background-color: #f8fafc; border-left: 4px solid #fbbf24; padding: 16px; margin: 20px 0; border-radius: 4px;">
+  <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b;"><strong>Your Feedback (Rating: {{rating}}/5 - {{category}}):</strong></p>
+  <p style="margin: 0; font-style: italic; color: #334155;">"{{feedback_text}}"</p>
+</div>
+<div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 20px 0; border-radius: 4px;">
+  <p style="margin: 0 0 8px 0; font-size: 13px; color: #1d4ed8;"><strong>Message from {{admin_name}} (WatchWDS Team):</strong></p>
+  <p style="margin: 0; color: #1e293b; white-space: pre-wrap;">{{response_text}}</p>
+</div>
+<p>If you have any further questions or suggestions, feel free to reply to this email or visit our Help Center.</p>
+<div style="text-align: center; margin-top: 24px;">
+  <a href="{{website_url}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; border-radius: 8px;">Return to WatchWDS</a>
+</div>`
+  },
+  {
+    slug: "feedback_admin_alert",
+    name: "New User Feedback Alert",
+    subject: "New {{rating}}-Star Feedback Received: [{{category}}]",
+    category: "System/Notification",
+    variables_hint: "user_name, user_email, rating, rating_label, category, feedback_text, page_url, device_info, website_url",
+    body: `<h2>New User Feedback Submitted</h2>
+<p>A new rating and feedback entry has been received on WatchWDS.</p>
+<table class="meta-table" style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">User:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{user_name}} ({{user_email}})</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Rating:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{rating}} / 5 ({{rating_label}})</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Category:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{category}}</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Page:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{page_url}}</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Device:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{device_info}}</td></tr>
+</table>
+<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; margin: 16px 0; border-radius: 8px;">
+  <p style="margin: 0; color: #1e293b;"><strong>Feedback:</strong></p>
+  <p style="margin: 8px 0 0 0; color: #334155;">{{feedback_text}}</p>
+</div>
+<div style="text-align: center; margin-top: 24px;">
+  <a href="{{website_url}}/admin" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; border-radius: 8px;">Review in Admin Panel</a>
+</div>`
   }
 ];
 
@@ -1083,6 +1128,18 @@ function camelToSnake(str, tableName) {
     clubNetAmount: "club_net_amount",
     commissionRate: "commission_rate",
     transactionId: "transaction_id",
+    ratingLabel: "rating_label",
+    feedbackText: "feedback_text",
+    pageUrl: "page_url",
+    deviceInfo: "device_info",
+    adminNotes: "admin_notes",
+    responseCount: "response_count",
+    feedbackId: "feedback_id",
+    adminId: "admin_id",
+    adminName: "admin_name",
+    responseText: "response_text",
+    emailSent: "email_sent",
+    isGuest: "is_guest",
     user_id: "user_id",
     match_id: "match_id",
     category_id: "category_id",
@@ -1182,7 +1239,19 @@ function snakeToCamel(str, tableName) {
     platform_commission: "platformCommission",
     club_net_amount: "clubNetAmount",
     commission_rate: "commissionRate",
-    transaction_id: "transactionId"
+    transaction_id: "transactionId",
+    rating_label: "ratingLabel",
+    feedback_text: "feedbackText",
+    page_url: "pageUrl",
+    device_info: "deviceInfo",
+    admin_notes: "adminNotes",
+    response_count: "responseCount",
+    feedback_id: "feedbackId",
+    admin_id: "adminId",
+    admin_name: "adminName",
+    response_text: "responseText",
+    email_sent: "emailSent",
+    is_guest: "isGuest"
   };
   return overrides[str] || str;
 }
@@ -6263,6 +6332,463 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       res.status(500).json({ error: e.message });
     }
   });
+  const feedbackRateLimits = /* @__PURE__ */ new Map();
+  app.get("/api/feedback/settings", async (_req, res) => {
+    try {
+      const doc = await db.collection("settings").doc("feedback_config").get();
+      const defaultSettings = {
+        enabled: true,
+        allow_guest: true,
+        trigger_type: "delay",
+        trigger_delay_seconds: 15,
+        pages_before_prompt: 3,
+        cooldown_days_after_submit: 30,
+        cooldown_days_after_dismiss: 1,
+        cooldown_days_after_later: 7,
+        categories: [
+          "Website Experience",
+          "Video/Streaming",
+          "Payment",
+          "Account",
+          "Performance",
+          "Bug Report",
+          "Suggestion",
+          "Other"
+        ],
+        notify_admin_email: true
+      };
+      const settings = doc.exists ? { ...defaultSettings, ...doc.data() } : defaultSettings;
+      res.json({ success: true, settings });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/feedback", async (req, res) => {
+    try {
+      const clientIp = getClientIp(req);
+      const now = Date.now();
+      const timestamps = feedbackRateLimits.get(clientIp) || [];
+      const recentTimestamps = timestamps.filter((t) => now - t < 36e5);
+      if (recentTimestamps.length >= 6) {
+        return res.status(429).json({ error: "Too many feedback submissions. Please try again later." });
+      }
+      recentTimestamps.push(now);
+      feedbackRateLimits.set(clientIp, recentTimestamps);
+      const settingsDoc = await db.collection("settings").doc("feedback_config").get();
+      const defaultSettings = {
+        enabled: true,
+        allow_guest: true,
+        trigger_type: "delay",
+        trigger_delay_seconds: 15,
+        pages_before_prompt: 3,
+        cooldown_days_after_submit: 30,
+        cooldown_days_after_dismiss: 1,
+        cooldown_days_after_later: 7,
+        categories: [
+          "Website Experience",
+          "Video/Streaming",
+          "Payment",
+          "Account",
+          "Performance",
+          "Bug Report",
+          "Suggestion",
+          "Other"
+        ],
+        notify_admin_email: true
+      };
+      const settings = settingsDoc.exists ? { ...defaultSettings, ...settingsDoc.data() } : defaultSettings;
+      if (settings.enabled === false) {
+        return res.status(403).json({ error: "Feedback collection is currently disabled." });
+      }
+      const { rating, rating_label, category, feedback_text, guest_email, page_url, device_info } = req.body;
+      if (!rating || Number(rating) < 1 || Number(rating) > 5) {
+        return res.status(400).json({ error: "Rating must be between 1 and 5 stars." });
+      }
+      if (!feedback_text || typeof feedback_text !== "string" || feedback_text.trim().length === 0) {
+        return res.status(400).json({ error: "Feedback comments cannot be empty." });
+      }
+      if (feedback_text.length > 2e3) {
+        return res.status(400).json({ error: "Feedback comments cannot exceed 2,000 characters." });
+      }
+      let userId = null;
+      let username = "Guest";
+      let userEmail = guest_email ? String(guest_email).trim().toLowerCase() : null;
+      let isGuest = 1;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        try {
+          const decoded = import_jsonwebtoken.default.verify(token, JWT_SECRET);
+          if (decoded && decoded.id) {
+            const userDoc = await db.collection("users").doc(String(decoded.id)).get();
+            if (userDoc.exists) {
+              const u = userDoc.data();
+              userId = String(decoded.id);
+              username = u.name || u.username || u.email?.split("@")[0] || "User";
+              userEmail = u.email || userEmail;
+              isGuest = 0;
+            }
+          }
+        } catch {
+        }
+      }
+      if (isGuest === 1 && settings.allow_guest === false) {
+        return res.status(403).json({ error: "Guest feedback is currently disabled. Please log in to provide feedback." });
+      }
+      const id = "fb_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 7);
+      const ratingLabel = rating_label || ["Terrible", "Poor", "Average", "Good", "Excellent"][Number(rating) - 1] || "Average";
+      const cat = category || "Website Experience";
+      const cleanedFeedback = feedback_text.trim();
+      const page = page_url ? String(page_url).slice(0, 500) : null;
+      const devInfo = device_info ? typeof device_info === "object" ? JSON.stringify(device_info).slice(0, 500) : String(device_info).slice(0, 500) : null;
+      await execute(
+        `INSERT INTO \`user_feedback\` 
+         (\`id\`, \`user_id\`, \`username\`, \`user_email\`, \`is_guest\`, \`rating\`, \`rating_label\`, \`category\`, \`feedback_text\`, \`page_url\`, \`device_info\`, \`status\`, \`admin_notes\`, \`response_count\`, \`created_at\`, \`updated_at\`)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', '', 0, NOW(), NOW())`,
+        [id, userId, username, userEmail, isGuest, Number(rating), ratingLabel, cat, cleanedFeedback, page, devInfo]
+      );
+      if (settings.notify_admin_email !== false) {
+        (async () => {
+          try {
+            const adminEmails = getAdminEmails();
+            const dbAdmins = await query("SELECT `email` FROM `users` WHERE `role` = 'admin'");
+            const allAdmins = Array.from(/* @__PURE__ */ new Set([...adminEmails, ...dbAdmins.map((a) => (a.email || "").toLowerCase())])).filter(Boolean);
+            for (const adminEmail of allAdmins) {
+              await sendTemplateEmail(adminEmail, "feedback_admin_alert", {
+                user_name: username,
+                user_email: userEmail || "Anonymous / No Email",
+                rating: String(rating),
+                rating_label: ratingLabel,
+                category: cat,
+                feedback_text: cleanedFeedback,
+                page_url: page || "N/A",
+                device_info: devInfo || "N/A",
+                website_url: globalAppUrl
+              });
+            }
+          } catch (notifErr) {
+            console.error("Failed to dispatch admin feedback alert:", notifErr.message);
+          }
+        })();
+      }
+      res.json({ success: true, message: "Thank you for your feedback!", feedbackId: id });
+    } catch (err) {
+      console.error("Error submitting feedback:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/admin/feedback", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { rating, category, status, user_type, search, page = "1", limit = "25" } = req.query;
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 25));
+      const offset = (pageNum - 1) * limitNum;
+      const whereClauses = ["1=1"];
+      const params = [];
+      if (rating && rating !== "all") {
+        whereClauses.push("`rating` = ?");
+        params.push(Number(rating));
+      }
+      if (category && category !== "all") {
+        whereClauses.push("`category` = ?");
+        params.push(String(category));
+      }
+      if (status && status !== "all") {
+        whereClauses.push("`status` = ?");
+        params.push(String(status));
+      }
+      if (user_type === "registered") {
+        whereClauses.push("`is_guest` = 0");
+      } else if (user_type === "guest") {
+        whereClauses.push("`is_guest` = 1");
+      }
+      if (search && String(search).trim().length > 0) {
+        const searchTerm = `%${String(search).trim()}%`;
+        whereClauses.push("(`username` LIKE ? OR `user_email` LIKE ? OR `feedback_text` LIKE ? OR `page_url` LIKE ?)");
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm);
+      }
+      const whereSql = whereClauses.join(" AND ");
+      const countResult = await query(`SELECT COUNT(*) as total FROM \`user_feedback\` WHERE ${whereSql}`, params);
+      const total = countResult[0]?.total || 0;
+      const items = await query(
+        `SELECT * FROM \`user_feedback\` WHERE ${whereSql} ORDER BY \`created_at\` DESC LIMIT ? OFFSET ?`,
+        [...params, limitNum, offset]
+      );
+      res.json({
+        success: true,
+        feedback: items.map((f) => ({
+          id: f.id,
+          userId: f.user_id,
+          username: f.username,
+          userEmail: f.user_email,
+          isGuest: Boolean(f.is_guest),
+          rating: Number(f.rating),
+          ratingLabel: f.rating_label,
+          category: f.category,
+          feedbackText: f.feedback_text,
+          pageUrl: f.page_url,
+          deviceInfo: f.device_info,
+          status: f.status,
+          adminNotes: f.admin_notes,
+          responseCount: Number(f.response_count || 0),
+          createdAt: f.created_at,
+          updatedAt: f.updated_at
+        })),
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      });
+    } catch (err) {
+      console.error("Error fetching feedback:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/admin/feedback/stats", authenticate, requireRole(["admin"]), async (_req, res) => {
+    try {
+      const totalRes = await query("SELECT COUNT(*) as total, AVG(rating) as avg_rating FROM `user_feedback`");
+      const total = totalRes[0]?.total || 0;
+      const averageRating = totalRes[0]?.avg_rating ? Number(parseFloat(totalRes[0].avg_rating).toFixed(2)) : 0;
+      const ratingCountsRes = await query("SELECT `rating`, COUNT(*) as count FROM `user_feedback` GROUP BY `rating`");
+      const ratingCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      ratingCountsRes.forEach((r) => {
+        ratingCounts[Number(r.rating)] = Number(r.count);
+      });
+      const positiveCount = (ratingCounts[4] || 0) + (ratingCounts[5] || 0);
+      const csatPercentage = total > 0 ? Math.round(positiveCount / total * 100) : 0;
+      const statusRes = await query("SELECT `status`, COUNT(*) as count FROM `user_feedback` GROUP BY `status`");
+      const statusCounts = {
+        new: 0,
+        reviewed: 0,
+        in_progress: 0,
+        resolved: 0,
+        archived: 0
+      };
+      statusRes.forEach((s) => {
+        statusCounts[s.status] = Number(s.count);
+      });
+      const categoryRes = await query("SELECT `category`, COUNT(*) as count FROM `user_feedback` GROUP BY `category` ORDER BY count DESC");
+      const categoryBreakdown = categoryRes.map((c) => ({ category: c.category, count: Number(c.count) }));
+      const guestRes = await query("SELECT `is_guest`, COUNT(*) as count FROM `user_feedback` GROUP BY `is_guest`");
+      const userTypeBreakdown = { registered: 0, guest: 0 };
+      guestRes.forEach((g) => {
+        if (g.is_guest) userTypeBreakdown.guest = Number(g.count);
+        else userTypeBreakdown.registered = Number(g.count);
+      });
+      res.json({
+        success: true,
+        stats: {
+          totalCount: total,
+          averageRating,
+          csatPercentage,
+          ratingCounts,
+          statusCounts,
+          categoryBreakdown,
+          userTypeBreakdown
+        }
+      });
+    } catch (err) {
+      console.error("Error fetching feedback stats:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/admin/feedback/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rows = await query("SELECT * FROM `user_feedback` WHERE `id` = ?", [id]);
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Feedback item not found" });
+      }
+      const f = rows[0];
+      const responses = await query(
+        "SELECT * FROM `feedback_responses` WHERE `feedback_id` = ? ORDER BY `created_at` ASC",
+        [id]
+      );
+      res.json({
+        success: true,
+        feedback: {
+          id: f.id,
+          userId: f.user_id,
+          username: f.username,
+          userEmail: f.user_email,
+          isGuest: Boolean(f.is_guest),
+          rating: Number(f.rating),
+          ratingLabel: f.rating_label,
+          category: f.category,
+          feedbackText: f.feedback_text,
+          pageUrl: f.page_url,
+          deviceInfo: f.device_info,
+          status: f.status,
+          adminNotes: f.admin_notes,
+          responseCount: Number(f.response_count || 0),
+          createdAt: f.created_at,
+          updatedAt: f.updated_at
+        },
+        responses: responses.map((r) => ({
+          id: r.id,
+          feedbackId: r.feedback_id,
+          adminId: r.admin_id,
+          adminName: r.admin_name,
+          responseText: r.response_text,
+          emailSent: Boolean(r.email_sent),
+          createdAt: r.created_at
+        }))
+      });
+    } catch (err) {
+      console.error("Error fetching feedback detail:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.put("/api/admin/feedback/:id/status", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, admin_notes } = req.body;
+      const validStatuses = ["new", "reviewed", "in_progress", "resolved", "archived"];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status value" });
+      }
+      const updates = ["`updated_at` = NOW()"];
+      const params = [];
+      if (status) {
+        updates.push("`status` = ?");
+        params.push(status);
+      }
+      if (admin_notes !== void 0) {
+        updates.push("`admin_notes` = ?");
+        params.push(admin_notes);
+      }
+      params.push(id);
+      await execute(`UPDATE \`user_feedback\` SET ${updates.join(", ")} WHERE \`id\` = ?`, params);
+      res.json({ success: true, message: "Feedback updated successfully" });
+    } catch (err) {
+      console.error("Error updating feedback status:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/admin/feedback/:id/respond", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { response_text, send_email = true } = req.body;
+      if (!response_text || !response_text.trim()) {
+        return res.status(400).json({ error: "Response message cannot be empty" });
+      }
+      const rows = await query("SELECT * FROM `user_feedback` WHERE `id` = ?", [id]);
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Feedback item not found" });
+      }
+      const feedback = rows[0];
+      let adminName = "WatchWDS Support Team";
+      if (req.user && req.user.id) {
+        const adminDoc = await db.collection("users").doc(String(req.user.id)).get();
+        if (adminDoc.exists) {
+          adminName = adminDoc.data().name || adminDoc.data().username || adminName;
+        }
+      }
+      const responseId = "resp_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 7);
+      let emailSent = 0;
+      if (send_email && feedback.user_email) {
+        try {
+          const emailResult = await sendTemplateEmail(feedback.user_email, "feedback_response", {
+            user_name: feedback.username || "Valued User",
+            rating: String(feedback.rating),
+            category: feedback.category,
+            feedback_text: feedback.feedback_text,
+            response_text: response_text.trim(),
+            admin_name: adminName,
+            website_url: globalAppUrl
+          });
+          if (emailResult && emailResult.success) {
+            emailSent = 1;
+          }
+        } catch (mailErr) {
+          console.error("Failed to send feedback response email:", mailErr.message);
+        }
+      }
+      await execute(
+        "INSERT INTO `feedback_responses` (`id`, `feedback_id`, `admin_id`, `admin_name`, `response_text`, `email_sent`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, NOW())",
+        [responseId, id, req.user?.id || null, adminName, response_text.trim(), emailSent]
+      );
+      const newStatus = feedback.status === "new" ? "reviewed" : feedback.status;
+      await execute(
+        "UPDATE `user_feedback` SET `response_count` = `response_count` + 1, `status` = ?, `updated_at` = NOW() WHERE `id` = ?",
+        [newStatus, id]
+      );
+      if (feedback.user_id) {
+        notifyUser(
+          feedback.user_id,
+          "Response to your WatchWDS feedback",
+          `Our support team has responded to your feedback about ${feedback.category}.`,
+          "info",
+          "/profile"
+        ).catch((err) => console.error("Failed to send notification to user:", err));
+      }
+      res.json({
+        success: true,
+        message: emailSent ? "Response recorded and email dispatched to user" : "Response recorded successfully",
+        response: {
+          id: responseId,
+          feedbackId: id,
+          adminId: req.user?.id || null,
+          adminName,
+          responseText: response_text.trim(),
+          emailSent: Boolean(emailSent),
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      });
+    } catch (err) {
+      console.error("Error responding to feedback:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.delete("/api/admin/feedback/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await execute("DELETE FROM `feedback_responses` WHERE `feedback_id` = ?", [id]);
+      await execute("DELETE FROM `user_feedback` WHERE `id` = ?", [id]);
+      res.json({ success: true, message: "Feedback and response history deleted successfully" });
+    } catch (err) {
+      console.error("Error deleting feedback:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/admin/feedback-settings", authenticate, requireRole(["admin"]), async (_req, res) => {
+    try {
+      const doc = await db.collection("settings").doc("feedback_config").get();
+      const defaultSettings = {
+        enabled: true,
+        allow_guest: true,
+        trigger_type: "delay",
+        trigger_delay_seconds: 15,
+        pages_before_prompt: 3,
+        cooldown_days_after_submit: 30,
+        cooldown_days_after_dismiss: 1,
+        cooldown_days_after_later: 7,
+        categories: [
+          "Website Experience",
+          "Video/Streaming",
+          "Payment",
+          "Account",
+          "Performance",
+          "Bug Report",
+          "Suggestion",
+          "Other"
+        ],
+        notify_admin_email: true
+      };
+      res.json({ success: true, settings: doc.exists ? { ...defaultSettings, ...doc.data() } : defaultSettings });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.put("/api/admin/feedback-settings", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const newSettings = req.body;
+      await db.collection("settings").doc("feedback_config").set(newSettings);
+      res.json({ success: true, settings: newSettings, message: "Feedback settings saved successfully" });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.use("/api", (req, res) => res.json({ success: true }));
   const isProduction = process.env.NODE_ENV === "production" || !import_fs.default.existsSync(import_path.default.join(currentDirname, "vite.config.ts")) || currentFilename.endsWith(".cjs");
   if (!isProduction) {
@@ -6481,6 +7007,48 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       INSERT IGNORE INTO \`security_settings\` (\`key_name\`, \`value\`) VALUES
       ('config', '{"trusted_device_expiry_days":60,"max_login_attempts":5,"lockout_duration_minutes":30,"enable_suspicious_login_alerts":true,"admin_ip_whitelist":[],"enforce_admin_ip_whitelist":false,"enable_device_verification":true}');
     `).catch((err) => console.error("Failed to seed security_settings table", err));
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`user_feedback\` (
+        \`id\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`user_id\` VARCHAR(100) DEFAULT NULL,
+        \`username\` VARCHAR(150) DEFAULT NULL,
+        \`user_email\` VARCHAR(255) DEFAULT NULL,
+        \`is_guest\` TINYINT(1) DEFAULT 0,
+        \`rating\` INT NOT NULL,
+        \`rating_label\` VARCHAR(50) NOT NULL,
+        \`category\` VARCHAR(100) NOT NULL,
+        \`feedback_text\` TEXT NOT NULL,
+        \`page_url\` VARCHAR(500) DEFAULT NULL,
+        \`device_info\` VARCHAR(500) DEFAULT NULL,
+        \`status\` VARCHAR(50) DEFAULT 'new',
+        \`admin_notes\` TEXT DEFAULT NULL,
+        \`response_count\` INT DEFAULT 0,
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY \`idx_user_feedback_user\` (\`user_id\`),
+        KEY \`idx_user_feedback_status\` (\`status\`),
+        KEY \`idx_user_feedback_rating\` (\`rating\`),
+        KEY \`idx_user_feedback_category\` (\`category\`),
+        KEY \`idx_user_feedback_created\` (\`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch((err) => console.error("Failed to ensure user_feedback table exists", err));
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`feedback_responses\` (
+        \`id\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`feedback_id\` VARCHAR(100) NOT NULL,
+        \`admin_id\` VARCHAR(100) DEFAULT NULL,
+        \`admin_name\` VARCHAR(150) DEFAULT 'WatchWDS Support',
+        \`response_text\` TEXT NOT NULL,
+        \`email_sent\` TINYINT(1) DEFAULT 0,
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY \`idx_fb_responses_feedback_id\` (\`feedback_id\`),
+        KEY \`idx_fb_responses_created\` (\`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch((err) => console.error("Failed to ensure feedback_responses table exists", err));
+    execute(`
+      INSERT IGNORE INTO \`settings\` (\`key_name\`, \`value\`) VALUES
+      ('feedback_config', '{"enabled":true,"allow_guest":true,"trigger_type":"delay","trigger_delay_seconds":15,"pages_before_prompt":3,"cooldown_days_after_submit":30,"cooldown_days_after_dismiss":1,"cooldown_days_after_later":7,"categories":["Website Experience","Video/Streaming","Payment","Account","Performance","Bug Report","Suggestion","Other"],"notify_admin_email":true}');
+    `).catch((err) => console.error("Failed to seed feedback_config in settings", err));
     warmCriticalCaches().catch((err) => console.error("Startup Cache Warning failed", err));
     processMatchAutomations().catch((err) => console.error("Match automation startup check failed", err));
     setInterval(() => {

@@ -675,5 +675,50 @@ export const SEED_TEMPLATES: SeedTemplate[] = [
     body: `<h2>Summer on WatchWDS</h2>
 <p>Hello {{first_name}},</p>
 <p>The Summer Season is heating up with over 150 live championship match events scheduled over the next 45 days. Log in now and reserve your championship match seating early!</p>`
+  },
+  {
+    slug: "feedback_response",
+    name: "Feedback Response",
+    subject: "Update on your WatchWDS feedback",
+    category: "Support",
+    variables_hint: "user_name, rating, category, feedback_text, response_text, admin_name, website_url",
+    body: `<h2>Response to Your Feedback</h2>
+<p>Hello {{user_name}},</p>
+<p>Thank you for taking the time to share your feedback with the <strong>WatchWDS</strong> team. We carefully review every submission to continuously improve your experience.</p>
+<div style="background-color: #f8fafc; border-left: 4px solid #fbbf24; padding: 16px; margin: 20px 0; border-radius: 4px;">
+  <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b;"><strong>Your Feedback (Rating: {{rating}}/5 - {{category}}):</strong></p>
+  <p style="margin: 0; font-style: italic; color: #334155;">"{{feedback_text}}"</p>
+</div>
+<div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 20px 0; border-radius: 4px;">
+  <p style="margin: 0 0 8px 0; font-size: 13px; color: #1d4ed8;"><strong>Message from {{admin_name}} (WatchWDS Team):</strong></p>
+  <p style="margin: 0; color: #1e293b; white-space: pre-wrap;">{{response_text}}</p>
+</div>
+<p>If you have any further questions or suggestions, feel free to reply to this email or visit our Help Center.</p>
+<div style="text-align: center; margin-top: 24px;">
+  <a href="{{website_url}}" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; border-radius: 8px;">Return to WatchWDS</a>
+</div>`
+  },
+  {
+    slug: "feedback_admin_alert",
+    name: "New User Feedback Alert",
+    subject: "New {{rating}}-Star Feedback Received: [{{category}}]",
+    category: "System/Notification",
+    variables_hint: "user_name, user_email, rating, rating_label, category, feedback_text, page_url, device_info, website_url",
+    body: `<h2>New User Feedback Submitted</h2>
+<p>A new rating and feedback entry has been received on WatchWDS.</p>
+<table class="meta-table" style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">User:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{user_name}} ({{user_email}})</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Rating:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{rating}} / 5 ({{rating_label}})</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Category:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{category}}</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Page:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{page_url}}</td></tr>
+  <tr><td class="label" style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #64748b;">Device:</td><td class="value" style="padding: 8px; border-bottom: 1px solid #e2e8f0;">{{device_info}}</td></tr>
+</table>
+<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; margin: 16px 0; border-radius: 8px;">
+  <p style="margin: 0; color: #1e293b;"><strong>Feedback:</strong></p>
+  <p style="margin: 8px 0 0 0; color: #334155;">{{feedback_text}}</p>
+</div>
+<div style="text-align: center; margin-top: 24px;">
+  <a href="{{website_url}}/admin" class="button" style="color: #0f171e; background-color: #fbbf24; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; border-radius: 8px;">Review in Admin Panel</a>
+</div>`
   }
 ];

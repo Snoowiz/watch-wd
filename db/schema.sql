@@ -500,3 +500,43 @@ CREATE TABLE IF NOT EXISTS `security_settings` (
   `key_name` varchar(100) NOT NULL PRIMARY KEY,
   `value` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- USER FEEDBACK & REVIEWS
+-- ============================================
+CREATE TABLE IF NOT EXISTS `user_feedback` (
+  `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+  `user_id` VARCHAR(100) DEFAULT NULL,
+  `user_name` VARCHAR(255) DEFAULT 'Anonymous',
+  `user_email` VARCHAR(255) DEFAULT NULL,
+  `user_avatar` TEXT DEFAULT NULL,
+  `is_guest` TINYINT(1) DEFAULT 0,
+  `rating` INT NOT NULL DEFAULT 5,
+  `rating_label` VARCHAR(50) DEFAULT 'Excellent',
+  `category` VARCHAR(100) DEFAULT 'Website Experience',
+  `feedback_text` TEXT NOT NULL,
+  `page_url` VARCHAR(500) DEFAULT '/',
+  `device_info` TEXT DEFAULT NULL,
+  `status` VARCHAR(50) DEFAULT 'new',
+  `admin_notes` TEXT DEFAULT NULL,
+  `response_count` INT DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_feedback_status` (`status`),
+  INDEX `idx_feedback_rating` (`rating`),
+  INDEX `idx_feedback_category` (`category`),
+  INDEX `idx_feedback_user` (`user_id`),
+  INDEX `idx_feedback_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `feedback_responses` (
+  `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+  `feedback_id` VARCHAR(100) NOT NULL,
+  `admin_id` VARCHAR(100) NOT NULL,
+  `admin_name` VARCHAR(255) DEFAULT 'WatchWDS Support',
+  `response_text` TEXT NOT NULL,
+  `email_sent` TINYINT(1) DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_resp_feedback` (`feedback_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

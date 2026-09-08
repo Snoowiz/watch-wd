@@ -34,6 +34,7 @@ import { EmailManagement } from './admin/EmailManagement';
 import { CacheManagement } from './admin/CacheManagement';
 import { AdminSEO } from './admin/AdminSEO';
 import { AdminPayoutSettings } from './admin/AdminPayoutSettings';
+import { AdminFeedback } from './admin/AdminFeedback';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { Image as ImageIcon } from 'lucide-react';
 
@@ -88,6 +89,7 @@ export function AdminDashboard() {
     { id: 'seo-schema', type: 'seo', title: 'JSON-LD Schema Generator', subtitle: 'Structured Data Configuration', icon: Globe, path: '/admin/seo' },
     { id: 'finance-payouts', type: 'finance', title: 'Finance Payout Settings', subtitle: 'Club balances, threshold & auto payouts', icon: DollarSign, path: '/admin/finance' },
     { id: 'finance-balances', type: 'finance', title: 'Club Balances & Earnings', subtitle: 'View club revenue and pending balances', icon: Building2, path: '/admin/finance' },
+    { id: 'feedback-hub', type: 'feedback', title: 'User Feedback & Reviews', subtitle: 'Ratings, CSAT scores, customer reviews & replies', icon: MessageSquare, path: '/admin/feedback' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
@@ -109,6 +111,7 @@ export function AdminDashboard() {
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/matches', icon: Video, label: 'Matches' },
+    { path: '/admin/feedback', icon: MessageSquare, label: 'User Feedback' },
     { path: '/admin/seo', icon: Globe, label: 'SEO Manager' },
     { path: '/admin/media', icon: ImageIcon, label: 'Media' },
     ...(blogEnabled ? [{ path: '/admin/blog', icon: Newspaper, label: 'Blog' }] : []),
@@ -321,6 +324,7 @@ export function AdminDashboard() {
               <Route path="/email-system" element={<EmailManagement />} />
               <Route path="/studio" element={<StudioManagement />} />
               <Route path="/seo" element={<AdminSEO />} />
+              <Route path="/feedback" element={<AdminFeedback />} />
               <Route path="/cache" element={<CacheManagement />} />
             </Routes>
           </div>
@@ -432,6 +436,7 @@ function AdminOverview() {
     ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
     { name: 'Creator Hub', count: users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },
     { name: 'Payout Engine', count: 1, label: 'Threshold Engine', icon: DollarSign, path: '/admin/finance', status: 'Active', color: 'text-emerald-500' },
+    { name: 'User Feedback', count: 1, label: 'CSAT & Reviews', icon: MessageSquare, path: '/admin/feedback', status: 'Active', color: 'text-yellow-500' },
     { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
   ], [users, matches, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount]);
 
