@@ -11,6 +11,7 @@ interface PayoutConfig {
   autoFrequencyHours: number;
   currency: string;
   enabled: boolean;
+  instantSplit?: boolean;
 }
 
 interface ClubBalance {
@@ -48,7 +49,7 @@ interface PayoutRecord {
   amount: number;
   currency: string;
   status: 'pending' | 'paid' | 'failed';
-  method: 'auto' | 'manual';
+  method: 'auto' | 'manual' | 'instant' | string;
   arrivalDate?: string | null;
   failureCode?: string | null;
   failureMessage?: string | null;
@@ -62,7 +63,8 @@ export function AdminPayoutSettings() {
     schedule: 'manual',
     autoFrequencyHours: 24,
     currency: 'GBP',
-    enabled: true
+    enabled: true,
+    instantSplit: false
   });
   const [balances, setBalances] = useState<ClubBalance[]>([]);
   const [earnings, setEarnings] = useState<ClubEarning[]>([]);
@@ -207,10 +209,17 @@ export function AdminPayoutSettings() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-            <DollarSign className="w-7 h-7 text-yellow-500" />
-            Finance & Payout Settings
-          </h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+              <DollarSign className="w-7 h-7 text-yellow-500" />
+              Finance & Payout Settings
+            </h1>
+            {config.instantSplit && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <Zap className="w-3.5 h-3.5" /> Instant Split Active
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Control automated payout threshold, schedule intervals, and monitor accumulated partner club earnings.
           </p>
@@ -429,13 +438,17 @@ export function AdminPayoutSettings() {
                               <span className="font-mono font-bold text-base text-slate-900 dark:text-white">
                                 £{avail.toFixed(2)}
                               </span>
-                              {meetsThreshold ? (
+                              {config.instantSplit ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-300">
+                                  <Zap className="w-2.5 h-2.5" /> Instant Split
+                                </span>
+                              ) : meetsThreshold ? (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
                                   Threshold Met
                                 </span>
                               ) : (
                                 <span className="text-[10px] text-slate-400">
-                                  ({Math.round((avail / config.thresholdAmount) * 100)}%)
+                                  ({Math.round((avail / (config.thresholdAmount || 1)) * 100)}%)
                                 </span>
                               )}
                             </div>
@@ -501,7 +514,65 @@ export function AdminPayoutSettings() {
             </p>
           </div>
 
-          <form onSubmit={handleSaveSettings} className="space-y-5">
+          <form onSubmit={handleSaveSettings} className="space-y-6">
+            {/* Split Mode Choice */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 space-y-3">
+              <label className="block text-sm font-bold text-slate-800 dark:text-slate-200">
+                Revenue Split & Disbursement Mode
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div
+                  onClick={() => setConfig({ ...config, instantSplit: true })}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    config.instantSplit
+                      ? 'border-yellow-500 bg-yellow-500/10'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-yellow-500" />
+                      Instant Split Mode
+                    </div>
+                    <input
+                      type="radio"
+                      checked={!!config.instantSplit}
+                      onChange={() => setConfig({ ...config, instantSplit: true })}
+                      className="text-yellow-500 focus:ring-yellow-500"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Direct split to clubs: on each PPV match payment, club net share is immediately transferred to their Stripe Connected Account with £0 threshold.
+                  </p>
+                </div>
+
+                <div
+                  onClick={() => setConfig({ ...config, instantSplit: false })}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    !config.instantSplit
+                      ? 'border-yellow-500 bg-yellow-500/10'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-blue-500" />
+                      Threshold Accumulation Mode
+                    </div>
+                    <input
+                      type="radio"
+                      checked={!config.instantSplit}
+                      onChange={() => setConfig({ ...config, instantSplit: false })}
+                      className="text-yellow-500 focus:ring-yellow-500"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Earnings accumulate in the club's available balance until reaching the minimum threshold (£), triggering automated or manual payouts.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Payout Minimum Threshold (£)
@@ -510,16 +581,21 @@ export function AdminPayoutSettings() {
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">£</span>
                 <input
                   type="number"
-                  min="5"
+                  min="0"
                   step="1"
-                  value={config.thresholdAmount}
+                  disabled={config.instantSplit}
+                  value={config.instantSplit ? 0 : config.thresholdAmount}
                   onChange={e => setConfig({ ...config, thresholdAmount: Number(e.target.value) })}
-                  className="w-full pl-8 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-yellow-500 dark:text-white"
-                  required
+                  className={`w-full pl-8 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-yellow-500 dark:text-white ${
+                    config.instantSplit ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
+                  required={!config.instantSplit}
                 />
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Clubs must accumulate at least this balance before auto-payout activates. Recommended: £50 or £100.
+                {config.instantSplit
+                  ? "Instant Split is enabled. Every payment is transferred directly to the connected account with £0 minimum threshold."
+                  : "Clubs must accumulate at least this balance before auto-payout activates. Recommended: £50 or £100."}
               </p>
             </div>
 
@@ -680,8 +756,17 @@ export function AdminPayoutSettings() {
                       <td className="px-6 py-3.5 font-mono font-bold text-slate-900 dark:text-white">
                         £{Number(po.amount).toFixed(2)}
                       </td>
-                      <td className="px-6 py-3.5 uppercase font-mono text-[10px] text-slate-400">
-                        {po.method || 'auto'}
+                      <td className="px-6 py-3.5">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono ${
+                          po.method === 'instant'
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-300'
+                            : po.method === 'manual'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300'
+                            : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                        }`}>
+                          {po.method === 'instant' && <Zap className="w-2.5 h-2.5" />}
+                          {po.method || 'auto'}
+                        </span>
                       </td>
                       <td className="px-6 py-3.5">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold capitalize ${

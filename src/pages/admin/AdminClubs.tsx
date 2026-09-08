@@ -145,15 +145,27 @@ export function AdminClubs() {
             stripeAccountId: formStripeId,
             stripeOnboardingComplete: formStripeComplete,
             isActive: formActive,
+            platformFeePercent: formPlatformFee,
+            clubSharePercent: formClubShare,
           })
         });
-        // Update revenue policy
+        // Update or create revenue policy
         const policy = policies.find(p => String(p.clubId || p.club_id) === String(editingClub.id));
         if (policy) {
           await fetch(`/api/admin/revenue-policies/${policy.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({
+              platformFeePercent: formPlatformFee,
+              clubSharePercent: formClubShare,
+            })
+          });
+        } else {
+          await fetch('/api/admin/revenue-policies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              clubId: editingClub.id,
               platformFeePercent: formPlatformFee,
               clubSharePercent: formClubShare,
             })

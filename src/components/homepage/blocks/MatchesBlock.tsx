@@ -74,9 +74,14 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
 
   // Category filter
   if (block.filters?.categoryIds && block.filters.categoryIds.length > 0) {
+    const filterCatIds = block.filters.categoryIds.map(Number);
     filtered = filtered.filter(m => {
-      const catId = typeof m.category === 'object' ? (m.category as any)?.id : m.category;
-      return block.filters!.categoryIds!.includes(Number(catId));
+      if (Array.isArray(m.categories) && m.categories.length > 0) {
+        return m.categories.some(id => filterCatIds.includes(Number(id)));
+      }
+      const rawCat = (m as any).category || (m as any).categoryId;
+      const matchCatId = typeof rawCat === 'object' ? rawCat?.id : rawCat;
+      return matchCatId !== undefined && matchCatId !== null && filterCatIds.includes(Number(matchCatId));
     });
   }
 

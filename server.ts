@@ -530,6 +530,7 @@ async function startServer() {
 
       if (snapshot.empty) {
         const adminEmails = getAdminEmails();
+        const role = adminEmails.includes(verifiedEmail.toLowerCase()) ? "admin" : "user";
         user = { 
           email: verifiedEmail, 
           password: "google-auth-no-password", 
@@ -2697,6 +2698,212 @@ async function startServer() {
     return amount; // Fallback to original amount if conversion fails
   }
 
+  // === CENTRALIZED CLUB PPV REVENUE SPLIT ENGINE ===
+  async function processClubRevenueSplit(params: {
+    matchId: string;
+    transactionId: string;
+    grossAmount: number;
+    userId?: string;
+    isDestinationCharge?: boolean;
+    connectedAccountId?: string | null;
+    platformFeePercent?: number;
+  }) {
+    const { matchId, transactionId, grossAmount, isDestinationCharge, connectedAccountId: passedConnectedAccountId } = params;
+    try {
+      if (!matchId || !grossAmount || grossAmount <= 0) return;
+
+      // 1. Deduplication safeguard: check if earning already recorded for this transaction
+      const existingEarnings = await db.collection("club_earnings")
+        .where("transaction_id", "==", String(transactionId))
+        .get();
+      if (!existingEarnings.empty) {
+        console.log(`[RevenueSplit] Transaction ${transactionId} already processed in club_earnings. Skipping.`);
+        return;
+      }
+
+      // 2. Load match to get assigned partner club
+      const matchDoc = await db.collection("matches").doc(String(matchId)).get();
+      if (!matchDoc.exists) return;
+      const matchData = matchDoc.data();
+      const clubId = matchData.club_id || matchData.clubId;
+      if (!clubId) {
+        console.log(`[RevenueSplit] Match #${matchId} has no assigned partner club. No split required.`);
+        return;
+      }
+
+      // 3. Load club
+      const clubDoc = await db.collection("clubs").doc(String(clubId)).get();
+      if (!clubDoc.exists) return;
+      const club = clubDoc.data();
+      const stripeAccountId = passedConnectedAccountId || club.stripe_account_id || club.stripeAccountId || null;
+      const isOnboarded = !!(club.stripe_onboarding_complete || club.stripeOnboardingComplete);
+
+      // 4. Load revenue policy
+      const policiesSnap = await db.collection("revenue_policies")
+        .where("club_id", "==", String(clubId))
+        .where("is_active", "==", 1)
+        .limit(1)
+        .get();
+
+      let feePercent = params.platformFeePercent ?? 20;
+      if (!policiesSnap.empty) {
+        const policy = policiesSnap.docs[0].data();
+        feePercent = Number(policy.platform_fee_percent || policy.platformFeePercent || 20);
+      } else {
+        // Auto-create default revenue policy for consistency
+        const defaultPolicyId = Date.now().toString();
+        await db.collection("revenue_policies").doc(defaultPolicyId).set({
+          id: defaultPolicyId,
+          clubId: String(clubId),
+          platformFeePercent: 20,
+          clubSharePercent: 80,
+          isActive: 1,
+          createdAt: new Date().toISOString()
+        }).catch(() => {});
+      }
+
+      // 5. Calculate split amounts
+      const platformCommission = Math.round(grossAmount * (feePercent / 100) * 100) / 100;
+      const clubNetAmount = Math.round((grossAmount - platformCommission) * 100) / 100;
+
+      // 6. Record per-transaction earning in club_earnings audit ledger
+      const earningId = `earn_${Date.now()}_${clubId}`;
+      await db.collection("club_earnings").doc(earningId).set({
+        id: earningId,
+        clubId: String(clubId),
+        matchId: String(matchId),
+        transactionId: String(transactionId),
+        grossAmount,
+        platformCommission,
+        clubNetAmount,
+        commissionRate: feePercent,
+        type: "ppv",
+        createdAt: new Date().toISOString()
+      });
+
+      // 7. Check Payout Configuration for Instant Split vs Threshold mode
+      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
+      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
+      const isInstantSplit = !!config.instantSplit;
+      const payoutCurrency = (config.currency || "GBP").toUpperCase();
+
+      // Fetch or init club balance
+      const balDoc = await db.collection("club_balances").doc(String(clubId)).get();
+      const currentBal = balDoc.exists ? balDoc.data() : { availableBalance: 0, pendingBalance: 0, totalEarned: 0, totalPaidOut: 0, currency: payoutCurrency };
+      const currAvail = Number(currentBal.availableBalance || currentBal.available_balance) || 0;
+      const currEarned = Number(currentBal.totalEarned || currentBal.total_earned) || 0;
+      const currPaid = Number(currentBal.totalPaidOut || currentBal.total_paid_out) || 0;
+      const currPending = Number(currentBal.pendingBalance || currentBal.pending_balance) || 0;
+
+      if (isInstantSplit) {
+        // INSTANT SPLIT MODE:
+        let stripeRef = `instant_${Date.now()}`;
+        let instantSuccess = false;
+
+        if (isDestinationCharge && stripeAccountId) {
+          // Funds were already directly split to connected account at checkout time by Stripe
+          stripeRef = `dest_${Date.now()}_${String(stripeAccountId).slice(-6)}`;
+          instantSuccess = true;
+        } else if (stripeAccountId && isOnboarded) {
+          // Direct Stripe transfer to connected account
+          try {
+            const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
+            const gatewaySettings = settingsDoc.exists ? settingsDoc.data() : {};
+            const stripeSecret = gatewaySettings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY;
+            if (stripeSecret) {
+              const stripeClient = new Stripe(stripeSecret, { apiVersion: "2023-10-16" as any });
+              const transfer = await stripeClient.transfers.create({
+                amount: Math.round(clubNetAmount * 100),
+                currency: payoutCurrency.toLowerCase(),
+                destination: stripeAccountId,
+                description: `Instant PPV split - Match #${matchId} (${club.name || clubId})`,
+                metadata: { matchId: String(matchId), clubId: String(clubId), transactionId: String(transactionId) }
+              });
+              stripeRef = transfer.id;
+              instantSuccess = true;
+            } else {
+              // Simulated instant split for development/mock mode
+              stripeRef = `mock_tr_${Date.now()}`;
+              instantSuccess = true;
+            }
+          } catch (trErr: any) {
+            console.error(`[RevenueSplit] Stripe transfer error for club ${clubId}:`, trErr.message);
+            instantSuccess = false;
+          }
+        } else {
+          // Simulated instant disbursement
+          stripeRef = `sim_instant_${Date.now()}`;
+          instantSuccess = true;
+        }
+
+        if (instantSuccess) {
+          const payoutId = `po_inst_${Date.now()}_${clubId}`;
+          await db.collection("payouts").doc(payoutId).set({
+            id: payoutId,
+            clubId: String(clubId),
+            stripePayoutId: stripeRef,
+            stripeAccountId: stripeAccountId || 'instant_disbursement',
+            amount: clubNetAmount,
+            currency: payoutCurrency,
+            status: "paid",
+            method: "instant",
+            arrivalDate: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          });
+
+          await db.collection("club_balances").doc(String(clubId)).set({
+            clubId: String(clubId),
+            availableBalance: currAvail,
+            pendingBalance: currPending,
+            totalEarned: currEarned + clubNetAmount,
+            totalPaidOut: currPaid + clubNetAmount,
+            currency: payoutCurrency
+          });
+        } else {
+          // Fallback to available balance if instant transfer couldn't be executed
+          await db.collection("club_balances").doc(String(clubId)).set({
+            clubId: String(clubId),
+            availableBalance: currAvail + clubNetAmount,
+            pendingBalance: currPending,
+            totalEarned: currEarned + clubNetAmount,
+            totalPaidOut: currPaid,
+            currency: payoutCurrency
+          });
+        }
+      } else {
+        // THRESHOLD ACCUMULATION MODE:
+        const newAvailable = currAvail + clubNetAmount;
+        await db.collection("club_balances").doc(String(clubId)).set({
+          clubId: String(clubId),
+          availableBalance: newAvailable,
+          pendingBalance: currPending,
+          totalEarned: currEarned + clubNetAmount,
+          totalPaidOut: currPaid,
+          currency: payoutCurrency
+        });
+
+        const threshold = Number(config.thresholdAmount) || 50;
+        if (config.schedule === "auto" && newAvailable >= threshold && config.enabled) {
+          triggerClubPayout(String(clubId), false).catch(err => console.error(`Auto-payout error for club ${clubId}:`, err));
+        }
+      }
+
+      cacheEngine.invalidateCollection("club_earnings");
+      cacheEngine.invalidateCollection("club_balances");
+      cacheEngine.invalidateCollection("payouts");
+      cacheEngine.invalidateCollection("revenue_policies");
+
+      notifyAdmins(
+        "PPV Split Processed",
+        `Split recorded for ${club.name || 'Club'} (#${clubId}): Gross £${grossAmount.toFixed(2)}, Platform £${platformCommission.toFixed(2)}, Club Net £${clubNetAmount.toFixed(2)} (${isInstantSplit ? 'Instant Split' : 'Accumulated'})`,
+        "system",
+        "/admin/finance"
+      );
+    } catch (splitErr: any) {
+      console.error("[RevenueSplit] Error processing club revenue split:", splitErr);
+    }
+  }
+
   app.post("/api/checkout/gateway/initialize", authenticate, async (req: any, res) => {
     try {
       const { gateway, type, metadata, currency = "GBP" } = req.body;
@@ -2710,6 +2917,9 @@ async function startServer() {
         if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
         const matchData = matchDoc.data();
         amount = Number(matchData?.price ?? matchData?.ppv_price ?? 0);
+        if (metadata && !metadata.clubId) {
+          metadata.clubId = matchData?.club_id || matchData?.clubId || null;
+        }
       } else if (type === "plan" && metadata?.planId) {
         const planDoc = await db.collection("plans").doc(String(metadata.planId)).get();
         if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
@@ -3023,6 +3233,19 @@ async function startServer() {
         notifyUser(userId, "Purchase Successful", `You have unlocked access.`, "success", `/matches/${metadata.matchId}`);
         notifyAdmins("New Purchase", `A user purchased access for amount: ${amount}`, "system", "/admin/transactions");
 
+        // Record Partner Club PPV Revenue Split immediately
+        if (type === "watch" && metadata?.matchId) {
+          await processClubRevenueSplit({
+            matchId: String(metadata.matchId),
+            transactionId: String(txn_id),
+            grossAmount: Number(amount) || 0,
+            userId,
+            isDestinationCharge: !!metadata?.connectedAccountId,
+            connectedAccountId: metadata?.connectedAccountId || null,
+            platformFeePercent: metadata?.platformFeePercent ? Number(metadata.platformFeePercent) : undefined
+          });
+        }
+
         if (userEmail) {
           const matchDoc = await db.collection("matches").doc(metadata.matchId).get();
           const matchData = matchDoc.exists ? matchDoc.data() : {};
@@ -3193,6 +3416,15 @@ async function startServer() {
       };
       await db.collection("transactions").doc(transactionId).set(transactionData);
       
+      // Process Club PPV Revenue Split for Wallet Purchase
+      await processClubRevenueSplit({
+        matchId: String(match_id),
+        transactionId,
+        grossAmount: deductAmount,
+        userId,
+        isDestinationCharge: false
+      });
+
       res.json({ success: true, newBalance, newPoints: newBalance, purchase: purchaseData });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -4384,6 +4616,29 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (req.body.stripeOnboardingComplete !== undefined) updateData.stripeOnboardingComplete = req.body.stripeOnboardingComplete ? 1 : 0;
       if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive ? 1 : 0;
 
+      if (req.body.platformFeePercent !== undefined || req.body.clubSharePercent !== undefined) {
+        const policies = await db.collection("revenue_policies").where("club_id", "==", id).get();
+        const pFee = Number(req.body.platformFeePercent) || 20;
+        const cShare = Number(req.body.clubSharePercent) || (100 - pFee);
+        if (!policies.empty) {
+          await db.collection("revenue_policies").doc(policies.docs[0].id).update({
+            platformFeePercent: pFee,
+            clubSharePercent: cShare
+          });
+        } else {
+          const policyId = Date.now().toString();
+          await db.collection("revenue_policies").doc(policyId).set({
+            id: policyId,
+            clubId: id,
+            platformFeePercent: pFee,
+            clubSharePercent: cShare,
+            isActive: 1,
+            createdAt: new Date().toISOString()
+          });
+        }
+        cacheEngine.invalidateCollection("revenue_policies");
+      }
+
       await db.collection("clubs").doc(id).update(updateData);
       cacheEngine.invalidateCollection("clubs");
       res.json({ success: true });
@@ -4494,6 +4749,27 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  app.post("/api/admin/revenue-policies", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { clubId, platformFeePercent, clubSharePercent } = req.body;
+      if (!clubId) return res.status(400).json({ error: "clubId required" });
+      const pFee = Number(platformFeePercent) || 20;
+      const cShare = Number(clubSharePercent) || (100 - pFee);
+      const policyId = Date.now().toString();
+      const policyData = {
+        id: policyId,
+        clubId: String(clubId),
+        platformFeePercent: pFee,
+        clubSharePercent: cShare,
+        isActive: 1,
+        createdAt: new Date().toISOString()
+      };
+      await db.collection("revenue_policies").doc(policyId).set(policyData);
+      cacheEngine.invalidateCollection("revenue_policies");
+      res.json({ success: true, ...policyData });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // === PAYOUT SETTINGS API ===
   app.get("/api/admin/payout-settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
@@ -4503,7 +4779,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         schedule: "manual",
         autoFrequencyHours: 24,
         currency: "GBP",
-        enabled: true
+        enabled: true,
+        instantSplit: false
       };
       if (!doc.exists) return res.json(defaults);
       const data = doc.data();
@@ -4513,13 +4790,14 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
   app.put("/api/admin/payout-settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const { thresholdAmount, schedule, autoFrequencyHours, currency, enabled } = req.body;
+      const { thresholdAmount, schedule, autoFrequencyHours, currency, enabled, instantSplit } = req.body;
       const config: any = {};
       if (thresholdAmount !== undefined) config.thresholdAmount = Number(thresholdAmount);
       if (schedule !== undefined) config.schedule = schedule;
       if (autoFrequencyHours !== undefined) config.autoFrequencyHours = Number(autoFrequencyHours);
       if (currency !== undefined) config.currency = currency;
       if (enabled !== undefined) config.enabled = !!enabled;
+      if (instantSplit !== undefined) config.instantSplit = !!instantSplit;
 
       const docRef = db.collection("payment_settings").doc("payout_config");
       const existing = await docRef.get();
@@ -4532,6 +4810,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           autoFrequencyHours: 24,
           currency: "GBP",
           enabled: true,
+          instantSplit: false,
           ...config
         });
       }
@@ -4599,7 +4878,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     try {
       // Load payout config
       const configDoc = await db.collection("payment_settings").doc("payout_config").get();
-      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true };
+      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
       if (!config.enabled) return { success: false, error: "Payouts are disabled" };
 
       // Load club balance
@@ -4609,7 +4888,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const availableBalance = Number(bal.availableBalance || bal.available_balance) || 0;
       const threshold = Number(config.thresholdAmount) || 50;
 
-      if (!forceOverrideThreshold && availableBalance < threshold) {
+      if (!forceOverrideThreshold && !config.instantSplit && availableBalance < threshold) {
         return { success: false, error: `Balance ${availableBalance} below threshold ${threshold}` };
       }
       if (availableBalance <= 0) return { success: false, error: "No available balance" };
@@ -4649,7 +4928,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         amount: availableBalance,
         currency: payoutCurrency.toUpperCase(),
         status: "pending",
-        method: forceOverrideThreshold ? "manual" : "auto",
+        method: forceOverrideThreshold ? "manual" : (config.instantSplit ? "instant" : "auto"),
         arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000).toISOString() : null,
         createdAt: new Date().toISOString()
       });
@@ -4907,6 +5186,17 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         const txnData = txnDoc.data();
 
         if (txnData.status === "completed") {
+          if (txnData.type === "watch" && txnData.metadata?.matchId) {
+            await processClubRevenueSplit({
+              matchId: String(txnData.metadata.matchId),
+              transactionId: txnId,
+              grossAmount: Number(txnData.amount) || 0,
+              userId: txnData.userId || txnData.user_id,
+              isDestinationCharge: !!txnData.metadata?.connectedAccountId,
+              connectedAccountId: txnData.metadata?.connectedAccountId || null,
+              platformFeePercent: txnData.metadata?.platformFeePercent ? Number(txnData.metadata.platformFeePercent) : undefined
+            });
+          }
           return res.json({ received: true, already_processed: true });
         }
 
@@ -4942,54 +5232,16 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           notifyUser(userId, "Purchase Successful", "You have unlocked PPV match access.", "success", `/matches/${metadata.fromMatchSlug || metadata.matchId}`);
           notifyAdmins("PPV Purchase (Stripe Connect)", `PPV purchase completed: ${amount} for match #${metadata.matchId}`, "system", "/admin/transactions");
 
-          // === COMMISSION RECORDING: Record club earnings and credit balance ===
-          if (metadata?.clubId) {
-            try {
-              const grossAmount = Number(amount) || 0;
-              const feePercent = Number(metadata.platformFeePercent) || 20;
-              const platformCommission = Math.round(grossAmount * (feePercent / 100) * 100) / 100;
-              const clubNetAmount = Math.round((grossAmount - platformCommission) * 100) / 100;
-
-              // Insert earning record (audit trail)
-              const earningId = `earn_${Date.now()}_${metadata.clubId}`;
-              await db.collection("club_earnings").doc(earningId).set({
-                id: earningId,
-                clubId: metadata.clubId,
-                matchId: metadata.matchId,
-                transactionId: txnId,
-                grossAmount,
-                platformCommission,
-                clubNetAmount,
-                commissionRate: feePercent,
-                type: "ppv",
-                createdAt: new Date().toISOString()
-              });
-
-              // Upsert club_balances — credit available balance
-              const balanceDoc = await db.collection("club_balances").doc(metadata.clubId).get();
-              if (balanceDoc.exists) {
-                const bal = balanceDoc.data();
-                await db.collection("club_balances").doc(metadata.clubId).update({
-                  availableBalance: (Number(bal.availableBalance || bal.available_balance) || 0) + clubNetAmount,
-                  totalEarned: (Number(bal.totalEarned || bal.total_earned) || 0) + clubNetAmount
-                });
-              } else {
-                await db.collection("club_balances").doc(metadata.clubId).set({
-                  clubId: metadata.clubId,
-                  availableBalance: clubNetAmount,
-                  pendingBalance: 0,
-                  totalEarned: clubNetAmount,
-                  totalPaidOut: 0,
-                  currency: "GBP"
-                });
-              }
-
-              cacheEngine.invalidateCollection("club_earnings");
-              cacheEngine.invalidateCollection("club_balances");
-            } catch (commErr: any) {
-              console.error("Commission recording error:", commErr.message);
-            }
-          }
+          // === COMMISSION RECORDING: Process club earnings and revenue split ===
+          await processClubRevenueSplit({
+            matchId: String(metadata.matchId),
+            transactionId: txnId,
+            grossAmount: Number(amount) || 0,
+            userId,
+            isDestinationCharge: !!metadata?.connectedAccountId,
+            connectedAccountId: metadata?.connectedAccountId || null,
+            platformFeePercent: metadata?.platformFeePercent ? Number(metadata.platformFeePercent) : undefined
+          });
         }
       }
 

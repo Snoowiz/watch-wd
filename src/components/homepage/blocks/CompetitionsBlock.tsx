@@ -23,7 +23,11 @@ export function CompetitionsBlock({ block }: { block: HomepageBlock }) {
 
   const getMatchCount = (catId: any) => {
     return matches.filter(m => {
-      const matchCatId = typeof m.category === 'object' ? (m.category as any)?.id : m.category;
+      if (Array.isArray(m.categories)) {
+        return m.categories.some(id => String(id) === String(catId));
+      }
+      const rawCat = (m as any).category || (m as any).categoryId;
+      const matchCatId = typeof rawCat === 'object' ? rawCat?.id : rawCat;
       return String(matchCatId) === String(catId);
     }).length;
   };

@@ -429,6 +429,7 @@ CREATE TABLE IF NOT EXISTS `payouts` (
   `amount` DECIMAL(10,2) NOT NULL,
   `currency` VARCHAR(10) DEFAULT 'GBP',
   `status` VARCHAR(50) DEFAULT 'pending',
+  `method` VARCHAR(50) DEFAULT 'auto',
   `arrival_date` DATETIME DEFAULT NULL,
   `failure_code` VARCHAR(255) DEFAULT NULL,
   `failure_message` TEXT DEFAULT NULL,

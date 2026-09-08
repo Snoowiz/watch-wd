@@ -27,6 +27,7 @@ const PK_MAP: Record<string, string> = {
   knowledge_base: 'id', // varchar pk
   transactions: 'id',   // varchar pk
   payouts: 'id',        // varchar pk
+  club_balances: 'club_id', // varchar pk
 };
 
 function getPkColumn(table: string): string {
@@ -408,8 +409,7 @@ class DocWrapper {
     }
     // Ensure the PK value is set
     const pkSnake = camelToSnake(pk, this.tableName);
-    if (pk === 'id' && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
-    if (pk === 'slug' && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
+    if (!snakeData[pkSnake]) snakeData[pkSnake] = this.id;
 
     const keys = Object.keys(snakeData);
     const vals = Object.values(snakeData).map(v => serializeValue(v));
