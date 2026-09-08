@@ -41,6 +41,13 @@ function getGradientIndex(str?: string | null): number {
   return Math.abs(hash) % GRADIENT_PALETTES.length;
 }
 
+function isValidAvatarSrc(src?: string | null): boolean {
+  if (!src || typeof src !== 'string') return false;
+  const s = src.trim();
+  if (!s || s === 'null' || s === 'undefined' || s === '[object Object]') return false;
+  return s.startsWith('data:image/') || s.startsWith('http://') || s.startsWith('https://') || s.startsWith('/uploads/');
+}
+
 export function UserAvatar({
   src,
   name,
@@ -77,15 +84,16 @@ export function UserAvatar({
     size === 'xl' ? 'w-20 h-20 text-xl' :
     size === '2xl' ? 'w-24 h-24 text-2xl font-black' : '';
 
-  const hasImage = src && !imgError;
+  const hasImage = isValidAvatarSrc(src) && !imgError;
 
   return (
     <div className={`relative inline-flex shrink-0 select-none ${className} ${shapeClass} ${sizeClass}`}>
       {hasImage ? (
         <img
-          src={src}
-          alt={alt || name || 'User Avatar'}
+          src={src!}
+          alt=""
           onError={() => setImgError(true)}
+          referrerPolicy="no-referrer"
           className={`w-full h-full object-cover ${shapeClass || 'rounded-inherit'} shadow-inner`}
           style={{ borderRadius: 'inherit' }}
         />

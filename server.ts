@@ -239,7 +239,9 @@ async function startServer() {
 
   app.use(helmet({
     contentSecurityPolicy: false, // Disabled to prevent breaking Vite dev server and embedded videos
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" }
   }));
   app.use(express.json({ 
     limit: "50mb",
