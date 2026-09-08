@@ -59,11 +59,23 @@ export function NewMatch() {
       })
       .catch(console.error);
   }, []);
+  const safeIsoDateSlice = (val: any): string => {
+    if (!val || val === 'Invalid Date') return '';
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
+  };
+
+  const resolveValidIsoDate = (val: any): string | null => {
+    if (!val || val === 'Invalid Date') return null;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  };
+
   const [selectedCategories, setSelectedCategories] = useState<any[]>((existingMatch?.categories || []).map((c: any) => Number(c)));
   const [seo, setSeo] = useState(existingMatch?.seo || { keywords: '', metaDescription: '' });
   const [publishMode, setPublishMode] = useState<'now' | 'scheduled'>(existingMatch?.scheduledDate ? 'scheduled' : 'now');
   const [scheduledDate, setScheduledDate] = useState(existingMatch?.scheduledDate || '');
-  const [customDate, setCustomDate] = useState(existingMatch?.date ? new Date(existingMatch.date).toISOString().slice(0, 16) : '');
+  const [customDate, setCustomDate] = useState(safeIsoDateSlice(existingMatch?.date || (existingMatch as any)?.start_time || (existingMatch as any)?.startTime));
   const [liveCommenting, setLiveCommenting] = useState(existingMatch?.liveCommenting ?? true);
   const [commentAlignment, setCommentAlignment] = useState<'left' | 'center' | 'right'>(existingMatch?.commentAlignment || 'center');
   const [duration, setDuration] = useState<number>(existingMatch?.duration || 120);
@@ -103,14 +115,17 @@ export function NewMatch() {
       setSeo(existingMatch.seo || { keywords: '', metaDescription: '' });
       setPublishMode(existingMatch.scheduledDate ? 'scheduled' : 'now');
       setScheduledDate(existingMatch.scheduledDate || '');
-      setCustomDate(existingMatch.date ? new Date(existingMatch.date).toISOString().slice(0, 16) : '');
+      setCustomDate(safeIsoDateSlice(existingMatch.date || (existingMatch as any)?.start_time || (existingMatch as any)?.startTime));
       setLiveCommenting(existingMatch.liveCommenting ?? true);
       setCommentAlignment(existingMatch.commentAlignment || 'center');
       setDuration(existingMatch.duration || 120);
+      if (existingMatch.status === 'completed' || existingMatch.status === 'live') {
+        setIsManualOverride(true);
+      }
     }
   }, [existingMatch]);
 
-  const [isManualOverride, setIsManualOverride] = useState(false);
+  const [isManualOverride, setIsManualOverride] = useState(existingMatch?.status === 'completed' || existingMatch?.status === 'live');
 
   const getCalculatedStatus = (): 'upcoming' | 'live' | 'completed' => {
     let targetDateStr = customDate;
@@ -147,11 +162,19 @@ export function NewMatch() {
       // Simulate brief latency for high-quality feel of the spinner
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      let finalDate;
-      if (isEditing) {
-        finalDate = customDate ? new Date(customDate).toISOString() : (existingMatch?.date || new Date().toISOString());
-      } else {
-        finalDate = customDate ? new Date(customDate).toISOString() : (publishMode === 'now' ? new Date().toISOString() : (scheduledDate || new Date().toISOString()));
+      // Resolve final date. If date was not entered, default to now!
+      let finalDate = resolveValidIsoDate(customDate);
+      if (!finalDate && publishMode === 'scheduled' && scheduledDate) {
+        finalDate = resolveValidIsoDate(scheduledDate);
+      }
+      if (!finalDate && isEditing) {
+        finalDate = resolveValidIsoDate(existingMatch?.date) ||
+                    resolveValidIsoDate((existingMatch as any)?.start_time) ||
+                    resolveValidIsoDate((existingMatch as any)?.startTime);
+      }
+      // If still not entered or invalid, use current date (now)
+      if (!finalDate) {
+        finalDate = new Date().toISOString();
       }
 
       let finalThumbnail = thumbnail;
@@ -562,7 +585,13 @@ export function NewMatch() {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Match Status</label>
                 <button
                   type="button"
-                  onClick={() => setIsManualOverride(!isManualOverride)}
+                  onClick={() => {
+                    const nextOverride = !isManualOverride;
+                    setIsManualOverride(nextOverride);
+                    if (nextOverride && !customDate) {
+                      setCustomDate(new Date().toISOString().slice(0, 16));
+                    }
+                  }}
                   className="text-[11px] font-semibold text-yellow-600 dark:text-yellow-400 hover:underline"
                 >
                   {isManualOverride ? 'Use Automated Detection' : 'Manual Override'}
@@ -595,7 +624,13 @@ export function NewMatch() {
               ) : (
                 <select 
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as any)}
+                  onChange={(e) => {
+                    const newStatus = e.target.value as any;
+                    setStatus(newStatus);
+                    if ((newStatus === 'completed' || newStatus === 'live') && !customDate) {
+                      setCustomDate(new Date().toISOString().slice(0, 16));
+                    }
+                  }}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                 >
                   <option value="upcoming">Upcoming</option>
@@ -638,7 +673,16 @@ export function NewMatch() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Original Creation / Match Date</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Original Creation / Match Date</label>
+                <button
+                  type="button"
+                  onClick={() => setCustomDate(new Date().toISOString().slice(0, 16))}
+                  className="text-[11px] font-semibold text-yellow-600 dark:text-yellow-400 hover:underline"
+                >
+                  Set to Current Time
+                </button>
+              </div>
               <input 
                 type="datetime-local"
                 value={customDate}
@@ -646,7 +690,7 @@ export function NewMatch() {
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
               />
               <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-1">
-                Customize the timestamp displayed to users. If left untouched during edits, the original date is perfectly preserved.
+                Customize the timestamp displayed to users. If not entered, the current date/time is automatically used.
               </p>
             </div>
           </div>

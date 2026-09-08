@@ -80,9 +80,21 @@ export function MatchDetail() {
   }, [match, slug, navigate]);
 
   const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
-    if (!dateStr) return 'TBA';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return 'TBA';
+    let effectiveDate = dateStr;
+    if (!effectiveDate || effectiveDate === 'Invalid Date') {
+      if (match?.status === 'completed' || (match as any)?.status === 'live') {
+        effectiveDate = (match as any)?.createdAt || (match as any)?.created_at || (match as any)?.startTime || (match as any)?.start_time || new Date().toISOString();
+      } else {
+        return 'TBA';
+      }
+    }
+    const date = new Date(effectiveDate);
+    if (isNaN(date.getTime())) {
+      if (match?.status === 'completed' || (match as any)?.status === 'live') {
+        return format(new Date(), formatStr);
+      }
+      return 'TBA';
+    }
     return format(date, formatStr);
   };
   

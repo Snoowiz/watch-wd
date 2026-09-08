@@ -374,6 +374,17 @@ class DocWrapper {
         mappedRow.username = mappedRow.name;
       }
     }
+    if (this.tableName === 'matches') {
+      let matchDate = mappedRow.date || mappedRow.start_time || mappedRow.startTime;
+      if (!matchDate || matchDate === 'Invalid Date' || isNaN(new Date(matchDate).getTime())) {
+        matchDate = mappedRow.created_at || mappedRow.createdAt || new Date().toISOString();
+      } else {
+        matchDate = new Date(matchDate).toISOString();
+      }
+      mappedRow.date = matchDate;
+      mappedRow.start_time = matchDate.slice(0, 19).replace('T', ' ');
+      mappedRow.startTime = mappedRow.start_time;
+    }
     return { id: this.id, exists: true, ref: this, data: () => mappedRow };
   }
 
@@ -546,6 +557,17 @@ class CollectionWrapper {
           mappedRow.user_name = mappedRow.name;
           mappedRow.username = mappedRow.name;
         }
+      }
+      if (this.tableName === 'matches') {
+        let matchDate = mappedRow.date || mappedRow.start_time || mappedRow.startTime;
+        if (!matchDate || matchDate === 'Invalid Date' || isNaN(new Date(matchDate).getTime())) {
+          matchDate = mappedRow.created_at || mappedRow.createdAt || new Date().toISOString();
+        } else {
+          matchDate = new Date(matchDate).toISOString();
+        }
+        mappedRow.date = matchDate;
+        mappedRow.start_time = matchDate.slice(0, 19).replace('T', ' ');
+        mappedRow.startTime = mappedRow.start_time;
       }
       return {
         id: docId,

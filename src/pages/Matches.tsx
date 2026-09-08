@@ -36,7 +36,7 @@ export function Matches() {
   };
 
   const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
-    if (!dateStr) return 'TBA';
+    if (!dateStr || dateStr === 'Invalid Date') return 'TBA';
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return 'TBA';
     return format(date, formatStr);

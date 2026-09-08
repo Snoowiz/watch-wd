@@ -1434,14 +1434,17 @@ async function startServer() {
       const matchData = { ...req.body };
       delete matchData.id;
       
-      // Map camelCase frontend fields to snake_case database fields
-      if (matchData.scheduledDate) {
-        matchData.start_time = matchData.scheduledDate;
-        delete matchData.scheduledDate;
-      } else if (matchData.date && !matchData.startTime && !matchData.start_time) {
-        matchData.start_time = matchData.date;
-        delete matchData.date;
+      // Resolve valid match date (guaranteed never empty or 'Invalid Date', defaults to now)
+      let resolvedDate = matchData.date || matchData.start_time || matchData.startTime || matchData.scheduledDate;
+      if (!resolvedDate || resolvedDate === 'Invalid Date' || isNaN(new Date(resolvedDate).getTime())) {
+        resolvedDate = new Date().toISOString();
+      } else {
+        resolvedDate = new Date(resolvedDate).toISOString();
       }
+      matchData.date = resolvedDate;
+      matchData.start_time = resolvedDate.slice(0, 19).replace('T', ' ');
+      delete matchData.startTime;
+      delete matchData.scheduledDate;
       
       // Map other common camelCase to snake_case
       const fieldMappings: Record<string, string> = {
@@ -1492,14 +1495,19 @@ async function startServer() {
       const matchData = { ...req.body };
       delete matchData.id;
       
-      // Map camelCase frontend fields to snake_case database fields
-      if (matchData.scheduledDate) {
-        matchData.start_time = matchData.scheduledDate;
-        delete matchData.scheduledDate;
-      } else if (matchData.date && !matchData.startTime && !matchData.start_time) {
-        matchData.start_time = matchData.date;
-        delete matchData.date;
+      // Resolve valid match date if date/startTime/scheduledDate is provided
+      if (matchData.date !== undefined || matchData.startTime !== undefined || matchData.start_time !== undefined || matchData.scheduledDate !== undefined) {
+        let resolvedDate = matchData.date || matchData.start_time || matchData.startTime || matchData.scheduledDate;
+        if (!resolvedDate || resolvedDate === 'Invalid Date' || isNaN(new Date(resolvedDate).getTime())) {
+          resolvedDate = new Date().toISOString();
+        } else {
+          resolvedDate = new Date(resolvedDate).toISOString();
+        }
+        matchData.date = resolvedDate;
+        matchData.start_time = resolvedDate.slice(0, 19).replace('T', ' ');
       }
+      delete matchData.startTime;
+      delete matchData.scheduledDate;
       
       // Map other common camelCase to snake_case
       const fieldMappings: Record<string, string> = {
@@ -5956,6 +5964,14 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     // Ensure avatar column can hold high-res base64 without truncation
     execute(`
       ALTER TABLE \`users\` MODIFY COLUMN \`avatar\` LONGTEXT DEFAULT NULL
+    `).catch(() => {});
+
+    // Ensure matches date and start_time columns are properly populated and not empty/invalid
+    execute(`
+      UPDATE \`matches\` 
+      SET \`date\` = COALESCE(NULLIF(\`date\`, ''), NULLIF(\`start_time\`, ''), \`created_at\`, NOW()),
+          \`start_time\` = COALESCE(NULLIF(\`start_time\`, ''), NULLIF(\`date\`, ''), \`created_at\`, NOW())
+      WHERE \`date\` IS NULL OR \`date\` = '' OR \`date\` = 'Invalid Date' OR \`start_time\` IS NULL
     `).catch(() => {});
 
     // Ensure clubs table exists (PPV revenue split)

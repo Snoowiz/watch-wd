@@ -25,6 +25,12 @@ export function CategoryPage() {
 
   const categoryMatches = matches.filter(m => (m.categories || []).some((catId: any) => Number(catId) === Number(category.id)));
 
+  const formatMatchDateSafe = (dateVal: any, fmt: string) => {
+    if (!dateVal || dateVal === 'Invalid Date') return 'TBA';
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? 'TBA' : format(d, fmt);
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -88,11 +94,11 @@ export function CategoryPage() {
                   <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
                     <div className="flex items-center gap-1.5">
                       <Calendar className="w-4 h-4" />
-                      {match.date ? format(new Date(match.date), 'MMM d, yyyy') : 'TBA'}
+                      {formatMatchDateSafe(match.date, 'MMM d, yyyy')}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Clock className="w-4 h-4" />
-                      {match.date ? format(new Date(match.date), 'h:mm a') : 'TBA'}
+                      {formatMatchDateSafe(match.date, 'h:mm a')}
                     </div>
                   </div>
                 </div>
@@ -135,11 +141,11 @@ export function CategoryPage() {
                   <div className="flex items-center gap-6 text-sm text-slate-500 dark:text-slate-400">
                     <div className="flex items-center gap-1.5 font-medium">
                       <Calendar className="w-4 h-4" />
-                      {match.date ? format(new Date(match.date), 'MMM d, yyyy') : 'TBA'}
+                      {formatMatchDateSafe(match.date, 'MMM d, yyyy')}
                     </div>
                     <div className="flex items-center gap-1.5 font-medium">
                       <Clock className="w-4 h-4" />
-                      {match.date ? format(new Date(match.date), 'h:mm a') : 'TBA'}
+                      {formatMatchDateSafe(match.date, 'h:mm a')}
                     </div>
                   </div>
                 </div>

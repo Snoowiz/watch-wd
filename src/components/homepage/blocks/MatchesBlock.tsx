@@ -20,6 +20,12 @@ import {
   Match
 } from '../../../store';
 
+function formatSafeDate(dateVal: any, formatStr: string): string {
+  if (!dateVal || dateVal === 'Invalid Date') return 'TBA';
+  const d = new Date(dateVal);
+  return isNaN(d.getTime()) ? 'TBA' : format(d, formatStr);
+}
+
 export function MatchesBlock({ block }: { block: HomepageBlock }) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -268,11 +274,11 @@ function MatchCard({
           <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 font-bold">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-yellow-500" />
-              {match.date ? format(new Date(match.date), 'MMM d, yyyy') : 'TBA'}
+              {formatSafeDate(match.date, 'MMM d, yyyy')}
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-yellow-500" />
-              {match.date ? format(new Date(match.date), 'h:mm a') : 'TBA'}
+              {formatSafeDate(match.date, 'h:mm a')}
             </div>
           </div>
         </div>
@@ -319,9 +325,9 @@ function MatchListItem({
             {match.title}
           </h3>
           <div className="flex items-center gap-3 text-xs text-slate-400 font-medium mt-1">
-            <span>{match.date ? format(new Date(match.date), 'MMM d, yyyy') : 'TBA'}</span>
+            <span>{formatSafeDate(match.date, 'MMM d, yyyy')}</span>
             <span>•</span>
-            <span>{match.date ? format(new Date(match.date), 'h:mm a') : 'TBA'}</span>
+            <span>{formatSafeDate(match.date, 'h:mm a')}</span>
           </div>
         </div>
       </div>

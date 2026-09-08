@@ -1340,6 +1340,17 @@ var DocWrapper = class {
         mappedRow.username = mappedRow.name;
       }
     }
+    if (this.tableName === "matches") {
+      let matchDate = mappedRow.date || mappedRow.start_time || mappedRow.startTime;
+      if (!matchDate || matchDate === "Invalid Date" || isNaN(new Date(matchDate).getTime())) {
+        matchDate = mappedRow.created_at || mappedRow.createdAt || (/* @__PURE__ */ new Date()).toISOString();
+      } else {
+        matchDate = new Date(matchDate).toISOString();
+      }
+      mappedRow.date = matchDate;
+      mappedRow.start_time = matchDate.slice(0, 19).replace("T", " ");
+      mappedRow.startTime = mappedRow.start_time;
+    }
     return { id: this.id, exists: true, ref: this, data: () => mappedRow };
   }
   async set(data, _options) {
@@ -1484,6 +1495,17 @@ var CollectionWrapper = class _CollectionWrapper {
           mappedRow.user_name = mappedRow.name;
           mappedRow.username = mappedRow.name;
         }
+      }
+      if (this.tableName === "matches") {
+        let matchDate = mappedRow.date || mappedRow.start_time || mappedRow.startTime;
+        if (!matchDate || matchDate === "Invalid Date" || isNaN(new Date(matchDate).getTime())) {
+          matchDate = mappedRow.created_at || mappedRow.createdAt || (/* @__PURE__ */ new Date()).toISOString();
+        } else {
+          matchDate = new Date(matchDate).toISOString();
+        }
+        mappedRow.date = matchDate;
+        mappedRow.start_time = matchDate.slice(0, 19).replace("T", " ");
+        mappedRow.startTime = mappedRow.start_time;
       }
       return {
         id: docId,
@@ -3165,13 +3187,16 @@ async function startServer() {
     try {
       const matchData = { ...req.body };
       delete matchData.id;
-      if (matchData.scheduledDate) {
-        matchData.start_time = matchData.scheduledDate;
-        delete matchData.scheduledDate;
-      } else if (matchData.date && !matchData.startTime && !matchData.start_time) {
-        matchData.start_time = matchData.date;
-        delete matchData.date;
+      let resolvedDate = matchData.date || matchData.start_time || matchData.startTime || matchData.scheduledDate;
+      if (!resolvedDate || resolvedDate === "Invalid Date" || isNaN(new Date(resolvedDate).getTime())) {
+        resolvedDate = (/* @__PURE__ */ new Date()).toISOString();
+      } else {
+        resolvedDate = new Date(resolvedDate).toISOString();
       }
+      matchData.date = resolvedDate;
+      matchData.start_time = resolvedDate.slice(0, 19).replace("T", " ");
+      delete matchData.startTime;
+      delete matchData.scheduledDate;
       const fieldMappings = {
         accessType: "access_type",
         ppvPrice: "ppv_price",
@@ -3211,13 +3236,18 @@ async function startServer() {
     try {
       const matchData = { ...req.body };
       delete matchData.id;
-      if (matchData.scheduledDate) {
-        matchData.start_time = matchData.scheduledDate;
-        delete matchData.scheduledDate;
-      } else if (matchData.date && !matchData.startTime && !matchData.start_time) {
-        matchData.start_time = matchData.date;
-        delete matchData.date;
+      if (matchData.date !== void 0 || matchData.startTime !== void 0 || matchData.start_time !== void 0 || matchData.scheduledDate !== void 0) {
+        let resolvedDate = matchData.date || matchData.start_time || matchData.startTime || matchData.scheduledDate;
+        if (!resolvedDate || resolvedDate === "Invalid Date" || isNaN(new Date(resolvedDate).getTime())) {
+          resolvedDate = (/* @__PURE__ */ new Date()).toISOString();
+        } else {
+          resolvedDate = new Date(resolvedDate).toISOString();
+        }
+        matchData.date = resolvedDate;
+        matchData.start_time = resolvedDate.slice(0, 19).replace("T", " ");
       }
+      delete matchData.startTime;
+      delete matchData.scheduledDate;
       const fieldMappings = {
         accessType: "access_type",
         ppvPrice: "ppv_price",
@@ -7115,6 +7145,13 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     });
     execute(`
       ALTER TABLE \`users\` MODIFY COLUMN \`avatar\` LONGTEXT DEFAULT NULL
+    `).catch(() => {
+    });
+    execute(`
+      UPDATE \`matches\` 
+      SET \`date\` = COALESCE(NULLIF(\`date\`, ''), NULLIF(\`start_time\`, ''), \`created_at\`, NOW()),
+          \`start_time\` = COALESCE(NULLIF(\`start_time\`, ''), NULLIF(\`date\`, ''), \`created_at\`, NOW())
+      WHERE \`date\` IS NULL OR \`date\` = '' OR \`date\` = 'Invalid Date' OR \`start_time\` IS NULL
     `).catch(() => {
     });
     execute(`

@@ -279,7 +279,12 @@ export function AdminMatches() {
                               <code className="bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded">/{match.slug}</code>
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                {new Date(match.date).toLocaleDateString()}
+                                {(() => {
+                                  const raw = match.date || (match as any).startTime || (match as any).start_time;
+                                  if (!raw || raw === 'Invalid Date') return new Date().toLocaleDateString();
+                                  const d = new Date(raw);
+                                  return isNaN(d.getTime()) ? new Date().toLocaleDateString() : d.toLocaleDateString();
+                                })()}
                               </span>
                             </div>
                           </div>

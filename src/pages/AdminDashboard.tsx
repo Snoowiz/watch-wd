@@ -688,7 +688,14 @@ function AdminOverview() {
               <div className="mt-3">
                 <h4 className="text-lg font-black tracking-tight line-clamp-1">{mostWatchedMatch.title}</h4>
                 <div className="flex items-center justify-between text-xs mt-3">
-                  <span className="text-indigo-200 font-mono">{new Date(mostWatchedMatch.date).toLocaleDateString()}</span>
+                  <span className="text-indigo-200 font-mono">
+                    {(() => {
+                      const d = mostWatchedMatch.date || (mostWatchedMatch as any).startTime || (mostWatchedMatch as any).start_time;
+                      if (!d || d === 'Invalid Date') return new Date().toLocaleDateString();
+                      const parsed = new Date(d);
+                      return isNaN(parsed.getTime()) ? new Date().toLocaleDateString() : parsed.toLocaleDateString();
+                    })()}
+                  </span>
                   <span className="font-mono font-bold flex items-center gap-1.5 bg-indigo-500/50 px-2.5 py-1 rounded-lg">
                     <Eye className="w-3.5 h-3.5" /> {(mostWatchedMatch.views || 0).toLocaleString()}
                   </span>

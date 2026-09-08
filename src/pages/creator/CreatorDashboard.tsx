@@ -424,7 +424,13 @@ export function CreatorDashboard() {
                     {myVideos.slice(0, 5).map((match, i) => (
                       <div key={match.id} className="relative pl-8">
                         <div className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-indigo-600 border-4 border-white dark:border-slate-900"></div>
-                        <div className="text-sm text-slate-500 dark:text-slate-400 font-bold mb-1">{format(new Date(match.date), 'MMM d, yyyy')}</div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400 font-bold mb-1">
+                          {(() => {
+                            const raw = match.date || (match as any).startTime || (match as any).start_time;
+                            const d = raw ? new Date(raw) : null;
+                            return format(d && !isNaN(d.getTime()) ? d : new Date(), 'MMM d, yyyy');
+                          })()}
+                        </div>
                         <div className="text-slate-900 dark:text-white font-medium">Uploaded a new video: <span className="font-bold text-indigo-600 dark:text-indigo-400">{match.title}</span></div>
                         <div className="text-sm text-slate-500 mt-1 flex items-center gap-2">
                            Status: <span className={`font-bold uppercase text-[10px] tracking-widest px-2 py-0.5 rounded-full ${match.publishStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
