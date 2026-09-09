@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import DOMPurify from 'dompurify';
-import { Search, Loader2, Video, MessageSquare, BookOpen, ChevronRight, HelpCircle, ArrowRight, Tag } from 'lucide-react';
+import { Search, Loader2, Video, BookOpen, ChevronRight, HelpCircle, ArrowRight, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { useSettingsStore } from '../store';
+import { stripHtml } from '../utils';
 
 interface SearchResults {
   matches: any[];
   blogs: any[];
-  forums: any[];
   kb: any[];
   totalCount: number;
 }
@@ -18,8 +17,8 @@ export function SearchPage() {
   const { blogSettings } = useSettingsStore();
   const blogEnabled = blogSettings?.enabled !== false;
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'matches' | 'blog' | 'forum' | 'kb'>('all');
-  const [results, setResults] = useState<SearchResults>({ matches: [], blogs: [], forums: [], kb: [], totalCount: 0 });
+  const [activeTab, setActiveTab] = useState<'all' | 'matches' | 'blog' | 'kb'>('all');
+  const [results, setResults] = useState<SearchResults>({ matches: [], blogs: [], kb: [], totalCount: 0 });
   const [loading, setLoading] = useState(false);
   const [expandedKbId, setExpandedKbId] = useState<string | null>(null);
 
@@ -28,7 +27,7 @@ export function SearchPage() {
       if (query.trim().length >= 2) {
         performSearch();
       } else if (query.trim() === '') {
-        setResults({ matches: [], blogs: [], forums: [], kb: [], totalCount: 0 });
+        setResults({ matches: [], blogs: [], kb: [], totalCount: 0 });
       }
     }, 300);
 
@@ -43,7 +42,12 @@ export function SearchPage() {
       if (data.error) {
         console.error(data.error);
       } else {
-        setResults(data);
+        setResults({
+          matches: data.matches || [],
+          blogs: data.blogs || [],
+          kb: data.kb || [],
+          totalCount: data.totalCount || 0
+        });
       }
     } catch (e) {
       console.error("Search failed", e);
@@ -68,7 +72,7 @@ export function SearchPage() {
 
   const clearSearch = () => {
     setQuery('');
-    setResults({ matches: [], blogs: [], forums: [], kb: [], totalCount: 0 });
+    setResults({ matches: [], blogs: [], kb: [], totalCount: 0 });
   };
 
   // Determine which list is displayed based on tab selection
@@ -79,9 +83,6 @@ export function SearchPage() {
     }
     if (blogEnabled && (activeTab === 'all' || activeTab === 'blog')) {
       results.blogs.forEach(b => list.push({ ...b, _type: 'blog' }));
-    }
-    if (activeTab === 'all' || activeTab === 'forum') {
-      results.forums.forEach(f => list.push({ ...f, _type: 'forum' }));
     }
     if (activeTab === 'all' || activeTab === 'kb') {
       results.kb.forEach(k => list.push({ ...k, _type: 'kb' }));
@@ -109,7 +110,7 @@ export function SearchPage() {
           Platform Search
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-lg mx-auto text-sm sm:text-base">
-          Find matches, community forum threads, blog articles, and platform help guides.
+          Find live matches, blog articles, and platform help guides.
         </p>
       </div>
 
@@ -197,16 +198,6 @@ export function SearchPage() {
                 </button>
               )}
               <button
-                onClick={() => setActiveTab('forum')}
-                className={`flex items-center gap-1.5 px-4 py-2 border-b-2 font-bold text-sm rounded-t-lg shrink-0 transition-colors ${activeTab === 'forum' ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
-              >
-                <MessageSquare className="w-4 h-4" />
-                Forums
-                <span className="ml-1 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] font-bold rounded-full text-slate-500">
-                  {results.forums.length}
-                </span>
-              </button>
-              <button
                 onClick={() => setActiveTab('kb')}
                 className={`flex items-center gap-1.5 px-4 py-2 border-b-2 font-bold text-sm rounded-t-lg shrink-0 transition-colors ${activeTab === 'kb' ? 'border-yellow-500 text-yellow-600 dark:text-yellow-400' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}
               >
@@ -227,7 +218,7 @@ export function SearchPage() {
               <Search className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700 mb-4" />
               <p className="text-slate-600 dark:text-slate-400 font-bold text-lg">Start typing to search WatchWDS</p>
               <p className="text-slate-400 dark:text-slate-500 text-xs sm:text-sm mt-1 max-w-sm mx-auto">
-                Discover live streams, operational matches, blog insights, and support guides effortlessly.
+                Discover live streams, upcoming matches, blog insights, and support guides effortlessly.
               </p>
             </div>
           ) : displayList.length === 0 ? (
@@ -250,6 +241,10 @@ export function SearchPage() {
           ) : (
             displayList.map((item, index) => {
               if (item._type === 'match') {
+                const cleanDesc = stripHtml(item.description);
+                const cleanContent = stripHtml(item.content);
+                const displaySnippet = cleanDesc || cleanContent;
+
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -287,11 +282,15 @@ export function SearchPage() {
                         <h3 className="font-bold sm:text-lg text-slate-900 dark:text-white group-hover:text-yellow-500 transition-colors">
                           {item.title}
                         </h3>
-                        {item.description && (
+                        {displaySnippet ? (
                           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 max-w-2xl">
-                            {item.description}
+                            {displaySnippet}
                           </p>
-                        )}
+                        ) : item.date ? (
+                          <p className="text-xs text-slate-400 mt-1">
+                            Scheduled: {item.date}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <Link
@@ -306,6 +305,7 @@ export function SearchPage() {
               }
 
               if (item._type === 'blog') {
+                const cleanExcerpt = stripHtml(item.excerpt) || stripHtml(item.content);
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -331,7 +331,7 @@ export function SearchPage() {
                           {item.title}
                         </h3>
                         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">
-                          {item.excerpt || "Read our latest CMS blog publication..."}
+                          {cleanExcerpt || "Read our latest CMS blog publication..."}
                         </p>
                         {item.tags && item.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
@@ -356,50 +356,9 @@ export function SearchPage() {
                 );
               }
 
-              if (item._type === 'forum') {
-                return (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(index * 0.05, 0.3) }}
-                    key={`forum-${item.id}`}
-                    className="group bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm hover:shadow-md dark:shadow-none transition-all flex flex-col sm:flex-row gap-5 items-start sm:items-center justify-between"
-                  >
-                    <div className="flex gap-4 items-start sm:items-center max-w-3xl">
-                      <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center text-emerald-500 shrink-0">
-                        <MessageSquare className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="text-[10px] uppercase font-extrabold tracking-wider text-emerald-500 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded">
-                            Community Forum
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700/80 rounded font-mono text-slate-400">
-                            Relevance: {item._score}
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            by {item.author_name}
-                          </span>
-                        </div>
-                        <h3 className="font-bold sm:text-lg text-slate-900 dark:text-white group-hover:text-yellow-500 transition-colors">
-                          {item.title}
-                        </h3>
-                        <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 max-w-xl" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.content) }} />
-                      </div>
-                    </div>
-                    <Link
-                      to={`/forum/topic/${item.id}`}
-                      className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 bg-slate-50 hover:bg-yellow-500 hover:text-white dark:bg-slate-700/60 dark:hover:bg-yellow-500 dark:hover:text-slate-900 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl transition-all border border-slate-100 dark:border-slate-700"
-                    >
-                      Go to Topic
-                      <ArrowRight className="w-4 h-4 ml-0.5" />
-                    </Link>
-                  </motion.div>
-                );
-              }
-
               if (item._type === 'kb') {
                 const isExpanded = expandedKbId === item.id;
+                const cleanContent = stripHtml(item.content);
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -444,7 +403,7 @@ export function SearchPage() {
                           className="overflow-hidden mt-4 pt-4 border-t border-slate-100 dark:border-slate-750"
                         >
                           <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-xl leading-relaxed text-sm sm:text-base text-slate-700 dark:text-slate-300">
-                            {item.content}
+                            {cleanContent}
                             {item.tags && item.tags.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-4">
                                 {item.tags.map((tag: string, tid: number) => (

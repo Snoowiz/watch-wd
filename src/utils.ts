@@ -4,8 +4,19 @@
 export function stripHtml(html: string | null | undefined): string {
   if (!html) return '';
   
-  // First, strip all HTML tags
-  let text = html.replace(/<[^>]*>/g, ' ');
+  // First, completely remove iframes, video, audio, script, and style blocks (including inner content and self-closing/unclosed tags)
+  let text = html
+    .replace(/<iframe\b[^>]*>(.*?)<\/iframe>/gis, ' ')
+    .replace(/<iframe\b[^>]*\/?>/gis, ' ')
+    .replace(/<video\b[^>]*>(.*?)<\/video>/gis, ' ')
+    .replace(/<video\b[^>]*\/?>/gis, ' ')
+    .replace(/<audio\b[^>]*>(.*?)<\/audio>/gis, ' ')
+    .replace(/<audio\b[^>]*\/?>/gis, ' ')
+    .replace(/<script\b[^>]*>(.*?)<\/script>/gis, ' ')
+    .replace(/<style\b[^>]*>(.*?)<\/style>/gis, ' ');
+  
+  // Strip all remaining HTML tags
+  text = text.replace(/<[^>]+>/g, ' ');
   
   // Replace HTML entities with actual characters
   text = text

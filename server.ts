@@ -1019,6 +1019,29 @@ async function startServer() {
     res.json({ hasAccess: true }); 
   });
 
+  // Helper to cleanly sanitize HTML and strip iframe/video/audio/script/style embeds
+  function cleanHtmlSnippet(str: string | null | undefined): string {
+    if (!str) return '';
+    return String(str)
+      .replace(/<iframe\b[^>]*>(.*?)<\/iframe>/gis, ' ')
+      .replace(/<iframe\b[^>]*\/?>/gis, ' ')
+      .replace(/<video\b[^>]*>(.*?)<\/video>/gis, ' ')
+      .replace(/<video\b[^>]*\/?>/gis, ' ')
+      .replace(/<audio\b[^>]*>(.*?)<\/audio>/gis, ' ')
+      .replace(/<audio\b[^>]*\/?>/gis, ' ')
+      .replace(/<script\b[^>]*>(.*?)<\/script>/gis, ' ')
+      .replace(/<style\b[^>]*>(.*?)<\/style>/gis, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   // === SEARCH ENDPOINT ===
   app.get("/api/search", async (req, res) => {
     try {
@@ -1029,7 +1052,6 @@ async function startServer() {
         return res.json({
           matches: [],
           blogs: [],
-          forums: [],
           kb: [],
           totalCount: 0
         });
@@ -1039,7 +1061,6 @@ async function startServer() {
       
       let matches: any[] = [];
       let blogs: any[] = [];
-      let forums: any[] = [];
       let kb: any[] = [];
       
       // Dynamic scoring helper
@@ -1085,10 +1106,20 @@ async function startServer() {
           return { id: Number(doc.id) || doc.id, ...data };
         })
         .map((item: any) => {
-          const score = calculateScore(item.title, item.description || "", item.content || "", item.categories || []);
-          return { ...item, _score: score };
+          const cleanDesc = cleanHtmlSnippet(item.description);
+          const cleanContent = cleanHtmlSnippet(item.content);
+          const metaDesc = cleanHtmlSnippet(item.seo?.metaDescription);
+          const tags: string[] = Array.isArray(item.categories) ? [...item.categories] : [];
+          if (item.seo?.keywords) {
+            tags.push(...String(item.seo.keywords).split(',').map((k: string) => k.trim()));
+          }
+          const score = calculateScore(item.title, cleanDesc || metaDesc, cleanContent, tags);
+          
+          const publicItem = sanitizeMatchForPublic(item);
+          publicItem.description = cleanDesc || cleanContent || metaDesc || (item.date ? `Live match broadcast · ${item.date}` : "");
+          return { ...publicItem, _score: score };
         })
-        .filter((item: any) => item._score > 0)
+        .filter((item: any) => item._score > 0 && item.publish_status !== 'draft' && item.publish_status !== 'rejected')
         .sort((a: any, b: any) => b._score - a._score);
       }
       
@@ -1100,29 +1131,16 @@ async function startServer() {
           return { id: Number(doc.id) || doc.id, ...data };
         })
         .map((item: any) => {
-          const score = calculateScore(item.title, item.excerpt || "", item.content || "", item.tags || [], item.categories?.join(" ") || "");
-          return { ...item, _score: score };
+          const cleanExcerpt = cleanHtmlSnippet(item.excerpt);
+          const cleanContent = cleanHtmlSnippet(item.content);
+          const score = calculateScore(item.title, cleanExcerpt, cleanContent, item.tags || [], item.categories?.join(" ") || "");
+          return { ...item, excerpt: cleanExcerpt, content: cleanContent, _score: score };
         })
         .filter((item: any) => item._score > 0 && item.status === "published")
         .sort((a: any, b: any) => b._score - a._score);
       }
       
-      // 3. Search Forum topics
-      if (type === "all" || type === "forum") {
-        const topicsSnap = await db.collection("forum_topics").get();
-        forums = topicsSnap.docs.map(doc => {
-          const data = doc.data() as any;
-          return { id: Number(doc.id) || doc.id, ...data };
-        })
-        .map((item: any) => {
-          const score = calculateScore(item.title, "", item.content || "");
-          return { ...item, _score: score };
-        })
-        .filter((item: any) => item._score > 0)
-        .sort((a: any, b: any) => b._score - a._score);
-      }
-      
-      // 4. Search Knowledge Base
+      // 3. Search Knowledge Base
       if (type === "all" || type === "kb") {
         const kbSnap = await db.collection("knowledge_base").get();
         kb = kbSnap.docs.map(doc => {
@@ -1130,19 +1148,19 @@ async function startServer() {
           return { id: doc.id, ...data };
         })
         .map((item: any) => {
-          const score = calculateScore(item.title, "", item.content || "", item.tags || [], item.category || "");
-          return { ...item, _score: score };
+          const cleanContent = cleanHtmlSnippet(item.content);
+          const score = calculateScore(item.title, "", cleanContent, item.tags || [], item.category || "");
+          return { ...item, content: cleanContent, _score: score };
         })
         .filter((item: any) => item._score > 0)
         .sort((a: any, b: any) => b._score - a._score);
       }
       
-      const totalCount = matches.length + blogs.length + forums.length + kb.length;
+      const totalCount = matches.length + blogs.length + kb.length;
       
       res.json({
         matches,
         blogs,
-        forums,
         kb,
         totalCount
       });
