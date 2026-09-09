@@ -313,11 +313,21 @@ export function AdminMatches() {
                       </td>
                       <td className="p-4">
                         <div className="flex flex-col gap-1">
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold ${match.access === 'free' ? 'text-green-600 dark:text-green-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold ${
+                            match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0)
+                              ? 'text-purple-600 dark:text-purple-400'
+                              : match.access === 'free'
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-indigo-600 dark:text-indigo-400'
+                          }`}>
                             {match.access === 'free' ? <Globe className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                            {match.access === 'free' ? 'Free' : 'Paid'}
+                            {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0)
+                              ? 'Plan'
+                              : match.access === 'free'
+                              ? 'Free'
+                              : 'PPV'}
                           </span>
-                          {match.access === 'paid' && (
+                          {(match.access_type === 'ppv' || (match.access === 'paid' && Number(match.price || 0) > 0)) && (
                             <span className="text-[10px] font-bold text-slate-400">{currencySymbol}{match.price}</span>
                           )}
                         </div>

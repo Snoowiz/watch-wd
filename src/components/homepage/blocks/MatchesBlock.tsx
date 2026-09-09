@@ -252,7 +252,11 @@ function MatchCard({
             >
               {match.status}
             </div>
-            {match.access === 'paid' ? (
+            {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
+              <div className="bg-indigo-600/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xl uppercase tracking-wider">
+                PLAN
+              </div>
+            ) : match.access === 'paid' ? (
               <div className="bg-slate-900/90 backdrop-blur-md text-yellow-500 text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
                 {currencySymbol}{match.price}
               </div>
@@ -338,7 +342,11 @@ function MatchListItem({
       </div>
 
       <div className="flex items-center gap-3 self-end sm:self-center">
-        {match.access === 'paid' ? (
+        {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
+          <span className="px-3 py-1 rounded-lg text-xs font-black bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 uppercase tracking-wider">
+            PLAN
+          </span>
+        ) : match.access === 'paid' ? (
           <span className="px-3 py-1 rounded-lg text-xs font-black bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">
             {currencySymbol}{match.price}
           </span>

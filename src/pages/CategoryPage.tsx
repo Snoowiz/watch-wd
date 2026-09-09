@@ -73,7 +73,11 @@ export function CategoryPage() {
                     }`}>
                       {match.status}
                     </div>
-                    {match.access === 'paid' ? (
+                    {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
+                      <div className="bg-indigo-600/90 backdrop-blur-sm text-white text-sm font-bold px-3 py-1 rounded-lg shadow-xl uppercase tracking-wider">
+                        PLAN
+                      </div>
+                    ) : match.access === 'paid' ? (
                       <div className="bg-slate-900/80 backdrop-blur-sm text-yellow-500 text-sm font-bold px-3 py-1 rounded-lg border border-white/10">
                         {currencySymbol}{match.price}
                       </div>
@@ -150,7 +154,11 @@ export function CategoryPage() {
                   </div>
                 </div>
                 <div className="text-right pr-4">
-                  {match.access === 'paid' ? (
+                  {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
+                    <div className="text-xl font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      PLAN
+                    </div>
+                  ) : match.access === 'paid' ? (
                     <div className="text-xl font-black text-slate-900 dark:text-white">
                       {currencySymbol}{match.price}
                     </div>

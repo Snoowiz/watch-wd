@@ -183,7 +183,11 @@ export function Matches() {
                         ) : null;
                       })}
                     </div>
-                    {match.access === 'paid' ? (
+                    {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
+                      <div className="bg-indigo-600/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xl uppercase tracking-wider">
+                        PLAN
+                      </div>
+                    ) : match.access === 'paid' ? (
                       <div className="bg-slate-900/90 backdrop-blur-md text-yellow-500 text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
                         {currencySymbol}{match.price}
                       </div>
@@ -259,13 +263,21 @@ export function Matches() {
                         {match.status}
                       </span>
                       <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-widest ${
-                        match.access === 'free' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400'
+                        match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0)
+                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400'
+                          : match.access === 'free'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400'
                       }`}>
-                        {match.access}
+                        {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? 'PLAN' : match.access === 'free' ? 'FREE' : 'PPV'}
                       </span>
                       {/* Price on mobile/tablet view only (hidden on large desktop) */}
                       <span className="md:hidden text-[10px] sm:text-sm font-black text-slate-900 dark:text-white">
-                        {match.access === 'paid' ? `${currencySymbol}${match.price}` : 'FREE'}
+                        {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0)
+                          ? 'PLAN'
+                          : match.access === 'paid'
+                          ? `${currencySymbol}${match.price}`
+                          : 'FREE'}
                       </span>
                     </div>
 
@@ -293,7 +305,11 @@ export function Matches() {
 
                   {/* Desktop-only price column */}
                   <div className="hidden md:block text-right pr-6 shrink-0 font-black">
-                    {match.access === 'paid' ? (
+                    {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
+                      <div className="text-2xl text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                        PLAN
+                      </div>
+                    ) : match.access === 'paid' ? (
                       <div className="text-3xl text-slate-900 dark:text-white">
                         {currencySymbol}{match.price}
                       </div>

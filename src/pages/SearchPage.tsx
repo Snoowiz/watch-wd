@@ -267,9 +267,17 @@ export function SearchPage() {
                           <span className="text-[10px] uppercase font-extrabold tracking-wider text-blue-500 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded">
                             Live Stream
                           </span>
-                          {item.is_ppv === 1 && (
+                          {item.access_type === 'plan' || (!item.access_type && item.access === 'paid' && Number(item.price || 0) === 0) ? (
+                            <span className="text-[10px] uppercase font-extrabold tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded">
+                              Plan
+                            </span>
+                          ) : (item.is_ppv === 1 || item.access_type === 'ppv' || (item.access === 'paid' && Number(item.price || 0) > 0)) ? (
                             <span className="text-[10px] uppercase font-extrabold tracking-wider text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/50 px-2 py-0.5 rounded">
                               PPV Event
+                            </span>
+                          ) : (
+                            <span className="text-[10px] uppercase font-extrabold tracking-wider text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/50 px-2 py-0.5 rounded">
+                              Free
                             </span>
                           )}
                           <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700/80 rounded font-mono text-slate-400">
