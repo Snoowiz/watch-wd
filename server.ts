@@ -2763,7 +2763,7 @@ async function startServer() {
         if (isDestinationCharge && stripeAccountId) {
           // Funds were already directly split to connected account at checkout time by Stripe
           instantSuccess = true;
-        } else if (stripeAccountId && isOnboarded) {
+        } else if (stripeAccountId) {
           // Direct Stripe transfer to connected account
           try {
             const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
@@ -2907,7 +2907,7 @@ async function startServer() {
 
         metadata.connectedAccountId = connectedAccountId;
         metadata.platformFeePercent = platformFeePercent;
-        metadata.isDestinationCharge = !!connectedAccountId;
+        metadata.isDestinationCharge = false;
       } else if (type === "plan" && metadata?.planId) {
         const planDoc = await db.collection("plans").doc(String(metadata.planId)).get();
         if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
@@ -2978,14 +2978,7 @@ async function startServer() {
           }
         };
 
-        // If this is a PPV watch purchase with a connected Stripe account, use destination charges
-        if (type === "watch" && connectedAccountId) {
-          sessionParams.payment_intent_data = {
-            application_fee_amount: applicationFeeAmount,
-            transfer_data: {
-              destination: connectedAccountId,
-            },
-          };
+        if (type === "watch") {
           metadata.applicationFeeCents = applicationFeeAmount;
         }
 
@@ -3251,9 +3244,7 @@ async function startServer() {
 
         // Record Partner Club PPV Revenue Split immediately
         if (type === "watch" && metadata?.matchId) {
-          const isDest = metadata?.isDestinationCharge !== undefined
-            ? !!metadata.isDestinationCharge
-            : (gateway === "stripe" && !!metadata?.connectedAccountId);
+          const isDest = !!metadata?.isDestinationCharge;
 
           await processClubRevenueSplit({
             matchId: String(metadata.matchId),
@@ -5143,7 +5134,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         platformFeePercent,
         applicationFeeCents,
         connectedAccountId: connectedAccountId || null,
-        isDestinationCharge: !!connectedAccountId
+        isDestinationCharge: false
       };
 
       await db.collection("transactions").doc(transactionId).set({
@@ -5197,16 +5188,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             payment_type: "ppv_watch"
           }
         };
-
-        // If club has a connected account, use Stripe Connect destination charges
-        if (connectedAccountId) {
-          sessionParams.payment_intent_data = {
-            application_fee_amount: applicationFeeCents,
-            transfer_data: {
-              destination: connectedAccountId,
-            },
-          };
-        }
 
         const session = await stripe.checkout.sessions.create(sessionParams);
         return res.json({ checkoutUrl: session.url });
@@ -5268,9 +5249,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
         if (txnData.status === "completed") {
           if ((txnData.type === "watch" || txnData.type === "ppv") && txnData.metadata?.matchId) {
-            const isDest = txnData.metadata?.isDestinationCharge !== undefined
-              ? !!txnData.metadata.isDestinationCharge
-              : !!txnData.metadata?.connectedAccountId;
+            const isDest = !!txnData.metadata?.isDestinationCharge;
             await processClubRevenueSplit({
               matchId: String(txnData.metadata.matchId),
               transactionId: txnId,
@@ -5341,9 +5320,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
           // === COMMISSION RECORDING: Process club earnings and revenue split ===
           if (metadata?.matchId) {
-            const isDest = metadata?.isDestinationCharge !== undefined
-              ? !!metadata.isDestinationCharge
-              : !!metadata?.connectedAccountId;
+            const isDest = !!metadata?.isDestinationCharge;
             await processClubRevenueSplit({
               matchId: String(metadata.matchId),
               transactionId: txnId,

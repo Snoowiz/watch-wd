@@ -4321,7 +4321,7 @@ async function startServer() {
         let instantSuccess = false;
         if (isDestinationCharge && stripeAccountId) {
           instantSuccess = true;
-        } else if (stripeAccountId && isOnboarded) {
+        } else if (stripeAccountId) {
           try {
             const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
             const gatewaySettings = settingsDoc.exists ? settingsDoc.data() : {};
@@ -4444,7 +4444,7 @@ async function startServer() {
         }
         metadata.connectedAccountId = connectedAccountId;
         metadata.platformFeePercent = platformFeePercent;
-        metadata.isDestinationCharge = !!connectedAccountId;
+        metadata.isDestinationCharge = false;
       } else if (type === "plan" && metadata?.planId) {
         const planDoc = await db.collection("plans").doc(String(metadata.planId)).get();
         if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
@@ -4508,13 +4508,7 @@ async function startServer() {
             payment_type: type === "watch" ? "ppv_watch" : type
           }
         };
-        if (type === "watch" && connectedAccountId) {
-          sessionParams.payment_intent_data = {
-            application_fee_amount: applicationFeeAmount,
-            transfer_data: {
-              destination: connectedAccountId
-            }
-          };
+        if (type === "watch") {
           metadata.applicationFeeCents = applicationFeeAmount;
         }
         const session = await stripe.checkout.sessions.create(sessionParams);
@@ -4738,7 +4732,7 @@ async function startServer() {
         notifyUser(userId, "Purchase Successful", `You have unlocked access.`, "success", `/matches/${metadata.matchId}`);
         notifyAdmins("New Purchase", `A user purchased access for amount: ${amount}`, "system", "/admin/transactions");
         if (type === "watch" && metadata?.matchId) {
-          const isDest = metadata?.isDestinationCharge !== void 0 ? !!metadata.isDestinationCharge : gateway === "stripe" && !!metadata?.connectedAccountId;
+          const isDest = !!metadata?.isDestinationCharge;
           await processClubRevenueSplit({
             matchId: String(metadata.matchId),
             transactionId: String(txn_id),
@@ -6419,7 +6413,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         platformFeePercent,
         applicationFeeCents,
         connectedAccountId: connectedAccountId || null,
-        isDestinationCharge: !!connectedAccountId
+        isDestinationCharge: false
       };
       await db.collection("transactions").doc(transactionId).set({
         userId,
@@ -6466,14 +6460,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             payment_type: "ppv_watch"
           }
         };
-        if (connectedAccountId) {
-          sessionParams.payment_intent_data = {
-            application_fee_amount: applicationFeeCents,
-            transfer_data: {
-              destination: connectedAccountId
-            }
-          };
-        }
         const session = await stripe.checkout.sessions.create(sessionParams);
         return res.json({ checkoutUrl: session.url });
       }
@@ -6517,7 +6503,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         const txnData = txnDoc.data();
         if (txnData.status === "completed") {
           if ((txnData.type === "watch" || txnData.type === "ppv") && txnData.metadata?.matchId) {
-            const isDest = txnData.metadata?.isDestinationCharge !== void 0 ? !!txnData.metadata.isDestinationCharge : !!txnData.metadata?.connectedAccountId;
+            const isDest = !!txnData.metadata?.isDestinationCharge;
             await processClubRevenueSplit({
               matchId: String(txnData.metadata.matchId),
               transactionId: txnId,
@@ -6578,7 +6564,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           notifyUser(userId, "Purchase Successful", "You have unlocked PPV match access.", "success", `/matches/${metadata?.fromMatchSlug || metadata?.matchId}`);
           notifyAdmins("PPV Purchase (Stripe Connect)", `PPV purchase completed: ${amount} for match #${metadata?.matchId}`, "system", "/admin/transactions");
           if (metadata?.matchId) {
-            const isDest = metadata?.isDestinationCharge !== void 0 ? !!metadata.isDestinationCharge : !!metadata?.connectedAccountId;
+            const isDest = !!metadata?.isDestinationCharge;
             await processClubRevenueSplit({
               matchId: String(metadata.matchId),
               transactionId: txnId,
