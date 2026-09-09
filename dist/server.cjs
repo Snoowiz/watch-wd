@@ -1001,7 +1001,9 @@ var PK_MAP = {
   // varchar pk
   transactions: "id",
   // varchar pk
-  payouts: "id"
+  payouts: "id",
+  // varchar pk
+  club_balances: "club_id"
   // varchar pk
 };
 function getPkColumn(table) {
@@ -1369,8 +1371,7 @@ var DocWrapper = class {
       snakeData[camelToSnake(k, this.tableName)] = v;
     }
     const pkSnake = camelToSnake(pk, this.tableName);
-    if (pk === "id" && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
-    if (pk === "slug" && !snakeData[pkSnake]) snakeData[pkSnake] = this.id;
+    if (!snakeData[pkSnake]) snakeData[pkSnake] = this.id;
     const keys = Object.keys(snakeData);
     const vals = Object.values(snakeData).map((v) => serializeValue(v));
     const placeholders = keys.map(() => "?").join(", ");
@@ -2219,14 +2220,14 @@ async function startServer() {
       const hash = import_bcryptjs.default.hashSync(password, 10);
       const finalDeviceId = device_id || Math.random().toString(36).substring(2, 15);
       const adminEmails = getAdminEmails();
-      const role2 = adminEmails.includes((email || "").toLowerCase()) ? "admin" : "viewer";
+      const role = adminEmails.includes((email || "").toLowerCase()) ? "admin" : "viewer";
       const userData = {
         email,
         password: hash,
         name: name || "",
         avatar: avatar || null,
         active_device_id: finalDeviceId,
-        role: role2,
+        role,
         balance: 0,
         status: "active",
         onboarding_completed: 0,
@@ -2414,6 +2415,7 @@ async function startServer() {
       let docId = "";
       if (snapshot.empty) {
         const adminEmails = getAdminEmails();
+        const role = adminEmails.includes(verifiedEmail.toLowerCase()) ? "admin" : "user";
         user = {
           email: verifiedEmail,
           password: "google-auth-no-password",
@@ -2841,6 +2843,10 @@ async function startServer() {
   app.post("/api/access/verify", authenticate, async (req, res) => {
     res.json({ hasAccess: true });
   });
+  function cleanHtmlSnippet(str) {
+    if (!str) return "";
+    return String(str).replace(/<iframe\b[^>]*>(.*?)<\/iframe>/gis, " ").replace(/<iframe\b[^>]*\/?>/gis, " ").replace(/<video\b[^>]*>(.*?)<\/video>/gis, " ").replace(/<video\b[^>]*\/?>/gis, " ").replace(/<audio\b[^>]*>(.*?)<\/audio>/gis, " ").replace(/<audio\b[^>]*\/?>/gis, " ").replace(/<script\b[^>]*>(.*?)<\/script>/gis, " ").replace(/<style\b[^>]*>(.*?)<\/style>/gis, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/\s+/g, " ").trim();
+  }
   app.get("/api/search", async (req, res) => {
     try {
       const queryStr = String(req.query.q || "").trim().toLowerCase();
@@ -2849,7 +2855,6 @@ async function startServer() {
         return res.json({
           matches: [],
           blogs: [],
-          forums: [],
           kb: [],
           totalCount: 0
         });
@@ -2857,7 +2862,6 @@ async function startServer() {
       const keywords = queryStr.split(/\s+/).filter(Boolean);
       let matches = [];
       let blogs = [];
-      let forums = [];
       let kb = [];
       const calculateScore = (title, excerpt, bodyContent, tagsList = [], categoryValue = "") => {
         let score = 0;
@@ -2893,9 +2897,18 @@ async function startServer() {
           const data = doc.data();
           return { id: Number(doc.id) || doc.id, ...data };
         }).map((item) => {
-          const score = calculateScore(item.title, item.description || "", item.content || "", item.categories || []);
-          return { ...item, _score: score };
-        }).filter((item) => item._score > 0).sort((a, b) => b._score - a._score);
+          const cleanDesc = cleanHtmlSnippet(item.description);
+          const cleanContent = cleanHtmlSnippet(item.content);
+          const metaDesc = cleanHtmlSnippet(item.seo?.metaDescription);
+          const tags = Array.isArray(item.categories) ? [...item.categories] : [];
+          if (item.seo?.keywords) {
+            tags.push(...String(item.seo.keywords).split(",").map((k) => k.trim()));
+          }
+          const score = calculateScore(item.title, cleanDesc || metaDesc, cleanContent, tags);
+          const publicItem = sanitizeMatchForPublic(item);
+          publicItem.description = cleanDesc || cleanContent || metaDesc || (item.date ? `Live match broadcast \xB7 ${item.date}` : "");
+          return { ...publicItem, _score: score };
+        }).filter((item) => item._score > 0 && item.publish_status !== "draft" && item.publish_status !== "rejected").sort((a, b) => b._score - a._score);
       }
       if (type === "all" || type === "blog") {
         const blogsSnap = await db.collection("blog_posts").get();
@@ -2903,19 +2916,11 @@ async function startServer() {
           const data = doc.data();
           return { id: Number(doc.id) || doc.id, ...data };
         }).map((item) => {
-          const score = calculateScore(item.title, item.excerpt || "", item.content || "", item.tags || [], item.categories?.join(" ") || "");
-          return { ...item, _score: score };
+          const cleanExcerpt = cleanHtmlSnippet(item.excerpt);
+          const cleanContent = cleanHtmlSnippet(item.content);
+          const score = calculateScore(item.title, cleanExcerpt, cleanContent, item.tags || [], item.categories?.join(" ") || "");
+          return { ...item, excerpt: cleanExcerpt, content: cleanContent, _score: score };
         }).filter((item) => item._score > 0 && item.status === "published").sort((a, b) => b._score - a._score);
-      }
-      if (type === "all" || type === "forum") {
-        const topicsSnap = await db.collection("forum_topics").get();
-        forums = topicsSnap.docs.map((doc) => {
-          const data = doc.data();
-          return { id: Number(doc.id) || doc.id, ...data };
-        }).map((item) => {
-          const score = calculateScore(item.title, "", item.content || "");
-          return { ...item, _score: score };
-        }).filter((item) => item._score > 0).sort((a, b) => b._score - a._score);
       }
       if (type === "all" || type === "kb") {
         const kbSnap = await db.collection("knowledge_base").get();
@@ -2923,15 +2928,15 @@ async function startServer() {
           const data = doc.data();
           return { id: doc.id, ...data };
         }).map((item) => {
-          const score = calculateScore(item.title, "", item.content || "", item.tags || [], item.category || "");
-          return { ...item, _score: score };
+          const cleanContent = cleanHtmlSnippet(item.content);
+          const score = calculateScore(item.title, "", cleanContent, item.tags || [], item.category || "");
+          return { ...item, content: cleanContent, _score: score };
         }).filter((item) => item._score > 0).sort((a, b) => b._score - a._score);
       }
-      const totalCount = matches.length + blogs.length + forums.length + kb.length;
+      const totalCount = matches.length + blogs.length + kb.length;
       res.json({
         matches,
         blogs,
-        forums,
         kb,
         totalCount
       });
@@ -4229,63 +4234,6 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.post("/api/webhooks/stripe", async (req, res) => {
-    try {
-      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
-      const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const webhookSecret = settings?.stripe?.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
-      let event = req.body;
-      if (webhookSecret && settings?.stripe?.secretKey) {
-        const sig = req.headers["stripe-signature"];
-        if (!sig) return res.status(400).send("Missing stripe-signature header");
-        const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
-        try {
-          event = stripe.webhooks.constructEvent(req.rawBody || JSON.stringify(req.body), sig, webhookSecret);
-        } catch (err) {
-          console.error("Stripe Webhook Signature Verification Failed:", err.message);
-          return res.status(400).send(`Webhook Error: ${err.message}`);
-        }
-      }
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        const transactionId = session.client_reference_id;
-        if (transactionId) {
-          const txnRef = db.collection("transactions").doc(transactionId);
-          const txnDoc = await txnRef.get();
-          if (txnDoc.exists && txnDoc.data()?.status !== "completed") {
-            const txnData = txnDoc.data();
-            const { userId, type, amount, metadata } = txnData;
-            const userRef = db.collection("users").doc(userId);
-            const userDoc = await userRef.get();
-            const user = userDoc.exists ? userDoc.data() : null;
-            if (type === "top_up") {
-              await userRef.update({ balance: (Number(user?.balance) || 0) + Number(amount) });
-            } else if (type === "watch" || type === "ppv") {
-              await db.collection("purchases").doc(Date.now().toString()).set({
-                id: Date.now().toString(),
-                userId,
-                matchId: metadata?.matchId,
-                amount: Number(amount),
-                type: "watch",
-                date: (/* @__PURE__ */ new Date()).toISOString()
-              });
-            } else if (type === "plan") {
-              const expiresAt = /* @__PURE__ */ new Date();
-              expiresAt.setDate(expiresAt.getDate() + 30);
-              await userRef.update({
-                planId: Number(metadata?.planId),
-                planExpiresAt: expiresAt.toISOString()
-              });
-            }
-            await txnRef.update({ status: "completed" });
-          }
-        }
-      }
-      res.json({ received: true });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
   async function convertCurrency(amount, from, to) {
     if (from.toUpperCase() === to.toUpperCase()) return amount;
     try {
@@ -4300,22 +4248,213 @@ async function startServer() {
     }
     return amount;
   }
+  async function processClubRevenueSplit(params) {
+    const { matchId, transactionId, grossAmount, isDestinationCharge, connectedAccountId: passedConnectedAccountId, stripePaymentIntentId } = params;
+    try {
+      if (!matchId || !grossAmount || grossAmount <= 0) return;
+      const existingEarnings = await db.collection("club_earnings").where("transaction_id", "==", String(transactionId)).get();
+      if (!existingEarnings.empty) {
+        console.log(`[RevenueSplit] Transaction ${transactionId} already processed in club_earnings. Skipping.`);
+        return;
+      }
+      const matchDoc = await db.collection("matches").doc(String(matchId)).get();
+      if (!matchDoc.exists) return;
+      const matchData = matchDoc.data();
+      const clubId = matchData.club_id || matchData.clubId;
+      if (!clubId) {
+        console.log(`[RevenueSplit] Match #${matchId} has no assigned partner club. No split required.`);
+        return;
+      }
+      const clubDoc = await db.collection("clubs").doc(String(clubId)).get();
+      if (!clubDoc.exists) return;
+      const club = clubDoc.data();
+      const stripeAccountId = passedConnectedAccountId || club.stripe_account_id || club.stripeAccountId || null;
+      const isOnboarded = !!(club.stripe_onboarding_complete || club.stripeOnboardingComplete);
+      const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", String(clubId)).where("is_active", "==", 1).limit(1).get();
+      let feePercent = params.platformFeePercent ?? 20;
+      if (!policiesSnap.empty) {
+        const policy = policiesSnap.docs[0].data();
+        feePercent = Number(policy.platform_fee_percent || policy.platformFeePercent || 20);
+      } else {
+        const defaultPolicyId = Date.now().toString();
+        await db.collection("revenue_policies").doc(defaultPolicyId).set({
+          id: defaultPolicyId,
+          clubId: String(clubId),
+          club_id: String(clubId),
+          platformFeePercent: 20,
+          platform_fee_percent: 20,
+          clubSharePercent: 80,
+          club_share_percent: 80,
+          isActive: 1,
+          is_active: 1,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        }).catch(() => {
+        });
+      }
+      const platformCommission = Math.round(grossAmount * (feePercent / 100) * 100) / 100;
+      const clubNetAmount = Math.round((grossAmount - platformCommission) * 100) / 100;
+      const earningId = `earn_${Date.now()}_${clubId}`;
+      await db.collection("club_earnings").doc(earningId).set({
+        id: earningId,
+        clubId: String(clubId),
+        matchId: String(matchId),
+        transactionId: String(transactionId),
+        grossAmount,
+        platformCommission,
+        clubNetAmount,
+        commissionRate: feePercent,
+        type: "ppv",
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
+      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
+      const isInstantSplit = !!config.instantSplit;
+      const payoutCurrency = (config.currency || "GBP").toUpperCase();
+      const balDoc = await db.collection("club_balances").doc(String(clubId)).get();
+      const currentBal = balDoc.exists ? balDoc.data() : { availableBalance: 0, pendingBalance: 0, totalEarned: 0, totalPaidOut: 0, currency: payoutCurrency };
+      const currAvail = Number(currentBal.availableBalance || currentBal.available_balance) || 0;
+      const currEarned = Number(currentBal.totalEarned || currentBal.total_earned) || 0;
+      const currPaid = Number(currentBal.totalPaidOut || currentBal.total_paid_out) || 0;
+      const currPending = Number(currentBal.pendingBalance || currentBal.pending_balance) || 0;
+      if (isInstantSplit || isDestinationCharge && stripeAccountId) {
+        let stripeRef = stripePaymentIntentId || (isDestinationCharge && stripeAccountId ? `dest_${Date.now()}_${String(stripeAccountId).slice(-6)}` : `instant_${Date.now()}`);
+        let instantSuccess = false;
+        if (isDestinationCharge && stripeAccountId) {
+          instantSuccess = true;
+        } else if (stripeAccountId && isOnboarded) {
+          try {
+            const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
+            const gatewaySettings = settingsDoc.exists ? settingsDoc.data() : {};
+            const stripeSecret = gatewaySettings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY;
+            if (stripeSecret) {
+              const stripeClient = new import_stripe.default(stripeSecret, { apiVersion: "2023-10-16" });
+              const transfer = await stripeClient.transfers.create({
+                amount: Math.round(clubNetAmount * 100),
+                currency: payoutCurrency.toLowerCase(),
+                destination: stripeAccountId,
+                description: `Instant PPV split - Match #${matchId} (${club.name || clubId})`,
+                metadata: { matchId: String(matchId), clubId: String(clubId), transactionId: String(transactionId) }
+              });
+              stripeRef = transfer.id;
+              instantSuccess = true;
+            } else {
+              stripeRef = `mock_tr_${Date.now()}`;
+              instantSuccess = true;
+            }
+          } catch (trErr) {
+            console.error(`[RevenueSplit] Stripe transfer error for club ${clubId}:`, trErr.message);
+            instantSuccess = false;
+          }
+        } else {
+          stripeRef = `sim_instant_${Date.now()}`;
+          instantSuccess = true;
+        }
+        if (instantSuccess) {
+          const payoutId = `po_inst_${Date.now()}_${clubId}`;
+          await db.collection("payouts").doc(payoutId).set({
+            id: payoutId,
+            clubId: String(clubId),
+            stripePayoutId: stripeRef,
+            stripeAccountId: stripeAccountId || "instant_disbursement",
+            amount: clubNetAmount,
+            currency: payoutCurrency,
+            status: "paid",
+            method: "instant",
+            arrivalDate: (/* @__PURE__ */ new Date()).toISOString(),
+            createdAt: (/* @__PURE__ */ new Date()).toISOString()
+          });
+          await db.collection("club_balances").doc(String(clubId)).set({
+            clubId: String(clubId),
+            availableBalance: currAvail,
+            pendingBalance: currPending,
+            totalEarned: currEarned + clubNetAmount,
+            totalPaidOut: currPaid + clubNetAmount,
+            currency: payoutCurrency
+          });
+        } else {
+          await db.collection("club_balances").doc(String(clubId)).set({
+            clubId: String(clubId),
+            availableBalance: currAvail + clubNetAmount,
+            pendingBalance: currPending,
+            totalEarned: currEarned + clubNetAmount,
+            totalPaidOut: currPaid,
+            currency: payoutCurrency
+          });
+        }
+      } else {
+        const newAvailable = currAvail + clubNetAmount;
+        await db.collection("club_balances").doc(String(clubId)).set({
+          clubId: String(clubId),
+          availableBalance: newAvailable,
+          pendingBalance: currPending,
+          totalEarned: currEarned + clubNetAmount,
+          totalPaidOut: currPaid,
+          currency: payoutCurrency
+        });
+        const threshold = Number(config.thresholdAmount) || 50;
+        if (config.schedule === "auto" && newAvailable >= threshold && config.enabled) {
+          triggerClubPayout(String(clubId), false).catch((err) => console.error(`Auto-payout error for club ${clubId}:`, err));
+        }
+      }
+      cacheEngine.invalidateCollection("club_earnings");
+      cacheEngine.invalidateCollection("club_balances");
+      cacheEngine.invalidateCollection("payouts");
+      cacheEngine.invalidateCollection("revenue_policies");
+      notifyAdmins(
+        "PPV Split Processed",
+        `Split recorded for ${club.name || "Club"} (#${clubId}): Gross \xA3${grossAmount.toFixed(2)}, Platform \xA3${platformCommission.toFixed(2)}, Club Net \xA3${clubNetAmount.toFixed(2)} (${isInstantSplit ? "Instant Split" : "Accumulated"})`,
+        "system",
+        "/admin/finance"
+      );
+    } catch (splitErr) {
+      console.error("[RevenueSplit] Error processing club revenue split:", splitErr);
+    }
+  }
   app.post("/api/checkout/gateway/initialize", authenticate, async (req, res) => {
     try {
-      const { gateway, type, metadata, currency = "GBP" } = req.body;
+      const { gateway, type, currency = "GBP" } = req.body;
+      const metadata = req.body.metadata ? { ...req.body.metadata } : {};
       let amount = Number(req.body.amount);
       const userId = req.user.id.toString();
       const origin = req.headers.origin || "https://watchwds.com";
+      let connectedAccountId = null;
+      let platformFeePercent = 20;
       if (type === "watch" && metadata?.matchId) {
         const matchDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
         if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
         const matchData = matchDoc.data();
         amount = Number(matchData?.price ?? matchData?.ppv_price ?? 0);
+        const resolvedClubId = metadata.clubId || matchData?.club_id || matchData?.clubId || null;
+        metadata.clubId = resolvedClubId;
+        if (resolvedClubId) {
+          try {
+            const clubDoc = await db.collection("clubs").doc(String(resolvedClubId)).get();
+            if (clubDoc.exists) {
+              const club = clubDoc.data();
+              connectedAccountId = club.stripe_account_id || club.stripeAccountId || null;
+            }
+            const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", String(resolvedClubId)).where("is_active", "==", 1).limit(1).get();
+            if (!policiesSnap.empty) {
+              const policy = policiesSnap.docs[0].data();
+              platformFeePercent = Number(policy.platform_fee_percent || policy.platformFeePercent || 20);
+            }
+          } catch (clubErr) {
+            console.error("Error resolving club/policy in initialize:", clubErr);
+          }
+        }
+        metadata.connectedAccountId = connectedAccountId;
+        metadata.platformFeePercent = platformFeePercent;
+        metadata.isDestinationCharge = !!connectedAccountId;
       } else if (type === "plan" && metadata?.planId) {
         const planDoc = await db.collection("plans").doc(String(metadata.planId)).get();
         if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
         amount = Number(planDoc.data()?.price ?? 0);
       } else if (type === "top_up") {
+        const walletSnap = await db.collection("settings").doc("wallet").get();
+        const isWalletEnabled = walletSnap.exists ? walletSnap.data()?.enabled !== false : true;
+        if (!isWalletEnabled && req.user.role !== "admin") {
+          return res.status(403).json({ error: "Wallet and account balance feature is currently disabled" });
+        }
         if (!amount || isNaN(amount) || amount <= 0) {
           return res.status(400).json({ error: "Invalid top-up amount" });
         }
@@ -4340,8 +4479,10 @@ async function startServer() {
           return res.json({ checkoutUrl: `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_session&gateway=stripe` });
         }
         const targetCurrency = settings.stripe.merchantCurrency || currency;
+        const totalAmountCents = Math.round(Number(amount) * 100);
+        const applicationFeeAmount = Math.round(totalAmountCents * (platformFeePercent / 100));
         const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
-        const session = await stripe.checkout.sessions.create({
+        const sessionParams = {
           payment_method_types: ["card"],
           line_items: [
             {
@@ -4350,7 +4491,7 @@ async function startServer() {
                 product_data: {
                   name: type === "top_up" ? "Wallet Top-up" : type === "watch" ? "Match Access" : type === "plan" ? "Subscription Plan" : "Access"
                 },
-                unit_amount: Math.round(Number(amount) * 100)
+                unit_amount: totalAmountCents
               },
               quantity: 1
             }
@@ -4358,8 +4499,25 @@ async function startServer() {
           mode: "payment",
           success_url: returnUrl,
           cancel_url: cancelUrl,
-          client_reference_id: transactionId
-        });
+          client_reference_id: transactionId,
+          metadata: {
+            txn_id: transactionId,
+            user_id: userId,
+            match_id: metadata?.matchId ? String(metadata.matchId) : "",
+            club_id: metadata?.clubId ? String(metadata.clubId) : "",
+            payment_type: type === "watch" ? "ppv_watch" : type
+          }
+        };
+        if (type === "watch" && connectedAccountId) {
+          sessionParams.payment_intent_data = {
+            application_fee_amount: applicationFeeAmount,
+            transfer_data: {
+              destination: connectedAccountId
+            }
+          };
+          metadata.applicationFeeCents = applicationFeeAmount;
+        }
+        const session = await stripe.checkout.sessions.create(sessionParams);
         return res.json({ checkoutUrl: session.url });
       }
       if (gateway === "paypal") {
@@ -4472,13 +4630,14 @@ async function startServer() {
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
       let isVerified = false;
+      let stripeSession = null;
       if (gateway === "stripe") {
         if (!settings?.stripe?.secretKey) {
           isVerified = true;
         } else {
           const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
-          const session = await stripe.checkout.sessions.retrieve(session_id);
-          if (session.payment_status === "paid") isVerified = true;
+          stripeSession = await stripe.checkout.sessions.retrieve(session_id);
+          if (stripeSession.payment_status === "paid") isVerified = true;
         }
       }
       if (gateway === "paypal") {
@@ -4578,6 +4737,19 @@ async function startServer() {
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
         notifyUser(userId, "Purchase Successful", `You have unlocked access.`, "success", `/matches/${metadata.matchId}`);
         notifyAdmins("New Purchase", `A user purchased access for amount: ${amount}`, "system", "/admin/transactions");
+        if (type === "watch" && metadata?.matchId) {
+          const isDest = metadata?.isDestinationCharge !== void 0 ? !!metadata.isDestinationCharge : gateway === "stripe" && !!metadata?.connectedAccountId;
+          await processClubRevenueSplit({
+            matchId: String(metadata.matchId),
+            transactionId: String(txn_id),
+            grossAmount: Number(amount) || 0,
+            userId,
+            isDestinationCharge: isDest,
+            connectedAccountId: metadata?.connectedAccountId || null,
+            platformFeePercent: metadata?.platformFeePercent ? Number(metadata.platformFeePercent) : void 0,
+            stripePaymentIntentId: typeof stripeSession?.payment_intent === "string" ? stripeSession.payment_intent : void 0
+          });
+        }
         if (userEmail) {
           const matchDoc = await db.collection("matches").doc(metadata.matchId).get();
           const matchData = matchDoc.exists ? matchDoc.data() : {};
@@ -4624,7 +4796,29 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.post("/api/checkout/topup", authenticate, async (req, res) => {
+  const requireWalletEnabled = async (req, res, next) => {
+    try {
+      const snap = await db.collection("settings").doc("wallet").get();
+      const isEnabled = snap.exists ? snap.data()?.enabled !== false : true;
+      if (isEnabled) return next();
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        try {
+          const decoded = import_jsonwebtoken.default.verify(token, JWT_SECRET);
+          if (decoded && decoded.role === "admin") {
+            req.user = decoded;
+            return next();
+          }
+        } catch (err) {
+        }
+      }
+      return res.status(403).json({ error: "Wallet and account balance feature is currently disabled" });
+    } catch (e) {
+      return res.status(403).json({ error: "Wallet and account balance feature is currently disabled" });
+    }
+  };
+  app.post("/api/checkout/topup", authenticate, requireWalletEnabled, async (req, res) => {
     try {
       const { amount, paymentMethod } = req.body;
       const userId = req.user.id.toString();
@@ -4668,7 +4862,7 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.post("/api/checkout/ppv", authenticate, async (req, res) => {
+  app.post("/api/checkout/ppv", authenticate, requireWalletEnabled, async (req, res) => {
     try {
       const { match_id } = req.body;
       const userId = req.user.id.toString();
@@ -4715,12 +4909,19 @@ async function startServer() {
         status: "completed"
       };
       await db.collection("transactions").doc(transactionId).set(transactionData);
+      await processClubRevenueSplit({
+        matchId: String(match_id),
+        transactionId,
+        grossAmount: deductAmount,
+        userId,
+        isDestinationCharge: false
+      });
       res.json({ success: true, newBalance, newPoints: newBalance, purchase: purchaseData });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
   });
-  app.post("/api/checkout/embed", authenticate, async (req, res) => {
+  app.post("/api/checkout/embed", authenticate, requireWalletEnabled, async (req, res) => {
     try {
       const { match_id } = req.body;
       const userId = req.user.id.toString();
@@ -4784,7 +4985,7 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.post("/api/checkout/plan", authenticate, async (req, res) => {
+  app.post("/api/checkout/plan", authenticate, requireWalletEnabled, async (req, res) => {
     try {
       const { planId } = req.body;
       const userId = req.user.id.toString();
@@ -4868,11 +5069,11 @@ async function startServer() {
   app.put("/api/admin/users/:id/details", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const userRef = db.collection("users").doc(req.params.id);
-      const { name, email, role: role2, status, balance, verified } = req.body;
+      const { name, email, role, status, balance, verified } = req.body;
       const updateData = {};
       if (name !== void 0) updateData.name = name;
       if (email !== void 0) updateData.email = email;
-      if (role2 !== void 0) updateData.role = role2;
+      if (role !== void 0) updateData.role = role;
       if (status !== void 0) updateData.status = status;
       if (balance !== void 0) updateData.balance = Number(balance) || 0;
       if (verified !== void 0) updateData.verified = verified ? 1 : 0;
@@ -5767,12 +5968,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       await db.collection("clubs").doc(id).set(clubData);
       cacheEngine.invalidateCollection("clubs");
       const policyId = (Date.now() + 1).toString();
+      const pFee = Number(req.body.platformFeePercent) || 20;
+      const cShare = Number(req.body.clubSharePercent) || 80;
       const policyData = {
         id: policyId,
-        clubId: id,
-        platformFeePercent: Number(req.body.platformFeePercent) || 20,
-        clubSharePercent: Number(req.body.clubSharePercent) || 80,
+        clubId: String(id),
+        club_id: String(id),
+        platformFeePercent: pFee,
+        platform_fee_percent: pFee,
+        clubSharePercent: cShare,
+        club_share_percent: cShare,
         isActive: 1,
+        is_active: 1,
         createdAt: (/* @__PURE__ */ new Date()).toISOString()
       };
       await db.collection("revenue_policies").doc(policyId).set(policyData);
@@ -5792,6 +5999,34 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (req.body.stripeAccountId !== void 0) updateData.stripeAccountId = req.body.stripeAccountId;
       if (req.body.stripeOnboardingComplete !== void 0) updateData.stripeOnboardingComplete = req.body.stripeOnboardingComplete ? 1 : 0;
       if (req.body.isActive !== void 0) updateData.isActive = req.body.isActive ? 1 : 0;
+      if (req.body.platformFeePercent !== void 0 || req.body.clubSharePercent !== void 0) {
+        const policies = await db.collection("revenue_policies").where("club_id", "==", String(id)).get();
+        const pFee = Number(req.body.platformFeePercent) || 20;
+        const cShare = Number(req.body.clubSharePercent) || 100 - pFee;
+        if (!policies.empty) {
+          await db.collection("revenue_policies").doc(policies.docs[0].id).update({
+            platformFeePercent: pFee,
+            platform_fee_percent: pFee,
+            clubSharePercent: cShare,
+            club_share_percent: cShare
+          });
+        } else {
+          const policyId = Date.now().toString();
+          await db.collection("revenue_policies").doc(policyId).set({
+            id: policyId,
+            clubId: String(id),
+            club_id: String(id),
+            platformFeePercent: pFee,
+            platform_fee_percent: pFee,
+            clubSharePercent: cShare,
+            club_share_percent: cShare,
+            isActive: 1,
+            is_active: 1,
+            createdAt: (/* @__PURE__ */ new Date()).toISOString()
+          });
+        }
+        cacheEngine.invalidateCollection("revenue_policies");
+      }
       await db.collection("clubs").doc(id).update(updateData);
       cacheEngine.invalidateCollection("clubs");
       res.json({ success: true });
@@ -5820,9 +6055,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const clubDoc = await db.collection("clubs").doc(String(id)).get();
       if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
       const club = clubDoc.data();
-      const paySettingsDoc = await db.collection("payment_settings").doc("main").get();
+      const paySettingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const paySettings = paySettingsDoc.exists ? paySettingsDoc.data() : {};
-      const stripeSecretKey = paySettings.stripeSecretKey || process.env.STRIPE_SECRET_KEY;
+      const stripeSecretKey = paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY;
       if (!stripeSecretKey) return res.status(500).json({ error: "Stripe is not configured" });
       const stripe = new import_stripe.default(stripeSecretKey, { apiVersion: "2023-10-16" });
       let connectedAccountId = club.stripe_account_id || club.stripeAccountId;
@@ -5886,12 +6121,47 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     try {
       const { id } = req.params;
       const updateData = {};
-      if (req.body.platformFeePercent !== void 0) updateData.platformFeePercent = Number(req.body.platformFeePercent);
-      if (req.body.clubSharePercent !== void 0) updateData.clubSharePercent = Number(req.body.clubSharePercent);
-      if (req.body.isActive !== void 0) updateData.isActive = req.body.isActive ? 1 : 0;
+      if (req.body.platformFeePercent !== void 0) {
+        updateData.platformFeePercent = Number(req.body.platformFeePercent);
+        updateData.platform_fee_percent = Number(req.body.platformFeePercent);
+      }
+      if (req.body.clubSharePercent !== void 0) {
+        updateData.clubSharePercent = Number(req.body.clubSharePercent);
+        updateData.club_share_percent = Number(req.body.clubSharePercent);
+      }
+      if (req.body.isActive !== void 0) {
+        updateData.isActive = req.body.isActive ? 1 : 0;
+        updateData.is_active = req.body.isActive ? 1 : 0;
+      }
       await db.collection("revenue_policies").doc(id).update(updateData);
       cacheEngine.invalidateCollection("revenue_policies");
       res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/revenue-policies", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { clubId, platformFeePercent, clubSharePercent } = req.body;
+      if (!clubId) return res.status(400).json({ error: "clubId required" });
+      const pFee = Number(platformFeePercent) || 20;
+      const cShare = Number(clubSharePercent) || 100 - pFee;
+      const policyId = Date.now().toString();
+      const policyData = {
+        id: policyId,
+        clubId: String(clubId),
+        club_id: String(clubId),
+        platformFeePercent: pFee,
+        platform_fee_percent: pFee,
+        clubSharePercent: cShare,
+        club_share_percent: cShare,
+        isActive: 1,
+        is_active: 1,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await db.collection("revenue_policies").doc(policyId).set(policyData);
+      cacheEngine.invalidateCollection("revenue_policies");
+      res.json({ success: true, ...policyData });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -5904,7 +6174,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         schedule: "manual",
         autoFrequencyHours: 24,
         currency: "GBP",
-        enabled: true
+        enabled: true,
+        instantSplit: false
       };
       if (!doc.exists) return res.json(defaults);
       const data = doc.data();
@@ -5915,13 +6186,14 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   });
   app.put("/api/admin/payout-settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const { thresholdAmount, schedule, autoFrequencyHours, currency, enabled } = req.body;
+      const { thresholdAmount, schedule, autoFrequencyHours, currency, enabled, instantSplit } = req.body;
       const config = {};
       if (thresholdAmount !== void 0) config.thresholdAmount = Number(thresholdAmount);
       if (schedule !== void 0) config.schedule = schedule;
       if (autoFrequencyHours !== void 0) config.autoFrequencyHours = Number(autoFrequencyHours);
       if (currency !== void 0) config.currency = currency;
       if (enabled !== void 0) config.enabled = !!enabled;
+      if (instantSplit !== void 0) config.instantSplit = !!instantSplit;
       const docRef = db.collection("payment_settings").doc("payout_config");
       const existing = await docRef.get();
       if (existing.exists) {
@@ -5933,6 +6205,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           autoFrequencyHours: 24,
           currency: "GBP",
           enabled: true,
+          instantSplit: false,
           ...config
         });
       }
@@ -5994,14 +6267,14 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   async function triggerClubPayout(clubId, forceOverrideThreshold = false) {
     try {
       const configDoc = await db.collection("payment_settings").doc("payout_config").get();
-      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true };
+      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
       if (!config.enabled) return { success: false, error: "Payouts are disabled" };
       const balDoc = await db.collection("club_balances").doc(clubId).get();
       if (!balDoc.exists) return { success: false, error: "No balance record for this club" };
       const bal = balDoc.data();
       const availableBalance = Number(bal.availableBalance || bal.available_balance) || 0;
       const threshold = Number(config.thresholdAmount) || 50;
-      if (!forceOverrideThreshold && availableBalance < threshold) {
+      if (!forceOverrideThreshold && !config.instantSplit && availableBalance < threshold) {
         return { success: false, error: `Balance ${availableBalance} below threshold ${threshold}` };
       }
       if (availableBalance <= 0) return { success: false, error: "No available balance" };
@@ -6032,7 +6305,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         amount: availableBalance,
         currency: payoutCurrency.toUpperCase(),
         status: "pending",
-        method: forceOverrideThreshold ? "manual" : "auto",
+        method: forceOverrideThreshold ? "manual" : config.instantSplit ? "instant" : "auto",
         arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1e3).toISOString() : null,
         createdAt: (/* @__PURE__ */ new Date()).toISOString()
       });
@@ -6129,7 +6402,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
       const club = clubDoc.data();
       const connectedAccountId = club.stripe_account_id || club.stripeAccountId;
-      const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", clubId).where("is_active", "==", 1).limit(1).get();
+      const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", String(clubId)).where("is_active", "==", 1).limit(1).get();
       let platformFeePercent = 20;
       if (!policiesSnap.empty) {
         const policy = policiesSnap.docs[0].data();
@@ -6145,7 +6418,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         fromMatchSlug: match.slug || null,
         platformFeePercent,
         applicationFeeCents,
-        connectedAccountId: connectedAccountId || null
+        connectedAccountId: connectedAccountId || null,
+        isDestinationCharge: !!connectedAccountId
       };
       await db.collection("transactions").doc(transactionId).set({
         userId,
@@ -6217,7 +6491,19 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         return res.json({ received: true });
       }
       const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
-      const event = req.body;
+      const webhookSecret = settings?.stripe?.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
+      let event = req.body;
+      if (webhookSecret) {
+        const sig = req.headers["stripe-signature"];
+        if (sig) {
+          try {
+            event = stripe.webhooks.constructEvent(req.rawBody || JSON.stringify(req.body), sig, webhookSecret);
+          } catch (err) {
+            console.error("Stripe Webhook Signature Verification Failed:", err.message);
+            return res.status(400).send(`Webhook Error: ${err.message}`);
+          }
+        }
+      }
       if (!event || !event.type) {
         return res.status(400).json({ error: "Invalid webhook payload" });
       }
@@ -6230,6 +6516,19 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         if (!txnDoc.exists) return res.json({ received: true });
         const txnData = txnDoc.data();
         if (txnData.status === "completed") {
+          if ((txnData.type === "watch" || txnData.type === "ppv") && txnData.metadata?.matchId) {
+            const isDest = txnData.metadata?.isDestinationCharge !== void 0 ? !!txnData.metadata.isDestinationCharge : !!txnData.metadata?.connectedAccountId;
+            await processClubRevenueSplit({
+              matchId: String(txnData.metadata.matchId),
+              transactionId: txnId,
+              grossAmount: Number(txnData.amount) || 0,
+              userId: txnData.userId || txnData.user_id,
+              isDestinationCharge: isDest,
+              connectedAccountId: txnData.metadata?.connectedAccountId || null,
+              platformFeePercent: txnData.metadata?.platformFeePercent ? Number(txnData.metadata.platformFeePercent) : void 0,
+              stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : void 0
+            });
+          }
           return res.json({ received: true, already_processed: true });
         }
         let verified = false;
@@ -6242,62 +6541,81 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         if (!verified) return res.json({ received: true, verified: false });
         const { type, amount, metadata } = txnData;
         const userId = txnData.userId || txnData.user_id;
-        if (type === "watch" && metadata?.matchId) {
+        const userRef = db.collection("users").doc(userId);
+        const userDoc = await userRef.get();
+        const user = userDoc.exists ? userDoc.data() : null;
+        const userEmail = user?.email;
+        const userName = user?.name || "User";
+        if (type === "top_up") {
+          await userRef.update({ balance: (Number(user?.balance) || 0) + Number(amount) });
+          await db.collection("transactions").doc(txnId).update({ status: "completed" });
+          notifyUser(userId, "Wallet Top-up Successful", `Your wallet has been credited with ${amount}.`, "success", "/profile");
+          notifyAdmins("New Wallet Top-up", `User top-up: ${amount}`, "system", "/admin/transactions");
+          if (userEmail) {
+            sendTemplateEmail(userEmail, "payment_successful", {
+              first_name: userName,
+              purchase_amount: String(amount),
+              transaction_id: txnId,
+              invoice_number: `INV-${Date.now()}`,
+              support_email: "support@watchwds.com"
+            }).catch((err) => console.error("Failed to send top up email:", err));
+          }
+        } else if (type === "watch" || type === "ppv" || type === "embed") {
           const purchaseId = Date.now().toString();
           const purchaseData = {
             id: purchaseId,
             userId,
-            matchId: metadata.matchId,
-            amount,
-            type: "watch",
+            matchId: metadata?.matchId,
+            amount: Number(amount),
+            type: type === "embed" ? "embed" : "watch",
             date: (/* @__PURE__ */ new Date()).toISOString()
           };
+          if (type === "embed") {
+            purchaseData.code = `<iframe src="https://watchwds.com/embed/${metadata?.matchId}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`;
+          }
           await db.collection("purchases").doc(purchaseId).set(purchaseData);
           await db.collection("transactions").doc(txnId).update({ status: "completed" });
-          notifyUser(userId, "Purchase Successful", "You have unlocked PPV match access.", "success", `/matches/${metadata.fromMatchSlug || metadata.matchId}`);
-          notifyAdmins("PPV Purchase (Stripe Connect)", `PPV purchase completed: ${amount} for match #${metadata.matchId}`, "system", "/admin/transactions");
-          if (metadata?.clubId) {
-            try {
-              const grossAmount = Number(amount) || 0;
-              const feePercent = Number(metadata.platformFeePercent) || 20;
-              const platformCommission = Math.round(grossAmount * (feePercent / 100) * 100) / 100;
-              const clubNetAmount = Math.round((grossAmount - platformCommission) * 100) / 100;
-              const earningId = `earn_${Date.now()}_${metadata.clubId}`;
-              await db.collection("club_earnings").doc(earningId).set({
-                id: earningId,
-                clubId: metadata.clubId,
-                matchId: metadata.matchId,
-                transactionId: txnId,
-                grossAmount,
-                platformCommission,
-                clubNetAmount,
-                commissionRate: feePercent,
-                type: "ppv",
-                createdAt: (/* @__PURE__ */ new Date()).toISOString()
-              });
-              const balanceDoc = await db.collection("club_balances").doc(metadata.clubId).get();
-              if (balanceDoc.exists) {
-                const bal = balanceDoc.data();
-                await db.collection("club_balances").doc(metadata.clubId).update({
-                  availableBalance: (Number(bal.availableBalance || bal.available_balance) || 0) + clubNetAmount,
-                  totalEarned: (Number(bal.totalEarned || bal.total_earned) || 0) + clubNetAmount
-                });
-              } else {
-                await db.collection("club_balances").doc(metadata.clubId).set({
-                  clubId: metadata.clubId,
-                  availableBalance: clubNetAmount,
-                  pendingBalance: 0,
-                  totalEarned: clubNetAmount,
-                  totalPaidOut: 0,
-                  currency: "GBP"
-                });
-              }
-              cacheEngine.invalidateCollection("club_earnings");
-              cacheEngine.invalidateCollection("club_balances");
-            } catch (commErr) {
-              console.error("Commission recording error:", commErr.message);
-            }
+          notifyUser(userId, "Purchase Successful", "You have unlocked PPV match access.", "success", `/matches/${metadata?.fromMatchSlug || metadata?.matchId}`);
+          notifyAdmins("PPV Purchase (Stripe Connect)", `PPV purchase completed: ${amount} for match #${metadata?.matchId}`, "system", "/admin/transactions");
+          if (metadata?.matchId) {
+            const isDest = metadata?.isDestinationCharge !== void 0 ? !!metadata.isDestinationCharge : !!metadata?.connectedAccountId;
+            await processClubRevenueSplit({
+              matchId: String(metadata.matchId),
+              transactionId: txnId,
+              grossAmount: Number(amount) || 0,
+              userId,
+              isDestinationCharge: isDest,
+              connectedAccountId: metadata?.connectedAccountId || null,
+              platformFeePercent: metadata?.platformFeePercent ? Number(metadata.platformFeePercent) : void 0,
+              stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : void 0
+            });
           }
+          if (userEmail && metadata?.matchId) {
+            const matchDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
+            const matchData = matchDoc.exists ? matchDoc.data() : {};
+            sendTemplateEmail(userEmail, "match_purchased", {
+              first_name: userName,
+              match_name: matchData.title || "Match Access",
+              match_date: matchData.start_time || (/* @__PURE__ */ new Date()).toLocaleDateString(),
+              match_time: matchData.time || "UTC",
+              purchase_amount: String(amount),
+              website_url: `${getRequestBaseUrl(req)}/matches/${metadata.matchId}`,
+              transaction_id: txnId
+            }).catch((err) => console.error("Failed to send match purchase email:", err));
+          }
+        } else if (type === "plan") {
+          const planDoc = await db.collection("plans").doc(String(metadata?.planId)).get();
+          const planData = planDoc.exists ? planDoc.data() : {};
+          const durationDays = Number(planData.duration_days || planData.durationDays || 30);
+          const expiresAt = /* @__PURE__ */ new Date();
+          expiresAt.setDate(expiresAt.getDate() + durationDays);
+          await userRef.update({
+            planId: Number(metadata?.planId),
+            planExpiresAt: expiresAt.toISOString()
+          });
+          await db.collection("transactions").doc(txnId).update({ status: "completed" });
+          notifyUser(userId, "Subscription Activated", `Your plan "${planData.name || "Subscription"}" is now active.`, "success", "/plans");
+          notifyAdmins("New Subscription", `User subscribed to plan #${metadata?.planId}`, "system", "/admin/transactions");
         }
       }
       if (event.type === "payout.paid" || event.type === "payout.failed") {
