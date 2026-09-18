@@ -2980,6 +2980,31 @@ async function startServer() {
 
         if (type === "watch") {
           metadata.applicationFeeCents = applicationFeeAmount;
+          // Add Stripe Connect destination charge routing for PPV payments with a connected partner account
+          if (connectedAccountId) {
+            try {
+              const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+              if (connectedAccount.capabilities?.transfers === 'active') {
+                sessionParams.payment_intent_data = {
+                  application_fee_amount: applicationFeeAmount,
+                  transfer_data: {
+                    destination: connectedAccountId,
+                  },
+                  metadata: {
+                    ...sessionParams.metadata,
+                    settlement_model: "STRIPE_DESTINATION_ROUTED"
+                  }
+                };
+                metadata.isDestinationCharge = true;
+                metadata.settlement_model = "STRIPE_DESTINATION_ROUTED";
+                // Update the pending transaction with destination charge flag
+                await db.collection("transactions").doc(transactionId).update({ metadata });
+              }
+            } catch (acctErr: any) {
+              console.error("[Initialize] Connected account validation failed:", acctErr.message);
+              // Proceeds without destination routing — connect-ppv handles the fail-closed case
+            }
+          }
         }
 
         const session = await stripe.checkout.sessions.create(sessionParams);
@@ -5134,7 +5159,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         platformFeePercent,
         applicationFeeCents,
         connectedAccountId: connectedAccountId || null,
-        isDestinationCharge: false
+        isDestinationCharge: true,
+        settlement_model: "STRIPE_DESTINATION_ROUTED"
       };
 
       await db.collection("transactions").doc(transactionId).set({
@@ -5161,6 +5187,21 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         const stripe = new Stripe(settings.stripe.secretKey, { apiVersion: "2023-10-16" as any });
         const targetCurrency = settings.stripe.merchantCurrency || currency;
 
+        // Validate connected account exists and can receive transfers (fail-closed)
+        if (!connectedAccountId) {
+          return res.status(409).json({ error: "Partner club has no Stripe connected account. Cannot process split payment." });
+        }
+        try {
+          const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+          const transfersCapability = connectedAccount.capabilities?.transfers;
+          if (transfersCapability !== 'active') {
+            return res.status(409).json({ error: "Partner account is not yet eligible to receive transfers. Onboarding may be incomplete." });
+          }
+        } catch (acctErr: any) {
+          console.error(`[ConnectPPV] Failed to verify connected account ${connectedAccountId}:`, acctErr.message);
+          return res.status(409).json({ error: "Could not verify partner Stripe account." });
+        }
+
         const sessionParams: any = {
           payment_method_types: ["card"],
           line_items: [
@@ -5185,7 +5226,22 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             match_id: String(matchId),
             club_id: String(clubId),
             user_id: userId,
-            payment_type: "ppv_watch"
+            payment_type: "ppv_watch",
+            settlement_model: "STRIPE_DESTINATION_ROUTED"
+          },
+          payment_intent_data: {
+            application_fee_amount: applicationFeeCents,
+            transfer_data: {
+              destination: connectedAccountId,
+            },
+            metadata: {
+              txn_id: transactionId,
+              match_id: String(matchId),
+              club_id: String(clubId),
+              user_id: userId,
+              payment_type: "ppv_watch",
+              settlement_model: "STRIPE_DESTINATION_ROUTED"
+            }
           }
         };
 
