@@ -2999,10 +2999,14 @@ async function startServer() {
                 metadata.settlement_model = "STRIPE_DESTINATION_ROUTED";
                 // Update the pending transaction with destination charge flag
                 await db.collection("transactions").doc(transactionId).update({ metadata });
+              } else {
+                // Fail-closed: do not create a payment without proper split routing
+                return res.status(409).json({ error: "Partner account transfers capability is not active. Cannot process split payment." });
               }
             } catch (acctErr: any) {
               console.error("[Initialize] Connected account validation failed:", acctErr.message);
-              // Proceeds without destination routing — connect-ppv handles the fail-closed case
+              // Fail-closed: do not create a payment without proper split routing
+              return res.status(409).json({ error: `Could not verify partner Stripe account: ${acctErr.message}` });
             }
           }
         }
@@ -4998,32 +5002,46 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const payoutCurrency = (config.currency || "GBP").toLowerCase();
       const amountCents = Math.round(availableBalance * 100);
 
-      // Create payout on the connected account
-      const payout = await stripe.payouts.create(
-        { amount: amountCents, currency: payoutCurrency },
-        { stripeAccount: stripeAccountId }
-      );
+      // Verify connected account can receive transfers before attempting
+      try {
+        const connectedAccount = await stripe.accounts.retrieve(stripeAccountId);
+        if (connectedAccount.capabilities?.transfers !== 'active') {
+          return { success: false, error: "Partner account transfers capability is not active. Onboarding may be incomplete." };
+        }
+      } catch (acctErr: any) {
+        return { success: false, error: `Could not verify partner Stripe account: ${acctErr.message}` };
+      }
+
+      // Create a transfer from the platform balance to the connected account
+      const transfer = await stripe.transfers.create({
+        amount: amountCents,
+        currency: payoutCurrency,
+        destination: stripeAccountId,
+        description: `Payout to ${club.name || clubId} — ${forceOverrideThreshold ? 'manual force' : config.instantSplit ? 'instant split' : 'threshold auto'}`,
+        metadata: { clubId, method: forceOverrideThreshold ? "manual" : (config.instantSplit ? "instant" : "auto") }
+      });
 
       // Record payout in DB
       const payoutId = `po_${Date.now()}_${clubId}`;
       await db.collection("payouts").doc(payoutId).set({
         id: payoutId,
         clubId,
-        stripePayoutId: payout.id,
+        stripePayoutId: transfer.id,
         stripeAccountId,
         amount: availableBalance,
         currency: payoutCurrency.toUpperCase(),
-        status: "pending",
+        status: "paid",
         method: forceOverrideThreshold ? "manual" : (config.instantSplit ? "instant" : "auto"),
-        arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1000).toISOString() : null,
+        arrivalDate: new Date().toISOString(),
         createdAt: new Date().toISOString()
       });
 
-      // Move balance from available to pending
+      // Debit available balance and credit total paid out
       const pendingBal = Number(bal.pendingBalance || bal.pending_balance) || 0;
+      const totalPaid = Number(bal.totalPaidOut || bal.total_paid_out) || 0;
       await db.collection("club_balances").doc(clubId).update({
         availableBalance: 0,
-        pendingBalance: pendingBal + availableBalance
+        totalPaidOut: totalPaid + availableBalance
       });
 
       cacheEngine.invalidateCollection("payouts");

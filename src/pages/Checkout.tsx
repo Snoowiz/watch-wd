@@ -57,7 +57,7 @@ export function Checkout() {
          payload.metadata = {};
       }
 
-      let response = await fetch(endpoint, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,19 +65,6 @@ export function Checkout() {
         },
         body: JSON.stringify(payload)
       });
-
-      // If connect-ppv failed because no club was assigned, fallback to standard initialize
-      if (!response.ok && endpoint === '/api/checkout/gateway/connect-ppv') {
-        endpoint = '/api/checkout/gateway/initialize';
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(payload)
-        });
-      }
       
       const data = await response.json();
       if (!response.ok || !data.checkoutUrl) {
