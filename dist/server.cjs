@@ -4459,6 +4459,11 @@ async function startServer() {
           return res.status(400).json({ error: "Invalid top-up amount" });
         }
       }
+      if (type === "watch" && gateway === "stripe" && !connectedAccountId) {
+        return res.status(409).json({
+          error: "Partner club has no Stripe connected account. Cannot process split payment."
+        });
+      }
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
       const transactionId = `txn_${Date.now()}_${userId}`;
@@ -4510,6 +4515,31 @@ async function startServer() {
         };
         if (type === "watch") {
           metadata.applicationFeeCents = applicationFeeAmount;
+          if (connectedAccountId) {
+            try {
+              const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+              if (connectedAccount.capabilities?.transfers === "active") {
+                sessionParams.payment_intent_data = {
+                  application_fee_amount: applicationFeeAmount,
+                  transfer_data: {
+                    destination: connectedAccountId
+                  },
+                  metadata: {
+                    ...sessionParams.metadata,
+                    settlement_model: "STRIPE_DESTINATION_ROUTED"
+                  }
+                };
+                metadata.isDestinationCharge = true;
+                metadata.settlement_model = "STRIPE_DESTINATION_ROUTED";
+                await db.collection("transactions").doc(transactionId).update({ metadata });
+              } else {
+                return res.status(409).json({ error: "Partner account transfers capability is not active. Cannot process split payment." });
+              }
+            } catch (acctErr) {
+              console.error("[Initialize] Connected account validation failed:", acctErr.message);
+              return res.status(409).json({ error: `Could not verify partner Stripe account: ${acctErr.message}` });
+            }
+          }
         }
         const session = await stripe.checkout.sessions.create(sessionParams);
         return res.json({ checkoutUrl: session.url });
@@ -6286,27 +6316,39 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const stripe = new import_stripe.default(stripeSecretKey, { apiVersion: "2023-10-16" });
       const payoutCurrency = (config.currency || "GBP").toLowerCase();
       const amountCents = Math.round(availableBalance * 100);
-      const payout = await stripe.payouts.create(
-        { amount: amountCents, currency: payoutCurrency },
-        { stripeAccount: stripeAccountId }
-      );
+      try {
+        const connectedAccount = await stripe.accounts.retrieve(stripeAccountId);
+        if (connectedAccount.capabilities?.transfers !== "active") {
+          return { success: false, error: "Partner account transfers capability is not active. Onboarding may be incomplete." };
+        }
+      } catch (acctErr) {
+        return { success: false, error: `Could not verify partner Stripe account: ${acctErr.message}` };
+      }
+      const transfer = await stripe.transfers.create({
+        amount: amountCents,
+        currency: payoutCurrency,
+        destination: stripeAccountId,
+        description: `Payout to ${club.name || clubId} \u2014 ${forceOverrideThreshold ? "manual force" : config.instantSplit ? "instant split" : "threshold auto"}`,
+        metadata: { clubId, method: forceOverrideThreshold ? "manual" : config.instantSplit ? "instant" : "auto" }
+      });
       const payoutId = `po_${Date.now()}_${clubId}`;
       await db.collection("payouts").doc(payoutId).set({
         id: payoutId,
         clubId,
-        stripePayoutId: payout.id,
+        stripePayoutId: transfer.id,
         stripeAccountId,
         amount: availableBalance,
         currency: payoutCurrency.toUpperCase(),
-        status: "pending",
+        status: "paid",
         method: forceOverrideThreshold ? "manual" : config.instantSplit ? "instant" : "auto",
-        arrivalDate: payout.arrival_date ? new Date(payout.arrival_date * 1e3).toISOString() : null,
+        arrivalDate: (/* @__PURE__ */ new Date()).toISOString(),
         createdAt: (/* @__PURE__ */ new Date()).toISOString()
       });
       const pendingBal = Number(bal.pendingBalance || bal.pending_balance) || 0;
+      const totalPaid = Number(bal.totalPaidOut || bal.total_paid_out) || 0;
       await db.collection("club_balances").doc(clubId).update({
         availableBalance: 0,
-        pendingBalance: pendingBal + availableBalance
+        totalPaidOut: totalPaid + availableBalance
       });
       cacheEngine.invalidateCollection("payouts");
       cacheEngine.invalidateCollection("club_balances");
@@ -6413,7 +6455,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         platformFeePercent,
         applicationFeeCents,
         connectedAccountId: connectedAccountId || null,
-        isDestinationCharge: false
+        isDestinationCharge: true,
+        settlement_model: "STRIPE_DESTINATION_ROUTED"
       };
       await db.collection("transactions").doc(transactionId).set({
         userId,
@@ -6433,6 +6476,19 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         }
         const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
         const targetCurrency = settings.stripe.merchantCurrency || currency;
+        if (!connectedAccountId) {
+          return res.status(409).json({ error: "Partner club has no Stripe connected account. Cannot process split payment." });
+        }
+        try {
+          const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+          const transfersCapability = connectedAccount.capabilities?.transfers;
+          if (transfersCapability !== "active") {
+            return res.status(409).json({ error: "Partner account is not yet eligible to receive transfers. Onboarding may be incomplete." });
+          }
+        } catch (acctErr) {
+          console.error(`[ConnectPPV] Failed to verify connected account ${connectedAccountId}:`, acctErr.message);
+          return res.status(409).json({ error: "Could not verify partner Stripe account." });
+        }
         const sessionParams = {
           payment_method_types: ["card"],
           line_items: [
@@ -6457,7 +6513,22 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             match_id: String(matchId),
             club_id: String(clubId),
             user_id: userId,
-            payment_type: "ppv_watch"
+            payment_type: "ppv_watch",
+            settlement_model: "STRIPE_DESTINATION_ROUTED"
+          },
+          payment_intent_data: {
+            application_fee_amount: applicationFeeCents,
+            transfer_data: {
+              destination: connectedAccountId
+            },
+            metadata: {
+              txn_id: transactionId,
+              match_id: String(matchId),
+              club_id: String(clubId),
+              user_id: userId,
+              payment_type: "ppv_watch",
+              settlement_model: "STRIPE_DESTINATION_ROUTED"
+            }
           }
         };
         const session = await stripe.checkout.sessions.create(sessionParams);

@@ -2923,6 +2923,12 @@ async function startServer() {
         }
       }
 
+      if (type === "watch" && gateway === "stripe" && !connectedAccountId) {
+        return res.status(409).json({
+          error: "Partner club has no Stripe connected account. Cannot process split payment."
+        });
+      }
+
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
 
