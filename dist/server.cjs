@@ -6487,7 +6487,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           }
         } catch (acctErr) {
           console.error(`[ConnectPPV] Failed to verify connected account ${connectedAccountId}:`, acctErr.message);
-          return res.status(409).json({ error: "Could not verify partner Stripe account." });
+          return res.status(409).json({ error: `Could not verify partner Stripe account: ${acctErr.message}` });
         }
         const sessionParams = {
           payment_method_types: ["card"],
