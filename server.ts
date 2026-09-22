@@ -2952,6 +2952,11 @@ async function startServer() {
         if (!settings?.stripe?.enabled || !settings?.stripe?.secretKey) {
           return res.json({ checkoutUrl: `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_session&gateway=stripe` });
         }
+        if (settings.stripe.secretKey.trim().startsWith("mk_")) {
+          return res.status(400).json({
+            error: "Invalid Stripe Secret Key: An API Key Identifier (starts with 'mk_') was entered. Please enter your actual Stripe Secret Key (starts with 'sk_test_', 'sk_live_', or 'rk_') in Admin > Settings > Payment Settings."
+          });
+        }
         const targetCurrency = settings.stripe.merchantCurrency || currency;
         const totalAmountCents = Math.round(Number(amount) * 100);
         const applicationFeeAmount = Math.round(totalAmountCents * (platformFeePercent / 100));
@@ -5206,6 +5211,11 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           // Mock mode — no real Stripe configured
           const returnUrl = `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_connect_session&gateway=stripe`;
           return res.json({ checkoutUrl: returnUrl });
+        }
+        if (settings.stripe.secretKey.trim().startsWith("mk_")) {
+          return res.status(400).json({
+            error: "Invalid Stripe Secret Key: An API Key Identifier (starts with 'mk_') was entered. Please enter your actual Stripe Secret Key (starts with 'sk_test_', 'sk_live_', or 'rk_') in Admin > Settings > Payment Settings."
+          });
         }
 
         const stripe = new Stripe(settings.stripe.secretKey, { apiVersion: "2023-10-16" as any });

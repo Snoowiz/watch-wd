@@ -288,13 +288,22 @@ export function AdminSettings() {
                         onChange={(e) => {
                           setLocalPaymentSettings(prev => ({
                             ...prev,
-                            stripe: { ...prev.stripe, secretKey: e.target.value }
+                            stripe: { ...prev.stripe, secretKey: e.target.value.trim() }
                           }));
                           setIsPaymentSaved(false);
                         }}
-                        className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors"
-                        placeholder="sk_test_..."
+                        className={`w-full bg-slate-50 dark:bg-slate-900 border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-colors ${
+                          localPaymentSettings.stripe.secretKey?.trim().startsWith('mk_')
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                        placeholder="sk_test_... or sk_live_..."
                       />
+                      {localPaymentSettings.stripe.secretKey?.trim().startsWith('mk_') && (
+                        <p className="mt-2 text-xs font-semibold text-red-500">
+                          ⚠️ Invalid Key: You pasted an API Key Identifier (starts with &apos;mk_&apos;). Please copy the actual Secret Key that starts with &apos;sk_test_&apos;, &apos;sk_live_&apos;, or &apos;rk_&apos; from the Stripe Dashboard.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">

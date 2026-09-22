@@ -19,8 +19,12 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
   const walletEnabled = walletSettings?.enabled !== false;
   const { addTransaction, addPurchase } = usePurchaseStore();
   
+  const isPpvMatch = directCheckoutType === 'watch';
+  
   const [amount, setAmount] = useState<number>(directCheckoutAmount || 10);
-  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'paypal' | 'paystack' | 'wallet' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'paypal' | 'paystack' | 'wallet' | null>(
+    directCheckoutType === 'watch' ? 'stripe' : null
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -110,14 +114,16 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
     });
   };
 
-  const hasPaymentMethods = paymentSettings.stripe.enabled || paymentSettings.paypal.enabled || paymentSettings.paystack?.enabled;
+  const hasPaymentMethods = isPpvMatch
+    ? !!paymentSettings.stripe.enabled
+    : (paymentSettings.stripe.enabled || paymentSettings.paypal.enabled || paymentSettings.paystack?.enabled);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-            {directCheckoutType ? 'Checkout' : 'Add Funds'}
+            {directCheckoutType ? (isPpvMatch ? 'Unlock PPV Match' : 'Checkout') : 'Add Funds'}
           </h2>
           <button 
             onClick={onClose}
@@ -179,16 +185,18 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
                 <div className="bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/20 rounded-xl p-4 flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
                   <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                    No payment methods are currently configured. Please contact the administrator.
+                    {isPpvMatch 
+                      ? "Stripe payment is required for PPV revenue splitting, but Stripe is currently disabled in Payment Settings."
+                      : "No payment methods are currently configured. Please contact the administrator."}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Select Payment Method
+                    {isPpvMatch ? "Payment Method (Stripe PPV Split)" : "Select Payment Method"}
                   </label>
                   
-                  {directCheckoutType && walletEnabled && (
+                  {directCheckoutType && !isPpvMatch && walletEnabled && (
                     <button
                       onClick={() => setPaymentMethod('wallet')}
                       disabled={!user || user.balance < amount}
@@ -235,14 +243,16 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
                       </div>
                       <div className="text-left">
                         <div className="font-bold text-slate-900 dark:text-white">Credit Card (Stripe)</div>
-                        {paymentSettings.stripe.isTestMode && (
+                        {isPpvMatch ? (
+                          <div className="text-xs text-indigo-500 font-medium">Automatic Partner Split</div>
+                        ) : paymentSettings.stripe.isTestMode ? (
                           <div className="text-xs text-indigo-500 font-medium">Test Mode Active</div>
-                        )}
+                        ) : null}
                       </div>
                     </button>
                   )}
 
-                  {paymentSettings.paypal.enabled && (
+                  {!isPpvMatch && paymentSettings.paypal.enabled && (
                     <button
                       onClick={() => setPaymentMethod('paypal')}
                       className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
@@ -265,7 +275,7 @@ export function AddFundsModal({ isOpen, onClose, directCheckoutAmount, directChe
                     </button>
                   )}
 
-                  {paymentSettings.paystack?.enabled && (
+                  {!isPpvMatch && paymentSettings.paystack?.enabled && (
                     <button
                       onClick={() => setPaymentMethod('paystack')}
                       className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
