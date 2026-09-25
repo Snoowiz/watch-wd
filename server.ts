@@ -83,6 +83,34 @@ const JWT_SECRET = process.env.JWT_SECRET || (() => {
 const db = new MySQLAdapter();
 const admin = adminCompat;
 
+// Self-healing schema column checks for incremental platform updates
+export async function ensureIncrementalColumns() {
+  const migrations = [
+    "ALTER TABLE `users` MODIFY COLUMN `role` ENUM('viewer','creator','operator','admin','partner') DEFAULT 'viewer'",
+    "ALTER TABLE `users` ADD COLUMN `club_id` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `event_access_enabled` TINYINT(1) DEFAULT 0",
+    "ALTER TABLE `matches` ADD COLUMN `event_access_duration` INT DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `event_access_duration_label` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoke_status` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoked_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoke_expires_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoke_reason` TEXT DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoked_by` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `original_status` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `purchases` ADD COLUMN `access_starts_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `purchases` ADD COLUMN `access_expires_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `purchases` ADD COLUMN `access_status` VARCHAR(50) DEFAULT 'active'",
+  ];
+
+  for (const sql of migrations) {
+    try {
+      await execute(sql);
+    } catch (_) {
+      // Column or modification already exists
+    }
+  }
+}
+
 // === API FRAGMENT CACHE MIDDLEWARE ===
 function apiFragmentCache(ttlSeconds: number) {
   return (req: any, res: any, next: any) => {
@@ -1819,6 +1847,8 @@ async function startServer() {
       const matchDoc = await db.collection("matches").doc(String(id)).get();
       if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
       const match = matchDoc.data();
+
+      await ensureIncrementalColumns().catch(() => {});
 
       const now = new Date();
       const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
@@ -5286,6 +5316,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         return res.status(400).json({ error: "Club has no contact email assigned. Please update club details with a valid email first." });
       }
 
+      // Ensure schema columns are present in database
+      await ensureIncrementalColumns().catch(() => {});
+
       const hashedPassword = await bcrypt.hash(password, 10);
       const existingUserSnap = await db.collection("users").where("email", "==", clubEmail).get();
 
@@ -7469,6 +7502,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       INSERT IGNORE INTO \`settings\` (\`key_name\`, \`value\`) VALUES
       ('sliders', '{"sliders":[{"id":"default-hero","name":"Homepage Hero","shortcode":"[slider id=\\"default-hero\\"]","autoSlide":true,"interval":5,"slides":[{"id":"slide-1","title":"Grassroots Sports, Live & Direct.","subtitle":"WatchWDS brings you the best of local and grassroots sports streaming.","image":"https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80","link":"/matches","buttonText":"Watch Now","isActive":true}]}]}');
     `).catch(err => console.error("Failed to seed sliders in settings", err));
+
+    // Ensure partner club, event access duration, and match revoke columns exist
+    ensureIncrementalColumns().catch(err => console.error("Startup incremental schema check error:", err));
 
     // Trigger deploy/startup cache warming
     warmCriticalCaches().catch(err => console.error("Startup Cache Warning failed", err));

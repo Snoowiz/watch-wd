@@ -4,6 +4,10 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -20,8 +24,14 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // server.ts
+var server_exports = {};
+__export(server_exports, {
+  ensureIncrementalColumns: () => ensureIncrementalColumns
+});
+module.exports = __toCommonJS(server_exports);
 var import_express2 = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_url = require("url");
@@ -2035,6 +2045,30 @@ var JWT_SECRET = process.env.JWT_SECRET || (() => {
   return import_crypto3.default.randomBytes(32).toString("hex");
 })();
 var db = new MySQLAdapter();
+async function ensureIncrementalColumns() {
+  const migrations = [
+    "ALTER TABLE `users` MODIFY COLUMN `role` ENUM('viewer','creator','operator','admin','partner') DEFAULT 'viewer'",
+    "ALTER TABLE `users` ADD COLUMN `club_id` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `event_access_enabled` TINYINT(1) DEFAULT 0",
+    "ALTER TABLE `matches` ADD COLUMN `event_access_duration` INT DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `event_access_duration_label` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoke_status` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoked_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoke_expires_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoke_reason` TEXT DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `revoked_by` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `original_status` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `purchases` ADD COLUMN `access_starts_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `purchases` ADD COLUMN `access_expires_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `purchases` ADD COLUMN `access_status` VARCHAR(50) DEFAULT 'active'"
+  ];
+  for (const sql of migrations) {
+    try {
+      await execute(sql);
+    } catch (_) {
+    }
+  }
+}
 function apiFragmentCache(ttlSeconds) {
   return (req, res, next) => {
     if (req.method !== "GET") return next();
@@ -3499,6 +3533,8 @@ async function startServer() {
       const matchDoc = await db.collection("matches").doc(String(id)).get();
       if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
       const match = matchDoc.data();
+      await ensureIncrementalColumns().catch(() => {
+      });
       const now = /* @__PURE__ */ new Date();
       const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1e3);
       const updateData = {
@@ -6526,6 +6562,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!clubEmail) {
         return res.status(400).json({ error: "Club has no contact email assigned. Please update club details with a valid email first." });
       }
+      await ensureIncrementalColumns().catch(() => {
+      });
       const hashedPassword = await import_bcryptjs.default.hash(password, 10);
       const existingUserSnap = await db.collection("users").where("email", "==", clubEmail).get();
       let partnerUserId;
@@ -8400,6 +8438,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       INSERT IGNORE INTO \`settings\` (\`key_name\`, \`value\`) VALUES
       ('sliders', '{"sliders":[{"id":"default-hero","name":"Homepage Hero","shortcode":"[slider id=\\"default-hero\\"]","autoSlide":true,"interval":5,"slides":[{"id":"slide-1","title":"Grassroots Sports, Live & Direct.","subtitle":"WatchWDS brings you the best of local and grassroots sports streaming.","image":"https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80","link":"/matches","buttonText":"Watch Now","isActive":true}]}]}');
     `).catch((err) => console.error("Failed to seed sliders in settings", err));
+    ensureIncrementalColumns().catch((err) => console.error("Startup incremental schema check error:", err));
     warmCriticalCaches().catch((err) => console.error("Startup Cache Warning failed", err));
     processMatchAutomations().catch((err) => console.error("Match automation startup check failed", err));
     setInterval(() => {
@@ -8414,5 +8453,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 startServer().catch((err) => {
   console.error("Failed to start server:", err);
   process.exit(1);
+});
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  ensureIncrementalColumns
 });
 //# sourceMappingURL=server.cjs.map
