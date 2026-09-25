@@ -94,6 +94,8 @@ export function AdminDashboard() {
     { id: 'finance-payouts', type: 'finance', title: 'Finance Payout Settings', subtitle: 'Club balances, threshold & auto payouts', icon: DollarSign, path: '/admin/finance' },
     { id: 'finance-balances', type: 'finance', title: 'Club Balances & Earnings', subtitle: 'View club revenue and pending balances', icon: Building2, path: '/admin/finance' },
     { id: 'feedback-hub', type: 'feedback', title: 'User Feedback & Reviews', subtitle: 'Ratings, CSAT scores, customer reviews & replies', icon: MessageSquare, path: '/admin/feedback' },
+    { id: 'match-access-duration', type: 'match', title: 'PPV Event Access & Duration', subtitle: 'Time-limited access rules & financial record protection', icon: Clock, path: '/admin/matches' },
+    { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Match Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/matches' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
@@ -392,6 +394,7 @@ function AdminOverview() {
 
   const liveCount = matches.filter(m => m.status === 'live').length;
   const upcomingCount = matches.filter(m => m.status === 'upcoming').length;
+  const revokedMatchesCount = matches.filter(m => m.revoke_status === 'revoked' || m.revoke_status === 'auto_deleted').length;
   const activeMatchesCount = matches.length;
 
   // Revenue calculates the total amount of completed gateway transactions on the platform
@@ -417,7 +420,7 @@ function AdminOverview() {
 
   const stats = [
     { label: 'Total Users', value: totalUsers.toLocaleString(), trend: '+12%', icon: Users, color: 'border-l-yellow-500', subtitle: `${newUsersCount} registered this week` },
-    { label: 'Active Matches', value: activeMatchesCount.toString(), trend: '+5%', icon: Video, color: 'border-l-green-500', subtitle: `${liveCount} broadcasting now` },
+    { label: 'Active Matches', value: activeMatchesCount.toString(), trend: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : '+5%', icon: Video, color: revokedMatchesCount > 0 ? 'border-l-amber-500' : 'border-l-green-500', subtitle: revokedMatchesCount > 0 ? `${revokedMatchesCount} taken down under review` : `${liveCount} broadcasting now` },
     { label: 'Total Revenue', value: `${getCurrencySymbol(currency)}${totalRevenue.toLocaleString()}`, trend: '+18%', icon: getCurrencyIcon(currency), color: 'border-l-yellow-500', subtitle: `${purchasesCount} live purchase(s)` },
     { label: 'SEO & Search Index', value: `${seoOverrideCount} Overrides`, trend: isSiteIndexed ? '100% OK' : 'NoIndex', icon: Globe, color: 'border-l-purple-500', subtitle: isSiteIndexed ? 'Search Engines Active' : 'Indexing Disabled' },
   ];
@@ -428,6 +431,7 @@ function AdminOverview() {
     role: u.role.toUpperCase(),
     time: 'Just now',
     roleColor: u.role === 'admin' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400' :
+      u.role === 'partner' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' :
       u.role === 'creator' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
         u.role === 'operator' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
           'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
@@ -436,14 +440,16 @@ function AdminOverview() {
   // Auto-discovered active platform modules
   const activeModules = useMemo(() => [
     { name: 'Users & Roles', count: users.length, label: 'Accounts', icon: Users, path: '/admin/users', status: 'Healthy', color: 'text-yellow-500' },
-    { name: 'Match Streamer', count: matches.length, label: 'Matches', icon: Video, path: '/admin/matches', status: liveCount > 0 ? `${liveCount} Live` : 'Active', color: 'text-green-500' },
+    { name: 'Match Streamer', count: matches.length, label: 'Matches', icon: Video, path: '/admin/matches', status: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : 'Active', color: revokedMatchesCount > 0 ? 'text-amber-500' : 'text-green-500' },
+    ...(revokedMatchesCount > 0 ? [{ name: 'Revoked Matches', count: revokedMatchesCount, label: 'Under Review', icon: Shield, path: '/admin/matches', status: 'Retention Active', color: 'text-amber-500' }] : []),
+    { name: 'Partner Clubs', count: 1, label: 'Portals & Split', icon: Building2, path: '/admin/clubs', status: 'Active', color: 'text-amber-500' },
     { name: 'SEO Engine', count: perPageSeo.length, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
     ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
     { name: 'Creator Hub', count: users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },
     { name: 'Payout Engine', count: 1, label: 'Threshold Engine', icon: DollarSign, path: '/admin/finance', status: 'Active', color: 'text-emerald-500' },
     { name: 'User Feedback', count: 1, label: 'CSAT & Reviews', icon: MessageSquare, path: '/admin/feedback', status: 'Active', color: 'text-yellow-500' },
     { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
-  ], [users, matches, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount]);
+  ], [users, matches, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount]);
 
   // Top Performing Content Calculators
   const mostWatchedMatch = useMemo(() => {
@@ -642,6 +648,13 @@ function AdminOverview() {
                   <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
                     <span className="font-mono text-slate-400 uppercase tracking-wider">Caching Layers</span>
                     <span className="font-bold text-slate-700 dark:text-slate-300">Level 1/2/3 Active</span>
+                  </div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse shrink-0"></div>
+                  <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
+                    <span className="font-mono text-slate-400 uppercase tracking-wider">Access Retention Daemon</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400">Monitoring & Ledger Safe</span>
                   </div>
                 </div>
               </div>

@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `password` VARCHAR(255) NOT NULL,
   `name` VARCHAR(255) DEFAULT '',
   `avatar` LONGTEXT DEFAULT NULL,
-  `role` ENUM('viewer','creator','operator','admin') DEFAULT 'viewer',
+  `role` ENUM('viewer','creator','operator','admin','partner') DEFAULT 'viewer',
+  `club_id` VARCHAR(100) DEFAULT NULL,
   `balance` DECIMAL(12,2) DEFAULT 0.00,
   `status` ENUM('active','banned','suspended') DEFAULT 'active',
   `active_device_id` VARCHAR(255) DEFAULT NULL,
@@ -62,6 +63,15 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `operator_id` VARCHAR(100) DEFAULT NULL,
   `creator_id` VARCHAR(100) DEFAULT NULL,
   `duration` INT DEFAULT 120,
+  `event_access_enabled` TINYINT(1) DEFAULT 0,
+  `event_access_duration` INT DEFAULT NULL,
+  `event_access_duration_label` VARCHAR(50) DEFAULT NULL,
+  `revoke_status` VARCHAR(50) DEFAULT NULL,
+  `revoked_at` DATETIME DEFAULT NULL,
+  `revoke_expires_at` DATETIME DEFAULT NULL,
+  `revoke_reason` TEXT DEFAULT NULL,
+  `revoked_by` VARCHAR(100) DEFAULT NULL,
+  `original_status` VARCHAR(50) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -77,6 +87,9 @@ CREATE TABLE IF NOT EXISTS `purchases` (
   `type` VARCHAR(50) DEFAULT 'watch',
   `code` TEXT DEFAULT NULL,
   `date` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `access_starts_at` DATETIME DEFAULT NULL,
+  `access_expires_at` DATETIME DEFAULT NULL,
+  `access_status` VARCHAR(50) DEFAULT 'active',
   INDEX `idx_purchases_user` (`user_id`),
   INDEX `idx_purchases_match` (`match_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

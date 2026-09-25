@@ -6,7 +6,8 @@ export interface User {
   id: number;
   email: string;
   name: string;
-  role: 'admin' | 'user' | 'creator' | 'operator';
+  role: 'admin' | 'user' | 'creator' | 'operator' | 'partner';
+  club_id?: string | null;
   balance: number;
   avatar: string | null;
   status: string;
@@ -1082,6 +1083,15 @@ export interface Match {
   };
   duration?: number; // Duration in minutes, defaults to 120
   reminder_sent_10m?: boolean | number;
+  event_access_enabled?: boolean | number;
+  event_access_duration?: number;
+  event_access_duration_label?: string;
+  revoke_status?: 'revoked' | 'auto_deleted' | null;
+  revoked_at?: string | null;
+  revoke_expires_at?: string | null;
+  revoke_reason?: string | null;
+  revoked_by?: string | null;
+  original_status?: string | null;
 }
 
 interface MatchState {
@@ -1090,6 +1100,8 @@ interface MatchState {
   setMatches: (matches: Match[]) => void;
   updateMatch: (id: number, updates: Partial<Match>) => Promise<void>;
   deleteMatch: (id: number) => Promise<void>;
+  revokeMatch: (id: number | string, durationDays: number, reason?: string) => Promise<boolean>;
+  restoreMatch: (id: number | string) => Promise<boolean>;
   fetchMatches: () => Promise<void>;
   watchHistory: { userId: number; matchId: number; watchedAt: string; }[];
   addToWatchHistory: (userId: number, matchId: number) => void;
@@ -1099,7 +1111,11 @@ export const useMatchStore = create<MatchState>((set, get) => ({
   matches: [],
   fetchMatches: async () => {
     try {
-      const res = await fetch('/api/matches', { cache: 'no-store' });
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/matches', { 
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const data = await res.json();
         set({ matches: Array.isArray(data) ? data : [] });
@@ -1163,6 +1179,65 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       }
     } catch (err) {
       console.error('Failed to delete match', err);
+    }
+  },
+  revokeMatch: async (id, durationDays, reason) => {
+    try {
+      const res = await fetch(`/api/admin/matches/${id}/revoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ durationDays, reason })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set((state) => ({
+          matches: state.matches.map(m => String(m.id) === String(id) ? { 
+            ...m, 
+            revoke_status: 'revoked',
+            revoked_at: data.match?.revoked_at || new Date().toISOString(),
+            revoke_expires_at: data.match?.revoke_expires_at,
+            revoke_reason: reason || null,
+            original_status: data.match?.original_status || m.status
+          } : m)
+        }));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to revoke match', err);
+      return false;
+    }
+  },
+  restoreMatch: async (id) => {
+    try {
+      const res = await fetch(`/api/admin/matches/${id}/restore`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set((state) => ({
+          matches: state.matches.map(m => String(m.id) === String(id) ? { 
+            ...m, 
+            revoke_status: null,
+            revoked_at: null,
+            revoke_expires_at: null,
+            revoke_reason: null,
+            status: data.match?.status || (m.original_status as any) || m.status
+          } : m)
+        }));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to restore match', err);
+      return false;
     }
   },
   watchHistory: [],
@@ -1264,6 +1339,9 @@ export interface Purchase {
   type: 'watch' | 'embed';
   date: string;
   code?: string; // The streaming code if type is 'embed'
+  access_starts_at?: string | null;
+  access_expires_at?: string | null;
+  access_status?: 'active' | 'expired' | 'revoked';
 }
 
 export interface Transaction {

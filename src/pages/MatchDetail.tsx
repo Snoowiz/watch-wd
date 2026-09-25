@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore } from '../store';
-import { Lock, PlayCircle, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing } from 'lucide-react';
+import { Lock, PlayCircle, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing, RefreshCw, Loader2, ShieldAlert, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { MatchComments } from '../components/MatchComments';
 import { AdOverlay } from '../components/AdOverlay';
@@ -18,7 +18,7 @@ export function MatchDetail() {
   const { isFeatureActive } = useFeatureStore();
   const { currencySymbol, walletSettings } = useSettingsStore();
   const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
-  const { matches, addToWatchHistory } = useMatchStore();
+  const { matches, addToWatchHistory, restoreMatch } = useMatchStore();
   const { categories = [] } = useCategoryStore();
   const { purchases = [], addPurchase, addTransaction, fetchPurchases } = usePurchaseStore();
   const { savedMatches = [], saveMatch, unsaveMatch, fetchSavedMatches } = useSavedMatchesStore();
@@ -110,13 +110,56 @@ export function MatchDetail() {
     );
   }
   
+  const [accessDetails, setAccessDetails] = useState<{
+    access_starts_at?: string | null;
+    access_expires_at?: string | null;
+    access_status?: string;
+  } | null>(null);
+  const [isAccessExpired, setIsAccessExpired] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [accessCountdown, setAccessCountdown] = useState<string>('');
+  const [isUrgent, setIsUrgent] = useState(false);
+
+  const isPartnerOwner = user?.role === 'partner' && !!user?.club_id && String(match.club_id || (match as any).clubId) === String(user.club_id);
+  const isAdmin = user?.role === 'admin' || user?.role === 'operator';
   const hasPlanAccess = match.access_type === 'plan' && !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date()) && (!match.required_plan_id || String(user.planId) === String(match.required_plan_id));
-  const hasAccess = !!(user ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') || match.access === 'free' || hasPlanAccess : match.access === 'free');
+
+  const isRevoked = match.revoke_status === 'revoked' || match.revoke_status === 'auto_deleted';
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  const handleRestoreThisMatch = async () => {
+    if (!match) return;
+    setIsRestoring(true);
+    try {
+      const ok = await restoreMatch(match.id);
+      if (!ok) {
+        alert('Failed to restore match');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to restore match');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  // Find user's watch purchase and verify if expired
+  const watchPurchase = user ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') : null;
+  const isLocalExpired = Boolean(
+    watchPurchase && (
+      watchPurchase.access_status === 'expired' ||
+      (watchPurchase.access_expires_at && new Date() > new Date(watchPurchase.access_expires_at))
+    )
+  );
+
+  const hasValidPurchase = Boolean(watchPurchase && !isLocalExpired && !isAccessExpired);
+  const hasAccess = !!(user ? (hasValidPurchase || match.access === 'free' || hasPlanAccess || isPartnerOwner || isAdmin) : match.access === 'free');
+  const effectiveHasAccess = hasAccess && (!isRevoked || isAdmin);
   const hasEmbedCode = user ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
   const embedCodePurchase = user ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
 
   useEffect(() => {
-    if (match && hasAccess) {
+    if (match && effectiveHasAccess) {
       const token = localStorage.getItem('token');
       fetch(`/api/matches/${match.id}/stream`, {
         method: 'POST',
@@ -125,17 +168,87 @@ export function MatchDetail() {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
       })
-        .then(res => res.ok ? res.json() : null)
+        .then(async res => {
+          if (res.status === 403) {
+            const data = await res.json().catch(() => null);
+            if (data?.isExpired) {
+              setIsAccessExpired(true);
+            }
+            return null;
+          }
+          return res.ok ? res.json() : null;
+        })
         .then(data => {
           if (data?.stream) {
             setStreamData(data.stream);
+            if (data.accessDetails) {
+              setAccessDetails(data.accessDetails);
+            }
           }
         })
         .catch(err => console.error("Error fetching stream data:", err));
     } else {
       setStreamData(null);
     }
-  }, [match?.id, hasAccess]);
+  }, [match?.id, effectiveHasAccess]);
+
+  // Live countdown timer for time-limited PPV event access
+  useEffect(() => {
+    const expiresAtStr = accessDetails?.access_expires_at || watchPurchase?.access_expires_at;
+    if (!expiresAtStr) {
+      setAccessCountdown('');
+      return;
+    }
+
+    const updateTimer = () => {
+      const diffMs = new Date(expiresAtStr).getTime() - Date.now();
+      if (diffMs <= 0) {
+        setAccessCountdown('Expired');
+        setIsAccessExpired(true);
+        return;
+      }
+      setIsUrgent(diffMs < 60 * 60 * 1000); // Under 1 hour
+
+      const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+      const hours = Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+      const minutes = Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000));
+      const seconds = Math.floor((diffMs % (60 * 1000)) / 1000);
+
+      if (days > 0) {
+        setAccessCountdown(`${days}d ${hours}h ${minutes}m`);
+      } else if (hours > 0) {
+        setAccessCountdown(`${hours}h ${minutes}m ${seconds}s`);
+      } else {
+        setAccessCountdown(`${minutes}m ${seconds}s`);
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [accessDetails?.access_expires_at, watchPurchase?.access_expires_at]);
+
+  const handleRequestAccess = async () => {
+    if (!match) return;
+    setRequestLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/matches/${match.id}/request-access`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        setRequestSent(true);
+      }
+    } catch (err) {
+      console.error("Failed to request access:", err);
+    } finally {
+      setRequestLoading(false);
+    }
+  };
 
   const rawStreamContent = streamData?.embed_code || streamData?.video_url || streamData?.description || match?.description || '';
 
@@ -457,11 +570,58 @@ export function MatchDetail() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-24">
+      {/* Revoked Notice Banner */}
+      {isRevoked && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 sm:p-5 text-amber-300">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-white text-base">Match Temporarily Taken Down (Revoked)</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {isAdmin ? 'Staff Notice' : 'Notice'}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-300 mt-1">
+                  Reason: <span className="text-amber-200 font-medium">{match.revoke_reason || 'Administrative review'}</span>
+                </p>
+                {match.revoke_expires_at && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    Auto-delete deadline: <span className="text-slate-200">{formatDateSafe(match.revoke_expires_at, 'MMM d, yyyy, h:mm a')}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={handleRestoreThisMatch}
+                disabled={isRestoring}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all shrink-0 active:scale-95"
+              >
+                <RotateCcw className={`w-4 h-4 ${isRestoring ? 'animate-spin' : ''}`} />
+                <span>{isRestoring ? 'Restoring...' : 'Restore Match'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Video Player Section */}
       <div className="-mx-4 -mt-8 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
         <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">
           <AdOverlay match={match} />
-          {hasAccess ? (
+          {effectiveHasAccess && accessCountdown && accessCountdown !== 'Expired' && (
+            <div className={`absolute top-4 left-4 z-30 flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg border transition-all ${
+              isUrgent 
+                ? 'bg-rose-500/90 text-white border-rose-400 animate-pulse shadow-rose-900/40' 
+                : 'bg-slate-900/80 text-yellow-400 border-yellow-500/40 shadow-black/40'
+            }`}>
+              <Clock className="w-3.5 h-3.5" />
+              <span>Access expires in: <strong className="font-mono text-white ml-1">{accessCountdown}</strong></span>
+            </div>
+          )}
+          {effectiveHasAccess ? (
             rawStreamContent ? (
               <div 
                 ref={videoContainerRef}
@@ -492,38 +652,109 @@ export function MatchDetail() {
               >
                 Back to Home
               </Link>
-              <h2 className="text-lg sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-4 tracking-tight uppercase text-balance mt-4 sm:mt-0">
-                {match.access_type === 'plan' ? 'Subscription Required' : match.access_type === 'ppv' ? 'Pay-Per-View Event' : 'Premium Content'}
-              </h2>
-              <p className="text-slate-400 mb-4 sm:mb-10 max-w-md text-xs sm:text-base md:text-lg leading-relaxed text-balance line-clamp-2 md:line-clamp-none">
-                {match.access_type === 'plan' ? (
-                  <>This match is exclusive to subscribers of our premium plans. Subscribe to unlock access and enjoy uninterrupted coverage.</>
-                ) : match.access_type === 'ppv' || match.access === 'paid' ? (
-                  <>This match is a Pay-Per-View event. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span> and support grassroots sports.</>
-                ) : (
-                  <>This match is exclusive. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.price}</span>.</>
-                )}
-              </p>
-              <div className="flex flex-row justify-center gap-2 sm:gap-4 w-full sm:w-auto">
-                <button 
-                  onClick={handleUnlockClick}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold px-4 py-2 sm:px-10 sm:py-4 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-lg active:scale-95 flex-1 sm:flex-auto"
-                >
-                  <Unlock className="w-4 h-4" />
-                  <span className="hidden sm:inline">{match.access_type === 'plan' ? 'View Plans' : 'Unlock Match'}</span>
-                  <span className="sm:hidden">{match.access_type === 'plan' ? 'Plans' : 'Unlock'}</span>
-                </button>
-                {!user && (
-                  <button 
-                    onClick={() => navigate('/register')}
-                    className="bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2 sm:px-10 sm:py-4 rounded-xl transition-all backdrop-blur-md flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-lg border border-white/10 flex-1 sm:flex-auto"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span className="hidden sm:inline">Join WatchWDS</span>
-                    <span className="sm:hidden">Join</span>
-                  </button>
-                )}
-              </div>
+              {isRevoked ? (
+                <div className="flex flex-col items-center justify-center max-w-md mx-auto p-4 text-center">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-xl shadow-amber-500/10">
+                    <ShieldAlert className="w-7 h-7 sm:w-8 sm:h-8" />
+                  </div>
+                  <h2 className="text-xl sm:text-3xl font-black text-white mb-2 tracking-tight uppercase">
+                    Event Temporarily Taken Down
+                  </h2>
+                  <p className="text-slate-400 mb-5 text-xs sm:text-sm leading-relaxed">
+                    This match has been temporarily taken down by administrators. Broadcast streaming and purchases are currently paused.
+                  </p>
+                  <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5 text-xs text-slate-400 text-left flex items-start gap-2.5 shadow-md">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-slate-200">Financial Records Preserved:</strong> Any previous purchases, club earnings, and watch entitlements remain securely protected in our system.
+                    </span>
+                  </div>
+                </div>
+              ) : isAccessExpired || isLocalExpired ? (
+                <>
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 sm:mb-4 shadow-lg shadow-amber-500/10">
+                    <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
+                  </div>
+                  <h2 className="text-lg sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-3 tracking-tight uppercase text-balance">
+                    Access Duration Expired
+                  </h2>
+                  <p className="text-slate-400 mb-5 sm:mb-8 max-w-md text-xs sm:text-sm md:text-base leading-relaxed text-balance">
+                    Your time-limited pass for this event has expired{watchPurchase?.access_expires_at ? ` on ${formatDateSafe(watchPurchase.access_expires_at, 'MMM d, h:mm a')}` : ''}. You can repurchase an access pass or request an extension.
+                  </p>
+                  <div className="flex flex-col sm:flex-row justify-center items-center gap-3 w-full sm:w-auto">
+                    <button 
+                      onClick={handleUnlockClick}
+                      className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-95"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Repurchase Access ({currencySymbol}{match.ppv_price || match.price})</span>
+                    </button>
+                    {user && (
+                      <button 
+                        onClick={handleRequestAccess}
+                        disabled={requestLoading || requestSent}
+                        className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold transition-all text-sm sm:text-base flex items-center justify-center gap-2 border ${
+                          requestSent 
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 cursor-default' 
+                            : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
+                        }`}
+                      >
+                        {requestLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Submitting...</span>
+                          </>
+                        ) : requestSent ? (
+                          <>
+                            <CheckCircle className="w-4 h-4 text-emerald-400" />
+                            <span>Request Submitted</span>
+                          </>
+                        ) : (
+                          <>
+                            <Unlock className="w-4 h-4" />
+                            <span>Request Extension</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-lg sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-4 tracking-tight uppercase text-balance mt-4 sm:mt-0">
+                    {match.access_type === 'plan' ? 'Subscription Required' : match.access_type === 'ppv' ? 'Pay-Per-View Event' : 'Premium Content'}
+                  </h2>
+                  <p className="text-slate-400 mb-4 sm:mb-10 max-w-md text-xs sm:text-base md:text-lg leading-relaxed text-balance line-clamp-2 md:line-clamp-none">
+                    {match.access_type === 'plan' ? (
+                      <>This match is exclusive to subscribers of our premium plans. Subscribe to unlock access and enjoy uninterrupted coverage.</>
+                    ) : match.access_type === 'ppv' || match.access === 'paid' ? (
+                      <>This match is a Pay-Per-View event. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span> and support grassroots sports.</>
+                    ) : (
+                      <>This match is exclusive. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.price}</span>.</>
+                    )}
+                  </p>
+                  <div className="flex flex-row justify-center gap-2 sm:gap-4 w-full sm:w-auto">
+                    <button 
+                      onClick={handleUnlockClick}
+                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold px-4 py-2 sm:px-10 sm:py-4 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-lg active:scale-95 flex-1 sm:flex-auto"
+                    >
+                      <Unlock className="w-4 h-4" />
+                      <span className="hidden sm:inline">{match.access_type === 'plan' ? 'View Plans' : 'Unlock Match'}</span>
+                      <span className="sm:hidden">{match.access_type === 'plan' ? 'Plans' : 'Unlock'}</span>
+                    </button>
+                    {!user && (
+                      <button 
+                        onClick={() => navigate('/register')}
+                        className="bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2 sm:px-10 sm:py-4 rounded-xl transition-all backdrop-blur-md flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-lg border border-white/10 flex-1 sm:flex-auto"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        <span className="hidden sm:inline">Join WatchWDS</span>
+                        <span className="sm:hidden">Join</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { 
   Building2, Plus, Edit3, Trash2, Save, X, CheckCircle, XCircle, 
   DollarSign, Link as LinkIcon, Mail, Loader2, Percent, Shield,
-  ExternalLink, AlertCircle, Image as ImageIcon
+  ExternalLink, AlertCircle, Image as ImageIcon, Key, Lock, Copy, Check, RefreshCw
 } from 'lucide-react';
 import { MediaPickerModal } from '../../components/MediaPickerModal';
 
@@ -44,6 +44,112 @@ export function AdminClubs() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
+
+  // Partner credentials management state
+  const [credentialsClub, setCredentialsClub] = useState<Club | null>(null);
+  const [credentialsStatus, setCredentialsStatus] = useState<{ hasAccount: boolean; email: string; user: any } | null>(null);
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
+  const [credentialsPassword, setCredentialsPassword] = useState('');
+  const [credentialsSendEmail, setCredentialsSendEmail] = useState(true);
+  const [credentialsSaving, setCredentialsSaving] = useState(false);
+  const [credentialsMessage, setCredentialsMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [copiedPass, setCopiedPass] = useState(false);
+
+  const openCredentialsModal = async (club: Club) => {
+    setCredentialsClub(club);
+    setCredentialsPassword('');
+    setCredentialsMessage(null);
+    setCredentialsLoading(true);
+    setCopiedPass(false);
+    try {
+      const res = await fetch(`/api/admin/clubs/${club.id}/credentials-status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCredentialsStatus(data);
+      }
+    } catch (err) {
+      console.error('Error fetching credentials status:', err);
+    } finally {
+      setCredentialsLoading(false);
+    }
+  };
+
+  const handleSaveCredentials = async () => {
+    if (!credentialsClub || !credentialsPassword) return;
+    if (credentialsPassword.length < 6) {
+      setCredentialsMessage({ text: 'Password must be at least 6 characters', type: 'error' });
+      return;
+    }
+    setCredentialsSaving(true);
+    setCredentialsMessage(null);
+    try {
+      const res = await fetch(`/api/admin/clubs/${credentialsClub.id}/credentials`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          password: credentialsPassword,
+          sendEmail: credentialsSendEmail
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCredentialsMessage({ text: data.message || 'Credentials set successfully!', type: 'success' });
+        // Refresh status
+        const statusRes = await fetch(`/api/admin/clubs/${credentialsClub.id}/credentials-status`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (statusRes.ok) setCredentialsStatus(await statusRes.json());
+      } else {
+        setCredentialsMessage({ text: data.error || 'Failed to set credentials', type: 'error' });
+      }
+    } catch (err: any) {
+      setCredentialsMessage({ text: err.message || 'Error setting credentials', type: 'error' });
+    } finally {
+      setCredentialsSaving(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!credentialsClub) return;
+    if (!confirm(`Generate a temporary password and update credentials for ${credentialsClub.name}?`)) return;
+    setCredentialsSaving(true);
+    setCredentialsMessage(null);
+    try {
+      const res = await fetch(`/api/admin/clubs/${credentialsClub.id}/reset-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCredentialsPassword(data.tempPassword || '');
+        setCredentialsMessage({ text: data.message || 'Temporary password generated!', type: 'success' });
+        const statusRes = await fetch(`/api/admin/clubs/${credentialsClub.id}/credentials-status`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (statusRes.ok) setCredentialsStatus(await statusRes.json());
+      } else {
+        setCredentialsMessage({ text: data.error || 'Failed to reset password', type: 'error' });
+      }
+    } catch (err: any) {
+      setCredentialsMessage({ text: err.message || 'Error resetting password', type: 'error' });
+    } finally {
+      setCredentialsSaving(false);
+    }
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+    let pass = '';
+    for (let i = 0; i < 12; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setCredentialsPassword(pass);
+  };
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -545,8 +651,8 @@ export function AdminClubs() {
                       )}
                     </div>
 
-                    {/* Onboarding Trigger Button */}
-                    <div className="mt-2">
+                    {/* Action buttons: Stripe Onboarding + Partner Login Credentials */}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       <button
                         onClick={async () => {
                           try {
@@ -564,10 +670,18 @@ export function AdminClubs() {
                             alert(err.message || 'Error generating onboarding link');
                           }
                         }}
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 px-3 py-1 rounded-lg transition-colors"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 px-3 py-1.5 rounded-lg transition-colors"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                         {stripeId ? 'Resume Stripe Onboarding' : 'Start Stripe Express Onboarding'}
+                      </button>
+
+                      <button
+                        onClick={() => openCredentialsModal(club)}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 px-3 py-1.5 rounded-lg transition-colors border border-amber-200 dark:border-amber-500/30"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        Partner Login Credentials
                       </button>
                     </div>
 
@@ -649,6 +763,154 @@ export function AdminClubs() {
         onSelect={(url) => setFormLogo(url)}
         title="Select Partner Club Logo"
       />
+
+      {/* Partner Club Credentials Modal */}
+      {credentialsClub && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setCredentialsClub(null)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Partner Club Credentials</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{credentialsClub.name}</p>
+              </div>
+            </div>
+
+            {credentialsLoading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-amber-500 animate-spin mb-3" />
+                <p className="text-sm text-slate-500">Loading partner account info...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Account Status Card */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <span className="text-slate-500 dark:text-slate-400">Assigned Email:</span>
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      {credentialsClub.contactEmail || credentialsClub.contact_email || 'No email assigned'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500 dark:text-slate-400">Account Status:</span>
+                    {credentialsStatus?.hasAccount ? (
+                      <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle className="w-3.5 h-3.5" /> Active Partner Account
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-bold text-amber-600 dark:text-amber-400">
+                        <AlertCircle className="w-3.5 h-3.5" /> No Account Created Yet
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {credentialsMessage && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                      credentialsMessage.type === 'success'
+                        ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                        : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/30'
+                    }`}
+                  >
+                    {credentialsMessage.type === 'success' ? (
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                    )}
+                    <span>{credentialsMessage.text}</span>
+                  </div>
+                )}
+
+                {/* Password field */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Set Login Password</label>
+                    <button
+                      type="button"
+                      onClick={generateRandomPassword}
+                      className="text-[11px] font-bold text-violet-600 dark:text-violet-400 hover:underline inline-flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Generate Random
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={credentialsPassword}
+                      onChange={(e) => setCredentialsPassword(e.target.value)}
+                      placeholder="Enter minimum 6-character password"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white font-mono placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    {credentialsPassword && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(credentialsPassword);
+                          setCopiedPass(true);
+                          setTimeout(() => setCopiedPass(false), 2000);
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white p-1"
+                        title="Copy Password"
+                      >
+                        {copiedPass ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Send Email Checkbox */}
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={credentialsSendEmail}
+                    onChange={(e) => setCredentialsSendEmail(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span>Email login credentials and instructions to <strong>{credentialsClub.contactEmail || credentialsClub.contact_email}</strong></span>
+                </label>
+
+                {/* Action buttons */}
+                <div className="pt-3 flex flex-col gap-2">
+                  <button
+                    onClick={handleSaveCredentials}
+                    disabled={credentialsSaving || !credentialsPassword || !(credentialsClub.contactEmail || credentialsClub.contact_email)}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {credentialsSaving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Lock className="w-4 h-4" />
+                    )}
+                    {credentialsStatus?.hasAccount ? 'Update & Save Credentials' : 'Create Partner Account'}
+                  </button>
+
+                  {credentialsStatus?.hasAccount && (
+                    <button
+                      type="button"
+                      onClick={handleResetPassword}
+                      disabled={credentialsSaving}
+                      className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold py-2 rounded-xl transition-all text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Generate Temporary Reset Password & Email
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

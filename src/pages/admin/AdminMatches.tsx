@@ -6,13 +6,14 @@ import {
   Plus, Search, Video, Edit2, Trash2, ExternalLink, 
   Calendar, Lock, Globe, Tag, MoreVertical, Eye,
   CheckCircle, Clock, AlertCircle, GripVertical,
-  MessageSquare, ShieldAlert, Check, X, AlertTriangle
+  MessageSquare, ShieldAlert, Check, X, AlertTriangle,
+  RotateCcw, ShieldOff, Loader2, Ban
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 export function AdminMatches() {
   const navigate = useNavigate();
-  const { matches = [], deleteMatch, updateMatch, setMatches } = useMatchStore();
+  const { matches = [], deleteMatch, updateMatch, setMatches, revokeMatch, restoreMatch } = useMatchStore();
   const { categories = [] } = useCategoryStore();
   const { currencySymbol } = useSettingsStore();
   const { addToast, updateToast } = useUIStore();
@@ -24,9 +25,15 @@ export function AdminMatches() {
   
   // Matches search/filter
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'upcoming' | 'live' | 'completed'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'upcoming' | 'live' | 'completed' | 'revoked'>('all');
   const [deleteConfirmId, setDeleteConfirmId] = useState<any>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Match Revoke / Take Down Modal State
+  const [revokeConfirmMatch, setRevokeConfirmMatch] = useState<any>(null);
+  const [revokeDurationDays, setRevokeDurationDays] = useState<number>(30);
+  const [revokeReason, setRevokeReason] = useState<string>('');
+  const [isRevoking, setIsRevoking] = useState<boolean>(false);
 
   // Comments search/filter
   const [commentSearchQuery, setCommentSearchQuery] = useState('');
@@ -47,9 +54,49 @@ export function AdminMatches() {
   const filteredMatches = matches.filter(m => {
     const matchesSearch = (m.title || '').toLowerCase().includes((searchQuery || '').toLowerCase()) || 
                          (m.slug || '').toLowerCase().includes((searchQuery || '').toLowerCase());
-    const matchesStatus = filterStatus === 'all' || m.status === filterStatus || (filterStatus === 'upcoming' && m.publishStatus === 'pending');
+    const isRevoked = m.revoke_status === 'revoked';
+    const matchesStatus = filterStatus === 'all' 
+      ? true 
+      : filterStatus === 'revoked'
+      ? isRevoked
+      : !isRevoked && (m.status === filterStatus || (filterStatus === 'upcoming' && m.publishStatus === 'pending'));
     return matchesSearch && matchesStatus;
   });
+
+  const handleRevokeMatch = async () => {
+    if (!revokeConfirmMatch) return;
+    setIsRevoking(true);
+    const toastId = addToast('Revoking match...', 'loading');
+    try {
+      const ok = await revokeMatch(revokeConfirmMatch.id, revokeDurationDays, revokeReason);
+      if (ok) {
+        updateToast(toastId, { message: 'Match temporarily taken down. Financial records preserved.', type: 'success' });
+        setRevokeConfirmMatch(null);
+        setRevokeReason('');
+        setRevokeDurationDays(30);
+      } else {
+        updateToast(toastId, { message: 'Failed to revoke match.', type: 'error' });
+      }
+    } catch (err) {
+      updateToast(toastId, { message: 'Failed to revoke match.', type: 'error' });
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+
+  const handleRestoreMatch = async (id: any) => {
+    const toastId = addToast('Restoring match...', 'loading');
+    try {
+      const ok = await restoreMatch(id);
+      if (ok) {
+        updateToast(toastId, { message: 'Match successfully restored to active catalog!', type: 'success' });
+      } else {
+        updateToast(toastId, { message: 'Failed to restore match.', type: 'error' });
+      }
+    } catch (err) {
+      updateToast(toastId, { message: 'Failed to restore match.', type: 'error' });
+    }
+  };
 
   const filteredComments = comments.filter(c => {
     const matchesSearch = (c.content || '').toLowerCase().includes((commentSearchQuery || '').toLowerCase()) ||
@@ -228,11 +275,15 @@ export function AdminMatches() {
               />
             </div>
             <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl">
-              {(['all', 'upcoming', 'live', 'completed'] as const).map((status) => (
+              {(['all', 'upcoming', 'live', 'completed', 'revoked'] as const).map((status) => (
                 <button 
                   key={status}
                   onClick={() => setFilterStatus(status)}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-lg capitalize transition-all ${filterStatus === status ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg capitalize transition-all ${
+                    filterStatus === status 
+                      ? (status === 'revoked' ? 'bg-rose-500 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm')
+                      : (status === 'revoked' ? 'text-rose-500 hover:text-rose-600 font-bold' : 'text-slate-500')
+                  }`}
                 >
                   {status}
                 </button>
@@ -292,22 +343,53 @@ export function AdminMatches() {
                       </td>
                       <td className="p-4">
                         <div className="flex flex-col gap-1 items-start">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            match.status === 'live' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 animate-pulse' :
-                            match.status === 'upcoming' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
-                            'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
-                          }`}>
-                            {match.status === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>}
-                            {match.status}
-                          </span>
-                          {match.publishStatus && (
-                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${
-                               match.publishStatus === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' :
-                               match.publishStatus === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' :
-                               'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400'
-                             }`}>
-                               {match.publishStatus}
-                             </span>
+                          {match.revoke_status === 'revoked' ? (
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-300 dark:border-rose-500/30">
+                                <ShieldAlert className="w-3 h-3 text-rose-500" />
+                                Revoked
+                              </span>
+                              {match.revoke_expires_at && (
+                                <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400 font-bold">
+                                  Auto-deletes {(() => {
+                                    try {
+                                      return new Date(match.revoke_expires_at).toLocaleDateString();
+                                    } catch (e) {
+                                      return match.revoke_expires_at;
+                                    }
+                                  })()}
+                                </span>
+                              )}
+                              {match.revoke_reason && (
+                                <span className="text-[10px] text-slate-400 italic line-clamp-1 max-w-[140px]" title={match.revoke_reason}>
+                                  "{match.revoke_reason}"
+                                </span>
+                              )}
+                            </div>
+                          ) : match.revoke_status === 'auto_deleted' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                              Auto-Deleted
+                            </span>
+                          ) : (
+                            <>
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                match.status === 'live' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 animate-pulse' :
+                                match.status === 'upcoming' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400' :
+                                'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                              }`}>
+                                {match.status === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>}
+                                {match.status}
+                              </span>
+                              {match.publishStatus && (
+                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${
+                                   match.publishStatus === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400' :
+                                   match.publishStatus === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' :
+                                   'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400'
+                                 }`}>
+                                   {match.publishStatus}
+                                 </span>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -346,7 +428,25 @@ export function AdminMatches() {
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                           {match.publishStatus === 'pending' && (
+                          {match.revoke_status === 'revoked' ? (
+                            <button 
+                              onClick={() => handleRestoreMatch(match.id)}
+                              className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 rounded-lg transition-colors font-bold text-xs flex items-center gap-1.5"
+                              title="Restore Match to Catalog"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Restore</span>
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => setRevokeConfirmMatch(match)}
+                              className="p-2 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-amber-600 dark:text-amber-500 rounded-lg transition-colors"
+                              title="Temporarily Revoke / Take Down"
+                            >
+                              <ShieldAlert className="w-4 h-4" />
+                            </button>
+                          )}
+                          {match.publishStatus === 'pending' && (
                             <>
                               <button 
                                 onClick={() => handleApprove(match.id)}
@@ -583,8 +683,11 @@ export function AdminMatches() {
                   <AlertCircle className="w-8 h-8" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Delete Match?</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
-                  Are you sure you want to permanently delete "{matches.find(m => String(m.id) === String(deleteConfirmId))?.title || 'this match'}"? This action cannot be undone.
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-2 leading-relaxed">
+                  Are you sure you want to delete "{matches.find(m => String(m.id) === String(deleteConfirmId))?.title || 'this match'}"?
+                </p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mb-6 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">
+                  Historical financial records, partner club earnings, and purchase records will remain permanently preserved.
                 </p>
                 <div className="flex gap-3 w-full">
                   <button
@@ -742,6 +845,130 @@ export function AdminMatches() {
                   className="flex-1 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold rounded-xl transition-all text-sm flex items-center justify-center gap-1.5 active:scale-95 shadow-lg shadow-yellow-500/20 cursor-pointer"
                 >
                   Save Changes
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Match Revoke / Take Down Modal */}
+      <AnimatePresence>
+        {revokeConfirmMatch !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isRevoking && setRevokeConfirmMatch(null)}
+              className="absolute inset-0 bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', duration: 0.4 }}
+              className="relative w-full max-w-lg bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl p-6 sm:p-8 overflow-hidden z-10"
+              id="revoke-match-modal"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Temporarily Revoke Match</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Take down from public streaming while preserving records</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700/60 mb-5">
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Target Match</div>
+                <div className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{revokeConfirmMatch.title}</div>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
+                    Revoke Duration (Auto-Deletes After)
+                  </label>
+                  <div className="grid grid-cols-5 gap-2 mb-2">
+                    {[7, 14, 30, 60, 90].map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setRevokeDurationDays(d)}
+                        className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                          revokeDurationDays === d
+                            ? 'bg-amber-500 text-slate-900 border-amber-500 shadow-sm'
+                            : 'bg-white dark:bg-slate-700/50 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:border-amber-500/50'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Or custom days:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={revokeDurationDays}
+                      onChange={(e) => setRevokeDurationDays(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-20 px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">
+                    Reason for Revoking (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={revokeReason}
+                    onChange={(e) => setRevokeReason(e.target.value)}
+                    placeholder="e.g. Content review, rescheduling, copyright dispute, partner request..."
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-xs text-emerald-700 dark:text-emerald-300">
+                  <div className="font-bold flex items-center gap-1.5 mb-1">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Financial Ledger Protection Active
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-emerald-600/90 dark:text-emerald-400">
+                    Taking down this match will NOT delete or mutate partner club earnings, payouts, wallet transactions, or user purchases.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 w-full">
+                <button
+                  type="button"
+                  disabled={isRevoking}
+                  onClick={() => setRevokeConfirmMatch(null)}
+                  className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl transition-colors text-sm active:scale-95 cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isRevoking}
+                  onClick={handleRevokeMatch}
+                  className="flex-1 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl transition-all text-sm flex items-center justify-center gap-2 active:scale-95 shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+                >
+                  {isRevoking ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Revoking...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldAlert className="w-4 h-4" />
+                      <span>Revoke Match ({revokeDurationDays}d)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>

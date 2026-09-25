@@ -191,6 +191,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         Creator Studio
                       </Link>
                     )}
+                    {(user.role === 'partner' || user.role === 'admin') && (
+                      <Link to="/partner" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
+                        Partner Club Portal
+                      </Link>
+                    )}
                     <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                       My Profile
                     </Link>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   LogOut, Settings as GearIcon,
-  Sun, Moon, Monitor, Sparkles, LayoutDashboard, Video, MessageSquare, Users
+  Sun, Moon, Monitor, Sparkles, LayoutDashboard, Video, MessageSquare, Users, Building2
 } from 'lucide-react';
 import { useAuthStore, useThemeStore, useFeatureStore, useSettingsStore } from '../store';
 import { UserAvatar } from './UserAvatar';
@@ -81,6 +81,11 @@ export function UserDropdown() {
             {user.role === 'creator' && (
               <Link to="/creator/studio" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                 <Video className="w-5 h-5 text-slate-400" /> Creator Studio
+              </Link>
+            )}
+            {(user.role === 'partner' || user.role === 'admin') && (
+              <Link to="/partner" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                <Building2 className="w-5 h-5 text-amber-500" /> Partner Club Portal
               </Link>
             )}
             <Link to="/my-plans" onClick={closeDropdown} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">

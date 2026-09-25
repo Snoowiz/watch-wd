@@ -222,6 +222,19 @@ async function notifyAdmins(title: string, message: string, type: string = 'syst
   }
 }
 
+async function notifyPartnerClub(clubId: string, title: string, message: string, type: string = 'info', link: string | null = null) {
+  try {
+    const snap = await db.collection("users").where("club_id", "==", String(clubId)).get();
+    for (const d of snap.docs) {
+      if (d.data().role === 'partner') {
+        await notifyUser(d.id, title, message, type, link);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to notify partner club', err);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.APP_PORT || process.env.PORT || 3000;
@@ -262,13 +275,14 @@ async function startServer() {
 
   const normalizeUser = (docId: string, data: any) => {
     if (!data) return null;
-    const { password: _, plan_id, plan_expires_at, ...userData } = data;
+    const { password: _, plan_id, plan_expires_at, club_id, ...userData } = data;
     const isCompleted = Boolean(Number(data.onboarding_completed ?? data.onboardingCompleted ?? 0));
     const normalized = { 
       id: docId, 
       ...userData,
       planId: plan_id,
       planExpiresAt: plan_expires_at,
+      clubId: club_id || null,
       onboardingCompleted: isCompleted,
       onboarding_completed: isCompleted ? 1 : 0,
       avatar: data.avatar || data.user_avatar || null,
@@ -308,11 +322,12 @@ async function startServer() {
         balance: 0, 
         status: "active", 
         onboarding_completed: 0,
+        club_id: null,
         created_at: new Date().toISOString() 
       };
       const result = await db.collection("users").add(userData);
       
-      const token = jwt.sign({ id: result.id, role: userData.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
+      const token = jwt.sign({ id: result.id, role: userData.role, device_id: finalDeviceId, club_id: userData.club_id || null }, JWT_SECRET, { expiresIn: "7d" });
       notifyAdmins("New User Registration", `${name || email} has joined the platform.`, "system", "/admin/users");
       notifyUser(result.id, "Welcome to WatchWDS!", "Your account has been created successfully.", "info", "/profile");
       
@@ -466,7 +481,7 @@ async function startServer() {
 
       await userDoc.ref.update({ active_device_id: finalDeviceId, status: "active" });
 
-      const token = jwt.sign({ id: userDoc.id, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
+      const token = jwt.sign({ id: userDoc.id, role: user.role, device_id: finalDeviceId, club_id: user.club_id || null }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token, user: normalizeUser(userDoc.id, user), device_id: finalDeviceId });
     } catch (e: any) {
       console.error("Login error:", e);
@@ -614,7 +629,7 @@ async function startServer() {
       }
       await userRef.update(userUpdate);
 
-      const jwtToken = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
+      const jwtToken = jwt.sign({ id: docId, role: user.role, device_id: finalDeviceId, club_id: user.club_id || null }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token: jwtToken, user: normalizeUser(docId, user), device_id: finalDeviceId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -656,7 +671,7 @@ async function startServer() {
 
       await recordLoginAttempt(user.email, ip, ua, true, "Device verified successfully via 2FA");
 
-      const token = jwt.sign({ id: userDoc.id, role: user.role, device_id: finalDeviceId }, JWT_SECRET, { expiresIn: "7d" });
+      const token = jwt.sign({ id: userDoc.id, role: user.role, device_id: finalDeviceId, club_id: user.club_id || null }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token, user: normalizeUser(userDoc.id, user), device_id: finalDeviceId });
     } catch (e: any) {
       console.error("Device verification error:", e);
@@ -1007,10 +1022,38 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.get("/api/matches", cdnEdgeSim(30), apiFragmentCache(15), async (req, res) => {
+  app.get("/api/matches", cdnEdgeSim(30), apiFragmentCache(15), async (req: any, res) => {
+    try {
+      // Check if caller is admin or operator
+      let isAdmin = false;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        try {
+          const decoded = jwt.verify(authHeader.split(" ")[1], JWT_SECRET) as any;
+          if (decoded && (decoded.role === "admin" || decoded.role === "operator")) {
+            isAdmin = true;
+          }
+        } catch (e) {}
+      }
+
+      const snap = await db.collection("matches").orderBy("start_time", "desc").get();
+      let docs = snap.docs;
+      if (!isAdmin) {
+        docs = docs.filter(d => {
+          const m = d.data();
+          const rStatus = m.revoke_status || m.revokeStatus;
+          return !rStatus || rStatus === 'normal';
+        });
+      }
+      res.json(docs.map(d => sanitizeMatchForPublic({ id: d.id, ...d.data() })));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Dedicated Admin Matches Endpoint (unfiltered, full catalog with revoke info)
+  app.get("/api/admin/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       const snap = await db.collection("matches").orderBy("start_time", "desc").get();
-      res.json(snap.docs.map(d => sanitizeMatchForPublic({ id: d.id, ...d.data() })));
+      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1405,8 +1448,22 @@ async function startServer() {
       const userId = req.user.id.toString();
       const userRole = req.user.role;
       
+      // If match is revoked or auto-deleted, deny non-admin streaming
+      const rStatus = match.revoke_status || match.revokeStatus;
+      if (rStatus && ['revoked', 'auto_deleted'].includes(rStatus) && userRole !== 'admin' && userRole !== 'operator') {
+        return res.status(403).json({
+          error: "match_revoked",
+          message: "This event has been temporarily taken down by administrators.",
+          isRevoked: true,
+          hasAccess: false
+        });
+      }
+
       let hasAccess = false;
+      let matchingPurchase: any = null;
       if (match.access === 'free' || userRole === 'admin' || userRole === 'operator') {
+        hasAccess = true;
+      } else if (userRole === 'partner' && req.user.club_id && String(match.club_id || match.clubId) === String(req.user.club_id)) {
         hasAccess = true;
       } else {
         // Check PPV purchase
@@ -1415,8 +1472,28 @@ async function startServer() {
           .where("matchId", "==", matchId)
           .where("type", "==", "watch")
           .get();
+        
+        let isExpired = false;
+
         if (purchasesSnap.docs && purchasesSnap.docs.length > 0) {
-          hasAccess = true;
+          const now = new Date();
+          for (const doc of purchasesSnap.docs) {
+            const p = doc.data();
+            const expiresAt = p.access_expires_at || p.accessExpiresAt;
+            const status = p.access_status || p.accessStatus;
+            
+            if (status === 'revoked') {
+              continue;
+            }
+            if (status === 'expired' || (expiresAt && now > new Date(expiresAt))) {
+              isExpired = true;
+              continue;
+            }
+            // Active valid purchase found
+            hasAccess = true;
+            matchingPurchase = { id: doc.id, ...p };
+            break;
+          }
         }
 
         // Check subscription plan access
@@ -1426,6 +1503,15 @@ async function startServer() {
           if (planValid && planMatch) {
             hasAccess = true;
           }
+        }
+
+        if (!hasAccess && isExpired) {
+          return res.status(403).json({ 
+            error: "access_expired", 
+            message: "Your time-limited PPV access to this match has expired. You may purchase renewed access.", 
+            hasAccess: false,
+            isExpired: true 
+          });
         }
       }
 
@@ -1441,7 +1527,12 @@ async function startServer() {
           stream_key: match.stream_key || match.streamKey || null,
           playback_id: match.playback_id || match.playbackId || null,
           description: match.description || null
-        }
+        },
+        accessDetails: matchingPurchase ? {
+          access_starts_at: matchingPurchase.access_starts_at || matchingPurchase.accessStartsAt,
+          access_expires_at: matchingPurchase.access_expires_at || matchingPurchase.accessExpiresAt,
+          access_status: matchingPurchase.access_status || matchingPurchase.accessStatus
+        } : null
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -1473,7 +1564,10 @@ async function startServer() {
         clubId: 'club_id',
         liveCommenting: 'live_commenting',
         commentAlignment: 'comment_alignment',
-        adSettings: 'ad_settings'
+        adSettings: 'ad_settings',
+        eventAccessEnabled: 'event_access_enabled',
+        eventAccessDuration: 'event_access_duration',
+        eventAccessDurationLabel: 'event_access_duration_label'
       };
       
       for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
@@ -1536,7 +1630,10 @@ async function startServer() {
         clubId: 'club_id',
         liveCommenting: 'live_commenting',
         commentAlignment: 'comment_alignment',
-        adSettings: 'ad_settings'
+        adSettings: 'ad_settings',
+        eventAccessEnabled: 'event_access_enabled',
+        eventAccessDuration: 'event_access_duration',
+        eventAccessDurationLabel: 'event_access_duration_label'
       };
       
       for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
@@ -1550,19 +1647,299 @@ async function startServer() {
       if (matchData.duration !== undefined) {
         matchData.duration = Number(matchData.duration) || 120;
       }
+
       await db.collection("matches").doc(req.params.id).update(matchData);
+
+      // If match status changed to live, activate event access timers for pre-purchases
+      if (matchData.status === 'live') {
+        try {
+          const matchDoc = await db.collection("matches").doc(req.params.id).get();
+          const currentMatch = matchDoc.exists ? matchDoc.data() : {};
+          if (Boolean(Number(currentMatch.event_access_enabled || currentMatch.eventAccessEnabled))) {
+            const durationMin = Number(currentMatch.event_access_duration || currentMatch.eventAccessDuration) || 4320;
+            const prePurchases = await db.collection("purchases")
+              .where("matchId", "==", req.params.id)
+              .where("type", "==", "watch")
+              .get();
+            const now = new Date();
+            for (const pdoc of (prePurchases.docs || [])) {
+              const p = pdoc.data();
+              if (p.access_starts_at && new Date(p.access_starts_at) > now) {
+                const newExpiry = new Date(now.getTime() + durationMin * 60 * 1000);
+                await pdoc.ref.update({
+                  access_starts_at: now.toISOString(),
+                  access_expires_at: newExpiry.toISOString(),
+                  access_status: 'active'
+                });
+              }
+            }
+          }
+        } catch (timerErr) {
+          console.error("Error activating live match access timers:", timerErr);
+        }
+      }
+
       cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // DELETE MATCH: Preserves all financial records (club_earnings, payouts, transactions, purchases)
   app.delete("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
+      // NOTE: This operation intentionally deletes ONLY the matches catalog row.
+      // All historical financial records (club_earnings, club_balances, payouts, transactions, purchases)
+      // are preserved in their respective tables to guarantee accounting integrity and auditability.
       await db.collection("matches").doc(req.params.id).delete();
       cacheEngine.invalidateCollection("matches");
-      res.json({ success: true });
+      res.json({ success: true, message: "Match removed. Historical financial records preserved." });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // Admin: Update Event Access Duration for a Match (Task 2)
+  app.put("/api/admin/matches/:id/event-access", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { enabled, durationMinutes, durationLabel } = req.body;
+      const matchDoc = await db.collection("matches").doc(String(id)).get();
+      if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
+
+      await matchDoc.ref.update({
+        event_access_enabled: enabled ? 1 : 0,
+        event_access_duration: Number(durationMinutes) || 4320,
+        event_access_duration_label: durationLabel || '3d'
+      });
+      cacheEngine.invalidateCollection("matches");
+      res.json({ success: true, message: "Event access duration updated" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: Manually Restore or Extend Access for a User's Purchase (Task 2)
+  app.post("/api/admin/purchases/:id/restore-access", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { extensionDays = 3, newExpiresAt } = req.body;
+      const purchaseDoc = await db.collection("purchases").doc(String(id)).get();
+      if (!purchaseDoc.exists) return res.status(404).json({ error: "Purchase not found" });
+      const purchase = purchaseDoc.data();
+
+      let targetExpiry: Date;
+      if (newExpiresAt) {
+        targetExpiry = new Date(newExpiresAt);
+      } else {
+        targetExpiry = new Date(Date.now() + Number(extensionDays) * 24 * 60 * 60 * 1000);
+      }
+
+      await purchaseDoc.ref.update({
+        access_status: "active",
+        access_expires_at: targetExpiry.toISOString()
+      });
+
+      // Notify the user
+      if (purchase.userId) {
+        notifyUser(
+          purchase.userId,
+          "Match Access Restored",
+          `Your access has been renewed and is now valid until ${targetExpiry.toLocaleDateString()}.`,
+          "success",
+          `/matches/${purchase.matchId}`
+        );
+      }
+
+      res.json({
+        success: true,
+        message: `Access restored until ${targetExpiry.toLocaleString()}`,
+        access_expires_at: targetExpiry.toISOString()
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // User: Request Access Renewal / Extension when expired (Task 2)
+  app.post("/api/matches/:id/request-access", authenticate, async (req: any, res) => {
+    try {
+      const matchId = req.params.id;
+      const matchDoc = await db.collection("matches").doc(String(matchId)).get();
+      if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
+      const match = matchDoc.data();
+
+      const user = req.user;
+      notifyAdmins(
+        "Access Extension Request",
+        `User ${user.email} (ID: ${user.id}) requested an access extension for match: ${match.title || match.home_team + ' vs ' + match.away_team || matchId}`,
+        "system",
+        `/admin/matches`
+      );
+
+      res.json({ success: true, message: "Your access renewal request has been submitted to platform administrators." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Background Task: Periodic check for expired access timers (every 5 minutes)
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const snap = await db.collection("purchases")
+        .where("type", "==", "watch")
+        .where("access_status", "==", "active")
+        .get();
+
+      for (const doc of (snap.docs || [])) {
+        const p = doc.data();
+        const expiresAt = p.access_expires_at || p.accessExpiresAt;
+        if (expiresAt && now > new Date(expiresAt)) {
+          await doc.ref.update({ access_status: "expired" });
+          if (p.userId) {
+            notifyUser(
+              p.userId,
+              "PPV Access Expired",
+              "Your scheduled PPV access duration for a match has ended. You may request renewed access.",
+              "info"
+            );
+          }
+        }
+      }
+    } catch (err) {
+      // background silent catch
+    }
+  }, 5 * 60 * 1000);
+
+  // Admin: Temporarily Revoke / Take Down a Match (Task 3)
+  app.post("/api/admin/matches/:id/revoke", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { durationDays = 30, reason = "" } = req.body;
+      const days = Math.max(1, Number(durationDays) || 30);
+      
+      const matchDoc = await db.collection("matches").doc(String(id)).get();
+      if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
+      const match = matchDoc.data();
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+      const updateData = {
+        revoke_status: "revoked",
+        revoked_at: now.toISOString(),
+        revoke_expires_at: expiresAt.toISOString(),
+        revoke_reason: reason.trim() || null,
+        revoked_by: req.user.id.toString(),
+        original_status: match.status || "upcoming"
+      };
+
+      await matchDoc.ref.update(updateData);
+      cacheEngine.invalidateCollection("matches");
+
+      // Notify Admins
+      await notifyAdmins(
+        "Match Revoked / Taken Down",
+        `Match "${match.title || id}" was taken down for ${days} days by ${req.user.name || 'Admin'}. Reason: ${reason || 'None specified'}. Auto-deletes on ${expiresAt.toLocaleDateString()}.`,
+        "system",
+        "/admin/matches"
+      );
+
+      // Notify Partner Club if assigned
+      const clubId = match.club_id || match.clubId;
+      if (clubId) {
+        await notifyPartnerClub(
+          clubId,
+          "Match Temporarily Taken Down",
+          `Match "${match.title || id}" has been temporarily taken down from public streaming by platform administrators for ${days} days.`
+        );
+      }
+
+      res.json({
+        success: true,
+        message: `Match temporarily revoked for ${days} days. All financial records preserved.`,
+        match: { ...match, id, ...updateData }
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: Restore a Revoked Match (Task 3)
+  app.post("/api/admin/matches/:id/restore", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const matchDoc = await db.collection("matches").doc(String(id)).get();
+      if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
+      const match = matchDoc.data();
+
+      const restoredStatus = match.original_status || match.originalStatus || "upcoming";
+
+      const updateData = {
+        revoke_status: null,
+        revoked_at: null,
+        revoke_expires_at: null,
+        revoke_reason: null,
+        status: restoredStatus
+      };
+
+      await matchDoc.ref.update(updateData);
+      cacheEngine.invalidateCollection("matches");
+
+      // Notify Admins
+      await notifyAdmins(
+        "Match Restored",
+        `Match "${match.title || id}" has been restored to active status by ${req.user.name || 'Admin'}.`,
+        "system",
+        `/matches/${match.slug || id}`
+      );
+
+      // Notify Partner Club if assigned
+      const clubId = match.club_id || match.clubId;
+      if (clubId) {
+        await notifyPartnerClub(
+          clubId,
+          "Match Restored to Platform",
+          `Match "${match.title || id}" has been restored and is once again available.`
+        );
+      }
+
+      res.json({
+        success: true,
+        message: "Match restored successfully.",
+        match: { ...match, id, ...updateData }
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Background Task: Auto-Expiry for Revoked Matches (runs every 10 minutes)
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const snap = await db.collection("matches").where("revoke_status", "==", "revoked").get();
+      for (const doc of (snap.docs || [])) {
+        const m = doc.data();
+        const expiresAt = m.revoke_expires_at || m.revokeExpiresAt;
+        if (expiresAt && now > new Date(expiresAt)) {
+          // Soft-delete from catalog after revoke expiration
+          // Financial records (club_earnings, club_balances, payouts, transactions, purchases) remain 100% intact!
+          await doc.ref.update({
+            revoke_status: "auto_deleted",
+            publish_status: "deleted"
+          });
+          cacheEngine.invalidateCollection("matches");
+          await notifyAdmins(
+            "Match Auto-Deleted",
+            `The temporary revoke period for match "${m.title || doc.id}" has expired. The match has been auto-deleted from catalog. All financial records remain preserved.`,
+            "system",
+            "/admin/matches"
+          );
+        }
+      }
+    } catch (err) {
+      // background silent catch
+    }
+  }, 10 * 60 * 1000);
 
   app.get("/api/saved-matches", authenticate, async (req: any, res) => {
     try {
@@ -2637,6 +3014,43 @@ async function startServer() {
     }
   });
 
+  // Helper to calculate PPV access duration based on match status and configuration (Task 2)
+  async function calculateAccessDuration(matchId: string | number, purchaseDate: Date = new Date()) {
+    try {
+      if (!matchId) return { access_starts_at: null, access_expires_at: null, access_status: 'active' };
+      const matchDoc = await db.collection("matches").doc(String(matchId)).get();
+      if (!matchDoc.exists) return { access_starts_at: null, access_expires_at: null, access_status: 'active' };
+      const match = matchDoc.data();
+
+      const isEnabled = Boolean(Number(match.event_access_enabled ?? match.eventAccessEnabled ?? 0));
+      if (!isEnabled) {
+        return { access_starts_at: null, access_expires_at: null, access_status: 'active' };
+      }
+
+      const durationMinutes = Number(match.event_access_duration ?? match.eventAccessDuration) || 4320; // default 3 days
+      let startsAt: Date;
+      const matchStatus = (match.status || 'upcoming').toLowerCase();
+      const matchStartTime = match.start_time || match.startTime || match.date;
+
+      if (matchStatus === 'upcoming' && matchStartTime) {
+        const parsedStart = new Date(matchStartTime);
+        startsAt = (!isNaN(parsedStart.getTime()) && parsedStart.getTime() > purchaseDate.getTime()) ? parsedStart : purchaseDate;
+      } else {
+        startsAt = purchaseDate;
+      }
+
+      const expiresAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+      return {
+        access_starts_at: startsAt.toISOString(),
+        access_expires_at: expiresAt.toISOString(),
+        access_status: 'active'
+      };
+    } catch (err) {
+      console.error("Error calculating access duration:", err);
+      return { access_starts_at: null, access_expires_at: null, access_status: 'active' };
+    }
+  }
+
   // === SECURE PAYMENT GATEWAY INITIALIZATION ===
   async function convertCurrency(amount: number, from: string, to: string): Promise<number> {
     if (from.toUpperCase() === to.toUpperCase()) return amount;
@@ -2857,6 +3271,14 @@ async function startServer() {
         `Split recorded for ${club.name || 'Club'} (#${clubId}): Gross £${grossAmount.toFixed(2)}, Platform £${platformCommission.toFixed(2)}, Club Net £${clubNetAmount.toFixed(2)} (${isInstantSplit ? 'Instant Split' : 'Accumulated'})`,
         "system",
         "/admin/finance"
+      );
+
+      notifyPartnerClub(
+        String(clubId),
+        "New PPV Earnings",
+        `Your club received £${clubNetAmount.toFixed(2)} net earnings from a PPV watch purchase (Gross: £${grossAmount.toFixed(2)}).`,
+        "payment",
+        "/partner"
       );
     } catch (splitErr: any) {
       console.error("[RevenueSplit] Error processing club revenue split:", splitErr);
@@ -3266,13 +3688,20 @@ async function startServer() {
 
       if (type === "watch" || type === "embed") {
         const purchaseId = Date.now().toString();
+        const durationInfo = type === "watch" 
+          ? await calculateAccessDuration(metadata.matchId, new Date())
+          : { access_starts_at: null, access_expires_at: null, access_status: 'active' };
+
         const purchaseData = {
           id: purchaseId,
           userId: userId,
           matchId: metadata.matchId,
           amount,
           type,
-          date: new Date().toISOString()
+          date: new Date().toISOString(),
+          access_starts_at: durationInfo.access_starts_at,
+          access_expires_at: durationInfo.access_expires_at,
+          access_status: durationInfo.access_status
         };
         if (type === "embed") {
           (purchaseData as any).code = `<iframe src="https://watchwds.com/embed/${metadata.matchId}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`;
@@ -3439,15 +3868,21 @@ async function startServer() {
       const matchData = matchDoc.data() || {};
       const deductAmount = Number(matchData.price ?? matchData.ppv_price ?? 0);
 
-      // Prevent duplicate purchase for the same match
+      // Prevent duplicate purchase for the same match if currently active
       const existingPurchases = await db.collection("purchases")
         .where("userId", "==", userId)
         .where("matchId", "==", match_id)
         .where("type", "==", "watch")
         .get();
       
-      if (!existingPurchases.empty) {
-        return res.status(409).json({ error: "You have already purchased access to this match" });
+      const activePurchases = (existingPurchases.docs || []).filter((d: any) => {
+        const p = d.data();
+        if (p.access_status === 'expired' || p.access_status === 'revoked') return false;
+        if (p.access_expires_at && new Date() > new Date(p.access_expires_at)) return false;
+        return true;
+      });
+      if (activePurchases.length > 0) {
+        return res.status(409).json({ error: "You currently have active access to this match" });
       }
       
       const userRef = db.collection("users").doc(userId);
@@ -3466,6 +3901,7 @@ async function startServer() {
       const newBalance = currentBalance - deductAmount;
       await userRef.update({ balance: newBalance });
 
+      const durationInfo = await calculateAccessDuration(match_id, new Date());
       const purchaseId = Date.now().toString();
       const purchaseData = {
         id: purchaseId,
@@ -3473,7 +3909,10 @@ async function startServer() {
         matchId: match_id,
         amount: deductAmount,
         type: 'watch',
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        access_starts_at: durationInfo.access_starts_at,
+        access_expires_at: durationInfo.access_expires_at,
+        access_status: durationInfo.access_status
       };
       
       // Save purchase in root collection for admin dashboard to load
@@ -4799,6 +5238,372 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Admin: Check partner account status for a club
+  app.get("/api/admin/clubs/:id/credentials-status", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const clubDoc = await db.collection("clubs").doc(String(id)).get();
+      if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
+      const club = clubDoc.data();
+      const clubEmail = (club.contact_email || club.contactEmail || "").toLowerCase().trim();
+      
+      let hasAccount = false;
+      let userDetails = null;
+      if (clubEmail) {
+        const userSnap = await db.collection("users").where("email", "==", clubEmail).get();
+        if (userSnap.docs && userSnap.docs.length > 0) {
+          const u = userSnap.docs[0].data();
+          hasAccount = true;
+          userDetails = {
+            id: userSnap.docs[0].id,
+            email: u.email,
+            role: u.role,
+            status: u.status,
+            club_id: u.club_id
+          };
+        }
+      }
+      res.json({ hasAccount, email: clubEmail, user: userDetails });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: Set or create login credentials for a Partner Club
+  app.post("/api/admin/clubs/:id/credentials", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { password, sendEmail = true } = req.body;
+      if (!password || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const clubDoc = await db.collection("clubs").doc(String(id)).get();
+      if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
+      const club = clubDoc.data();
+      const clubEmail = (club.contact_email || club.contactEmail || "").toLowerCase().trim();
+      if (!clubEmail) {
+        return res.status(400).json({ error: "Club has no contact email assigned. Please update club details with a valid email first." });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const existingUserSnap = await db.collection("users").where("email", "==", clubEmail).get();
+
+      let partnerUserId: string;
+      if (existingUserSnap.docs && existingUserSnap.docs.length > 0) {
+        const userDoc = existingUserSnap.docs[0];
+        partnerUserId = userDoc.id;
+        await userDoc.ref.update({
+          password: hashedPassword,
+          role: "partner",
+          club_id: String(id),
+          status: "active"
+        });
+      } else {
+        partnerUserId = Date.now().toString() + Math.random().toString(36).substring(2, 6);
+        await db.collection("users").doc(partnerUserId).set({
+          id: partnerUserId,
+          email: clubEmail,
+          name: `${club.name} Partner`,
+          password: hashedPassword,
+          role: "partner",
+          club_id: String(id),
+          balance: 0,
+          status: "active",
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      cacheEngine.invalidateCollection("users");
+
+      if (sendEmail) {
+        const baseUrl = getRequestBaseUrl(req);
+        const emailHtml = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #4f46e5; margin: 0;">Partner Club Access Granted</h2>
+              <p style="color: #64748b; font-size: 14px;">WatchWDS Streaming Platform</p>
+            </div>
+            <p>Hello,</p>
+            <p>Your official Partner Club account for <strong>${club.name}</strong> has been configured by the platform administrator.</p>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+              <p style="margin: 0 0 8px 0;"><strong>Login Email:</strong> <code style="color: #0f172a;">${clubEmail}</code></p>
+              <p style="margin: 0;"><strong>Password:</strong> <code style="color: #0f172a;">${password}</code></p>
+            </div>
+            <p>You can sign into the platform to monitor live and scheduled matches, view ticket/PPV sales, check revenue shares, and track payouts in real time.</p>
+            <div style="text-align: center; margin: 28px 0;">
+              <a href="${baseUrl}/login" style="background: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Log In to Partner Portal</a>
+            </div>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">Please keep these credentials safe and change your password after logging in if required.</p>
+          </div>
+        `;
+        dispatchEmail(clubEmail, `Your Partner Club Portal Access - ${club.name}`, emailHtml).catch(err => {
+          console.error("Failed to send partner credentials email:", err);
+        });
+      }
+
+      res.json({ success: true, message: "Partner credentials saved successfully", email: clubEmail });
+    } catch (e: any) {
+      console.error("Set partner credentials error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin: Reset password for a Partner Club
+  app.post("/api/admin/clubs/:id/reset-password", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const clubDoc = await db.collection("clubs").doc(String(id)).get();
+      if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
+      const club = clubDoc.data();
+      const clubEmail = (club.contact_email || club.contactEmail || "").toLowerCase().trim();
+      if (!clubEmail) return res.status(400).json({ error: "Club has no contact email assigned" });
+
+      const tempPassword = "WDS-" + Math.random().toString(36).substring(2, 8).toUpperCase() + "!";
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+      const existingUserSnap = await db.collection("users").where("email", "==", clubEmail).get();
+      if (existingUserSnap.docs && existingUserSnap.docs.length > 0) {
+        await existingUserSnap.docs[0].ref.update({
+          password: hashedPassword,
+          role: "partner",
+          club_id: String(id),
+          status: "active"
+        });
+      } else {
+        const partnerUserId = Date.now().toString() + Math.random().toString(36).substring(2, 6);
+        await db.collection("users").doc(partnerUserId).set({
+          id: partnerUserId,
+          email: clubEmail,
+          name: `${club.name} Partner`,
+          password: hashedPassword,
+          role: "partner",
+          club_id: String(id),
+          balance: 0,
+          status: "active",
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      cacheEngine.invalidateCollection("users");
+
+      const baseUrl = getRequestBaseUrl(req);
+      const emailHtml = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+          <h2 style="color: #4f46e5;">Temporary Password Generated</h2>
+          <p>The password for your <strong>${club.name}</strong> Partner account on WatchWDS has been reset.</p>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+            <p style="margin: 0 0 8px 0;"><strong>Account:</strong> ${clubEmail}</p>
+            <p style="margin: 0;"><strong>Temporary Password:</strong> <code style="font-size: 16px; font-weight: bold; color: #4f46e5;">${tempPassword}</code></p>
+          </div>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${baseUrl}/login" style="background: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Log In Now</a>
+          </div>
+        </div>
+      `;
+      dispatchEmail(clubEmail, `Password Reset - ${club.name} Partner Portal`, emailHtml).catch(err => {
+        console.error("Failed to send reset email:", err);
+      });
+
+      res.json({ success: true, message: `Temporary password generated and sent to ${clubEmail}`, tempPassword });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Helper for partner club context resolution
+  const resolvePartnerClubId = (req: any) => {
+    if (req.user?.role === 'partner') return req.user.club_id;
+    if (req.user?.role === 'admin') return req.query.clubId || req.user.club_id;
+    return null;
+  };
+
+  // Partner: Dashboard Overview Stats
+  app.get("/api/partner/dashboard", authenticate, async (req: any, res) => {
+    try {
+      if (!['partner', 'admin'].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden: Partner or Admin access required" });
+      }
+      const clubId = resolvePartnerClubId(req);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated with this account" });
+
+      const clubDoc = await db.collection("clubs").doc(String(clubId)).get();
+      if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
+      const club = clubDoc.data();
+
+      // Club balance
+      let balanceData = { available_balance: 0, pending_balance: 0, total_earned: 0, total_paid_out: 0 };
+      const balDoc = await db.collection("club_balances").doc(String(clubId)).get();
+      if (balDoc.exists) {
+        const b = balDoc.data();
+        balanceData = {
+          available_balance: Number(b.available_balance ?? b.availableBalance ?? 0),
+          pending_balance: Number(b.pending_balance ?? b.pendingBalance ?? 0),
+          total_earned: Number(b.total_earned ?? b.totalEarned ?? 0),
+          total_paid_out: Number(b.total_paid_out ?? b.totalPaidOut ?? 0),
+        };
+      }
+
+      // Matches count & list
+      const matchesSnap = await db.collection("matches").where("club_id", "==", String(clubId)).get();
+      const matchesCount = matchesSnap.docs ? matchesSnap.docs.length : 0;
+
+      // Recent earnings (last 10)
+      const earningsSnap = await db.collection("club_earnings")
+        .where("club_id", "==", String(clubId))
+        .orderBy("created_at", "desc")
+        .limit(10)
+        .get();
+      const recentEarnings = (earningsSnap.docs || []).map((d: any) => ({ id: d.id, ...d.data() }));
+
+      // Recent payouts (last 5)
+      const payoutsSnap = await db.collection("payouts")
+        .where("club_id", "==", String(clubId))
+        .orderBy("created_at", "desc")
+        .limit(5)
+        .get();
+      const recentPayouts = (payoutsSnap.docs || []).map((d: any) => ({ id: d.id, ...d.data() }));
+
+      // Revenue policy
+      let policyData = null;
+      const polDoc = await db.collection("revenue_policies").doc(String(clubId)).get();
+      if (polDoc.exists) {
+        policyData = polDoc.data();
+      }
+
+      res.json({
+        club: {
+          id: clubDoc.id,
+          name: club.name,
+          slug: club.slug,
+          logo: club.logo,
+          contactEmail: club.contact_email || club.contactEmail,
+          stripeAccountId: club.stripe_account_id || club.stripeAccountId,
+          stripeOnboardingComplete: club.stripe_onboarding_complete || club.stripeOnboardingComplete
+        },
+        balance: balanceData,
+        matchesCount,
+        recentEarnings,
+        recentPayouts,
+        policy: policyData
+      });
+    } catch (e: any) {
+      console.error("Partner dashboard error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Partner: Assigned Matches with Performance Stats
+  app.get("/api/partner/matches", authenticate, async (req: any, res) => {
+    try {
+      if (!['partner', 'admin'].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden: Partner or Admin access required" });
+      }
+      const clubId = resolvePartnerClubId(req);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated" });
+
+      const matchesSnap = await db.collection("matches").where("club_id", "==", String(clubId)).get();
+      const rawMatches = (matchesSnap.docs || []).map((d: any) => ({ id: d.id, ...d.data() }));
+
+      // Fetch all earnings for this club to calculate match stats
+      const earningsSnap = await db.collection("club_earnings").where("club_id", "==", String(clubId)).get();
+      const matchEarningsMap: Record<string, { totalRevenue: number, totalNet: number, purchasesCount: number }> = {};
+      
+      for (const edoc of (earningsSnap.docs || [])) {
+        const edata = edoc.data();
+        const mid = String(edata.match_id || edata.matchId);
+        if (!matchEarningsMap[mid]) {
+          matchEarningsMap[mid] = { totalRevenue: 0, totalNet: 0, purchasesCount: 0 };
+        }
+        matchEarningsMap[mid].totalRevenue += Number(edata.gross_amount ?? edata.grossAmount ?? 0);
+        matchEarningsMap[mid].totalNet += Number(edata.net_amount ?? edata.netAmount ?? 0);
+        matchEarningsMap[mid].purchasesCount += 1;
+      }
+
+      const matches = rawMatches.map(m => ({
+        ...m,
+        stats: matchEarningsMap[String(m.id)] || { totalRevenue: 0, totalNet: 0, purchasesCount: 0 }
+      })).sort((a, b) => new Date(b.date || b.start_time || 0).getTime() - new Date(a.date || a.start_time || 0).getTime());
+
+      res.json({ matches });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Partner: Detailed Earnings Records
+  app.get("/api/partner/earnings", authenticate, async (req: any, res) => {
+    try {
+      if (!['partner', 'admin'].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden: Partner or Admin access required" });
+      }
+      const clubId = resolvePartnerClubId(req);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated" });
+
+      const snap = await db.collection("club_earnings")
+        .where("club_id", "==", String(clubId))
+        .orderBy("created_at", "desc")
+        .get();
+      const earnings = (snap.docs || []).map((d: any) => ({ id: d.id, ...d.data() }));
+      res.json({ earnings });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Partner: Payout History
+  app.get("/api/partner/payouts", authenticate, async (req: any, res) => {
+    try {
+      if (!['partner', 'admin'].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden: Partner or Admin access required" });
+      }
+      const clubId = resolvePartnerClubId(req);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated" });
+
+      const snap = await db.collection("payouts")
+        .where("club_id", "==", String(clubId))
+        .orderBy("created_at", "desc")
+        .get();
+      const payouts = (snap.docs || []).map((d: any) => ({ id: d.id, ...d.data() }));
+      res.json({ payouts });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Partner: Revenue Policy (Read-Only)
+  app.get("/api/partner/revenue-policy", authenticate, async (req: any, res) => {
+    try {
+      if (!['partner', 'admin'].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden: Partner or Admin access required" });
+      }
+      const clubId = resolvePartnerClubId(req);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated" });
+
+      const doc = await db.collection("revenue_policies").doc(String(clubId)).get();
+      res.json({ policy: doc.exists ? doc.data() : null });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Partner: Balance Information
+  app.get("/api/partner/balance", authenticate, async (req: any, res) => {
+    try {
+      if (!['partner', 'admin'].includes(req.user?.role)) {
+        return res.status(403).json({ error: "Forbidden: Partner or Admin access required" });
+      }
+      const clubId = resolvePartnerClubId(req);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated" });
+
+      const doc = await db.collection("club_balances").doc(String(clubId)).get();
+      res.json({ balance: doc.exists ? doc.data() : { available_balance: 0, pending_balance: 0, total_earned: 0, total_paid_out: 0 } });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Payouts listing endpoint (Admin or Club Manager filter)
   app.get("/api/admin/payouts", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
@@ -5391,13 +6196,20 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           }
         } else if (type === "watch" || type === "ppv" || type === "embed") {
           const purchaseId = Date.now().toString();
+          const durationInfo = (type === "watch" || type === "ppv") && metadata?.matchId
+            ? await calculateAccessDuration(metadata.matchId, new Date())
+            : { access_starts_at: null, access_expires_at: null, access_status: 'active' };
+
           const purchaseData: any = {
             id: purchaseId,
             userId,
             matchId: metadata?.matchId,
             amount: Number(amount),
             type: type === "embed" ? "embed" : "watch",
-            date: new Date().toISOString()
+            date: new Date().toISOString(),
+            access_starts_at: durationInfo.access_starts_at,
+            access_expires_at: durationInfo.access_expires_at,
+            access_status: durationInfo.access_status
           };
           if (type === "embed") {
             purchaseData.code = `<iframe src="https://watchwds.com/embed/${metadata?.matchId}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`;

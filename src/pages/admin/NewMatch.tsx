@@ -79,6 +79,16 @@ export function NewMatch() {
   const [liveCommenting, setLiveCommenting] = useState(existingMatch?.liveCommenting ?? true);
   const [commentAlignment, setCommentAlignment] = useState<'left' | 'center' | 'right'>(existingMatch?.commentAlignment || 'center');
   const [duration, setDuration] = useState<number>(existingMatch?.duration || 120);
+
+  // Event Access Duration System (Task 2)
+  const [eventAccessEnabled, setEventAccessEnabled] = useState(
+    Boolean(Number(existingMatch?.event_access_enabled ?? (existingMatch as any)?.eventAccessEnabled ?? 0))
+  );
+  const [eventAccessPreset, setEventAccessPreset] = useState<'3d' | '7d' | '30d' | '1y' | 'custom'>(
+    (existingMatch?.event_access_duration_label as any) || '3d'
+  );
+  const [customDurationVal, setCustomDurationVal] = useState<number>(24);
+  const [customDurationUnit, setCustomDurationUnit] = useState<'hours' | 'days'>('hours');
   
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -119,6 +129,8 @@ export function NewMatch() {
       setLiveCommenting(existingMatch.liveCommenting ?? true);
       setCommentAlignment(existingMatch.commentAlignment || 'center');
       setDuration(existingMatch.duration || 120);
+      setEventAccessEnabled(Boolean(Number(existingMatch.event_access_enabled ?? (existingMatch as any).eventAccessEnabled ?? 0)));
+      setEventAccessPreset(((existingMatch.event_access_duration_label || '3d') as any));
       if (existingMatch.status === 'completed' || existingMatch.status === 'live') {
         setIsManualOverride(true);
       }
@@ -189,6 +201,17 @@ export function NewMatch() {
 
       const computedStatus = isManualOverride ? status : getCalculatedStatus();
 
+      let calculatedDurationMinutes = 4320;
+      if (eventAccessPreset === '3d') calculatedDurationMinutes = 3 * 24 * 60;
+      else if (eventAccessPreset === '7d') calculatedDurationMinutes = 7 * 24 * 60;
+      else if (eventAccessPreset === '30d') calculatedDurationMinutes = 30 * 24 * 60;
+      else if (eventAccessPreset === '1y') calculatedDurationMinutes = 365 * 24 * 60;
+      else if (eventAccessPreset === 'custom') {
+        calculatedDurationMinutes = customDurationUnit === 'days'
+          ? customDurationVal * 24 * 60
+          : customDurationVal * 60;
+      }
+
       const matchData: Match = {
         id: (isEditing ? String(id) : String(Date.now())) as any,
         title,
@@ -202,6 +225,9 @@ export function NewMatch() {
         embedPrice: ppvPrice * 10, // Default multiplier
         status: computedStatus as any,
         duration: Number(duration) || 120,
+        event_access_enabled: eventAccessEnabled ? 1 : 0,
+        event_access_duration: calculatedDurationMinutes,
+        event_access_duration_label: eventAccessPreset,
         thumbnail: finalThumbnail || 'https://picsum.photos/seed/default/800/450',
         content,
         description,
@@ -501,6 +527,87 @@ export function NewMatch() {
                   <p className="mt-2 text-xs text-slate-400">
                     Select the partner club to receive automatic revenue distribution via Stripe Connect.
                   </p>
+                </div>
+
+                {/* Event Access Duration System */}
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-500" />
+                        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                          Time-Limited Event Access
+                        </label>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Limit PPV access to a countdown window. Once expired, access is revoked automatically.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={eventAccessEnabled}
+                        onChange={(e) => setEventAccessEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+
+                  {eventAccessEnabled && (
+                    <div className="mt-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">
+                        Access Duration Window
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        {[
+                          { id: '3d', label: '3 Days' },
+                          { id: '7d', label: '7 Days' },
+                          { id: '30d', label: '30 Days' },
+                          { id: '1y', label: '1 Year' },
+                          { id: 'custom', label: 'Custom' },
+                        ].map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => setEventAccessPreset(preset.id as any)}
+                            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all border ${
+                              eventAccessPreset === preset.id
+                                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {eventAccessPreset === 'custom' && (
+                        <div className="flex items-center gap-3 pt-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={customDurationVal}
+                            onChange={(e) => setCustomDurationVal(Math.max(1, Number(e.target.value)))}
+                            className="w-28 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white"
+                          />
+                          <select
+                            value={customDurationUnit}
+                            onChange={(e) => setCustomDurationUnit(e.target.value as any)}
+                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white font-medium"
+                          >
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                          </select>
+                        </div>
+                      )}
+
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg space-y-1">
+                        <p><strong>• Upcoming Matches:</strong> Countdown timer begins when the match status transitions to LIVE.</p>
+                        <p><strong>• Live / Past Matches:</strong> Countdown timer starts immediately when purchased.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

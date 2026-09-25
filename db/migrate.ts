@@ -97,6 +97,82 @@ async function migrate() {
     // Column might already exist, ignore this error
   }
 
+  // Partner Club Dashboard: Add 'partner' role and club_id to users
+  try {
+    await rootConn.query(`ALTER TABLE \`users\` MODIFY COLUMN \`role\` ENUM('viewer','creator','operator','admin','partner') DEFAULT 'viewer'`);
+    console.log('  ✓ Incremental update: Added partner role to users ENUM.');
+  } catch (err: any) {
+    // ENUM might already have partner, ignore
+  }
+
+  try {
+    await rootConn.query(`ALTER TABLE \`users\` ADD COLUMN \`club_id\` VARCHAR(100) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added club_id column to users.');
+  } catch (err: any) {
+    // Column might already exist, ignore this error
+  }
+
+  // Event Access Duration System (Task 2)
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`event_access_enabled\` TINYINT(1) DEFAULT 0`);
+    console.log('  ✓ Incremental update: Added event_access_enabled to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`event_access_duration\` INT DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added event_access_duration to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`event_access_duration_label\` VARCHAR(50) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added event_access_duration_label to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`revoke_status\` VARCHAR(50) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added revoke_status to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`revoked_at\` DATETIME DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added revoked_at to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`revoke_expires_at\` DATETIME DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added revoke_expires_at to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`revoke_reason\` TEXT DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added revoke_reason to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`revoked_by\` VARCHAR(100) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added revoked_by to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`original_status\` VARCHAR(50) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added original_status to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`purchases\` ADD COLUMN \`access_starts_at\` DATETIME DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added access_starts_at to purchases.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`purchases\` ADD COLUMN \`access_expires_at\` DATETIME DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added access_expires_at to purchases.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`purchases\` ADD COLUMN \`access_status\` VARCHAR(50) DEFAULT 'active'`);
+    console.log('  ✓ Incremental update: Added access_status to purchases.');
+  } catch (err: any) {}
+
   // Step 3: Seed default data
   console.log('[4/4] Seeding default data...');
 
