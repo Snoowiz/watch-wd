@@ -13,7 +13,8 @@ import { AnimatePresence, motion } from 'motion/react';
 
 export function AdminMatches() {
   const navigate = useNavigate();
-  const { matches = [], deleteMatch, updateMatch, setMatches, revokeMatch, restoreMatch } = useMatchStore();
+  const { matches = [], adminMatches = [], fetchAdminMatches, deleteMatch, updateMatch, setMatches, revokeMatch, restoreMatch } = useMatchStore();
+  const effectiveMatches = adminMatches.length > 0 ? adminMatches : matches;
   const { categories = [] } = useCategoryStore();
   const { currencySymbol } = useSettingsStore();
   const { addToast, updateToast } = useUIStore();
@@ -29,9 +30,9 @@ export function AdminMatches() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<any>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-  // Match Revoke / Take Down Modal State
+  // Match Revoke / Take Down Modal State (defaults to 3 days)
   const [revokeConfirmMatch, setRevokeConfirmMatch] = useState<any>(null);
-  const [revokeDurationDays, setRevokeDurationDays] = useState<number>(30);
+  const [revokeDurationDays, setRevokeDurationDays] = useState<number>(3);
   const [revokeReason, setRevokeReason] = useState<string>('');
   const [isRevoking, setIsRevoking] = useState<boolean>(false);
 
@@ -44,6 +45,23 @@ export function AdminMatches() {
   const [editingComment, setEditingComment] = useState<any>(null);
   const [editText, setEditText] = useState('');
 
+  // Always fetch full admin matches catalog on backend management mount
+  React.useEffect(() => {
+    fetchAdminMatches();
+  }, [fetchAdminMatches]);
+
+  // Load default revoke duration from platform settings
+  React.useEffect(() => {
+    fetch('/api/settings/event_access_defaults')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.defaultRevokeDurationDays) {
+          setRevokeDurationDays(Number(data.defaultRevokeDurationDays));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Fetch comments when comments tab is selected
   React.useEffect(() => {
     if (activeTab === 'comments') {
@@ -51,7 +69,7 @@ export function AdminMatches() {
     }
   }, [activeTab]);
 
-  const filteredMatches = matches.filter(m => {
+  const filteredMatches = effectiveMatches.filter(m => {
     const matchesSearch = (m.title || '').toLowerCase().includes((searchQuery || '').toLowerCase()) || 
                          (m.slug || '').toLowerCase().includes((searchQuery || '').toLowerCase());
     const isRevoked = m.revoke_status === 'revoked';
@@ -73,7 +91,8 @@ export function AdminMatches() {
         updateToast(toastId, { message: 'Match temporarily taken down. Financial records preserved.', type: 'success' });
         setRevokeConfirmMatch(null);
         setRevokeReason('');
-        setRevokeDurationDays(30);
+        setRevokeDurationDays(3);
+        fetchAdminMatches();
       } else {
         updateToast(toastId, { message: 'Failed to revoke match.', type: 'error' });
       }
@@ -89,7 +108,8 @@ export function AdminMatches() {
     try {
       const ok = await restoreMatch(id);
       if (ok) {
-        updateToast(toastId, { message: 'Match successfully restored to active catalog!', type: 'success' });
+        updateToast(toastId, { message: 'Match restored successfully.', type: 'success' });
+        fetchAdminMatches();
       } else {
         updateToast(toastId, { message: 'Failed to restore match.', type: 'error' });
       }
@@ -892,7 +912,7 @@ export function AdminMatches() {
                     Revoke Duration (Auto-Deletes After)
                   </label>
                   <div className="grid grid-cols-5 gap-2 mb-2">
-                    {[7, 14, 30, 60, 90].map((d) => (
+                    {[3, 7, 14, 30, 60].map((d) => (
                       <button
                         key={d}
                         type="button"

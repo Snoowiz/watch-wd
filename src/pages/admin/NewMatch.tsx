@@ -105,6 +105,20 @@ export function NewMatch() {
     }
   }, [title, isEditing]);
 
+  // Load platform default event access preset when creating a new match
+  useEffect(() => {
+    if (!isEditing) {
+      fetch('/api/settings/event_access_defaults')
+        .then(res => res.json())
+        .then(data => {
+          if (data?.defaultAccessPreset) {
+            setEventAccessPreset(data.defaultAccessPreset);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isEditing]);
+
   // Sync form state when existingMatch loads (useful when page is refreshed)
   useEffect(() => {
     if (existingMatch) {
@@ -528,87 +542,6 @@ export function NewMatch() {
                     Select the partner club to receive automatic revenue distribution via Stripe Connect.
                   </p>
                 </div>
-
-                {/* Event Access Duration System */}
-                <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-amber-500" />
-                        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                          Time-Limited Event Access
-                        </label>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Limit PPV access to a countdown window. Once expired, access is revoked automatically.
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={eventAccessEnabled}
-                        onChange={(e) => setEventAccessEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                  </div>
-
-                  {eventAccessEnabled && (
-                    <div className="mt-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
-                      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">
-                        Access Duration Window
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                        {[
-                          { id: '3d', label: '3 Days' },
-                          { id: '7d', label: '7 Days' },
-                          { id: '30d', label: '30 Days' },
-                          { id: '1y', label: '1 Year' },
-                          { id: 'custom', label: 'Custom' },
-                        ].map((preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            onClick={() => setEventAccessPreset(preset.id as any)}
-                            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all border ${
-                              eventAccessPreset === preset.id
-                                ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
-                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                            }`}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {eventAccessPreset === 'custom' && (
-                        <div className="flex items-center gap-3 pt-2">
-                          <input
-                            type="number"
-                            min="1"
-                            value={customDurationVal}
-                            onChange={(e) => setCustomDurationVal(Math.max(1, Number(e.target.value)))}
-                            className="w-28 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white"
-                          />
-                          <select
-                            value={customDurationUnit}
-                            onChange={(e) => setCustomDurationUnit(e.target.value as any)}
-                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white font-medium"
-                          >
-                            <option value="hours">Hours</option>
-                            <option value="days">Days</option>
-                          </select>
-                        </div>
-                      )}
-
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg space-y-1">
-                        <p><strong>• Upcoming Matches:</strong> Countdown timer begins when the match status transitions to LIVE.</p>
-                        <p><strong>• Live / Past Matches:</strong> Countdown timer starts immediately when purchased.</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 
@@ -629,6 +562,88 @@ export function NewMatch() {
                 </div>
               </div>
             )}
+
+            {/* Time-Limited Event Access Duration System (Universal: Free, Plan & PPV) */}
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      Time-Limited Event Access
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Limit event access to a countdown window (Free, Plan, or PPV). When expired, the match automatically switches to revoked status.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={eventAccessEnabled}
+                    onChange={(e) => setEventAccessEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                </label>
+              </div>
+
+              {eventAccessEnabled && (
+                <div className="mt-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">
+                    Access Duration Window
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                    {[
+                      { id: '3d', label: '3 Days' },
+                      { id: '7d', label: '7 Days' },
+                      { id: '30d', label: '30 Days' },
+                      { id: '1y', label: '1 Year' },
+                      { id: 'custom', label: 'Custom' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setEventAccessPreset(preset.id as any)}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all border ${
+                          eventAccessPreset === preset.id
+                            ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {eventAccessPreset === 'custom' && (
+                    <div className="flex items-center gap-3 pt-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={customDurationVal}
+                        onChange={(e) => setCustomDurationVal(Math.max(1, Number(e.target.value)))}
+                        className="w-28 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white"
+                      />
+                      <select
+                        value={customDurationUnit}
+                        onChange={(e) => setCustomDurationUnit(e.target.value as any)}
+                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white font-medium"
+                      >
+                        <option value="hours">Hours</option>
+                        <option value="days">Days</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg space-y-1">
+                    <p><strong>• Upcoming Matches:</strong> Countdown timer begins when the match status transitions to LIVE.</p>
+                    <p><strong>• Free &amp; Plan Matches:</strong> Event window counts from kickoff; automatically switches to revoked on expiration.</p>
+                    <p><strong>• PPV Matches:</strong> Individual countdown starts on purchase or match kickoff.</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Categories */}

@@ -2894,14 +2894,14 @@ async function startServer() {
         }
       }
       const snap = await db.collection("matches").orderBy("start_time", "desc").get();
-      let docs = snap.docs;
-      if (!isAdmin) {
-        docs = docs.filter((d) => {
-          const m = d.data();
-          const rStatus = m.revoke_status || m.revokeStatus;
-          return !rStatus || rStatus === "normal";
-        });
-      }
+      const docs = snap.docs.filter((d) => {
+        const m = d.data();
+        const rStatus = m.revoke_status || m.revokeStatus;
+        const pStatus = m.publish_status || m.publishStatus;
+        if (rStatus && rStatus !== "normal") return false;
+        if (pStatus === "draft" || pStatus === "deleted") return false;
+        return true;
+      });
       res.json(docs.map((d) => sanitizeMatchForPublic({ id: d.id, ...d.data() })));
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -3217,7 +3217,13 @@ async function startServer() {
     try {
       const doc = await db.collection("matches").doc(req.params.id).get();
       if (!doc.exists) return res.status(404).json({ error: "Not found" });
-      res.json(sanitizeMatchForPublic({ id: doc.id, ...doc.data() }));
+      const match = doc.data();
+      const rStatus = match.revoke_status || match.revokeStatus;
+      const pStatus = match.publish_status || match.publishStatus;
+      if (rStatus && rStatus !== "normal" || pStatus === "draft" || pStatus === "deleted") {
+        return res.status(404).json({ error: "Match not found" });
+      }
+      res.json(sanitizeMatchForPublic({ id: doc.id, ...match }));
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -3967,6 +3973,55 @@ async function startServer() {
               } catch (err) {
                 console.error(`[AUTOMATION] Failed to send 10m kickoff reminder to user ${userId}:`, err?.message);
               }
+            }
+          }
+        }
+        const eventAccessEnabled = Boolean(Number(match.event_access_enabled ?? match.eventAccessEnabled ?? 0));
+        const currentRevokeStatus = match.revoke_status || match.revokeStatus;
+        const publishStatus = match.publish_status || match.publishStatus;
+        if (eventAccessEnabled && !currentRevokeStatus && publishStatus !== "deleted") {
+          const eventDurationMinutes = Number(match.event_access_duration ?? match.eventAccessDuration) || 4320;
+          const eventDurationMs = eventDurationMinutes * 60 * 1e3;
+          let eventStartMs = kickoffMs;
+          if (isNaN(eventStartMs) || eventStartMs <= 0) {
+            const createdStr = match.created_at || match.createdAt;
+            eventStartMs = createdStr ? new Date(createdStr).getTime() : nowMs;
+          }
+          const eventExpiresMs = eventStartMs + eventDurationMs;
+          if (nowMs >= eventExpiresMs) {
+            let defaultRevokeDays = 3;
+            try {
+              const snap = await db.collection("settings").doc("event_access_defaults").get();
+              if (snap.exists && snap.data()?.defaultRevokeDurationDays) {
+                defaultRevokeDays = Math.max(1, Number(snap.data().defaultRevokeDurationDays));
+              }
+            } catch (_) {
+            }
+            const revokeExpiresAt = new Date(nowMs + defaultRevokeDays * 24 * 60 * 60 * 1e3);
+            const nowIso = new Date(nowMs).toISOString();
+            await db.collection("matches").doc(match.id).update({
+              revoke_status: "revoked",
+              revoked_at: nowIso,
+              revoke_expires_at: revokeExpiresAt.toISOString(),
+              revoke_reason: "Time-limited event access expired",
+              revoked_by: "system_timer",
+              original_status: match.status || "completed"
+            });
+            cacheInvalidationNeeded = true;
+            console.log(`[AUTOMATION] Match "${match.title}" (ID: ${match.id}) auto-revoked: event access window expired`);
+            await notifyAdmins(
+              "Match Auto-Revoked (Event Access Expired)",
+              `Match "${match.title || match.id}" automatically transitioned to Revoked status because its time-limited event access concluded. Revoke duration: ${defaultRevokeDays} days.`,
+              "system",
+              "/admin/matches"
+            );
+            const clubId = match.club_id || match.clubId;
+            if (clubId) {
+              await notifyPartnerClub(
+                clubId,
+                "Match Access Window Concluded",
+                `The time-limited event access for "${match.title || match.id}" has expired and the match has been temporarily taken down.`
+              );
             }
           }
         }
@@ -6055,6 +6110,15 @@ async function startServer() {
     }
   });
   app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      await db.collection("settings").doc(req.params.key).set(req.body);
+      cacheEngine.invalidateCollection("settings");
+      res.json({ success: true, key: req.params.key, data: req.body });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       await db.collection("settings").doc(req.params.key).set(req.body);
       cacheEngine.invalidateCollection("settings");
@@ -8438,6 +8502,10 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       INSERT IGNORE INTO \`settings\` (\`key_name\`, \`value\`) VALUES
       ('sliders', '{"sliders":[{"id":"default-hero","name":"Homepage Hero","shortcode":"[slider id=\\"default-hero\\"]","autoSlide":true,"interval":5,"slides":[{"id":"slide-1","title":"Grassroots Sports, Live & Direct.","subtitle":"WatchWDS brings you the best of local and grassroots sports streaming.","image":"https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80","link":"/matches","buttonText":"Watch Now","isActive":true}]}]}');
     `).catch((err) => console.error("Failed to seed sliders in settings", err));
+    execute(`
+      INSERT IGNORE INTO \`settings\` (\`key_name\`, \`value\`) VALUES
+      ('event_access_defaults', '{"defaultRevokeDurationDays":3,"defaultAccessDurationHours":72,"defaultAccessPreset":"3d","autoRevokeOnExpiry":true}');
+    `).catch((err) => console.error("Failed to seed event_access_defaults in settings", err));
     ensureIncrementalColumns().catch((err) => console.error("Startup incremental schema check error:", err));
     warmCriticalCaches().catch((err) => console.error("Startup Cache Warning failed", err));
     processMatchAutomations().catch((err) => console.error("Match automation startup check failed", err));

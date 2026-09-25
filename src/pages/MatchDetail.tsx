@@ -99,7 +99,10 @@ export function MatchDetail() {
     return format(date, formatStr);
   };
   
-  if (!match) {
+  const isRevoked = match?.revoke_status === 'revoked' || match?.revoke_status === 'auto_deleted';
+  const isDraft = match?.publish_status === 'draft' || match?.publish_status === 'deleted';
+
+  if (!match || isRevoked || isDraft) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
@@ -124,24 +127,6 @@ export function MatchDetail() {
   const isPartnerOwner = user?.role === 'partner' && !!user?.club_id && String(match.club_id || (match as any).clubId) === String(user.club_id);
   const isAdmin = user?.role === 'admin' || user?.role === 'operator';
   const hasPlanAccess = match.access_type === 'plan' && !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date()) && (!match.required_plan_id || String(user.planId) === String(match.required_plan_id));
-
-  const isRevoked = match.revoke_status === 'revoked' || match.revoke_status === 'auto_deleted';
-  const [isRestoring, setIsRestoring] = useState(false);
-
-  const handleRestoreThisMatch = async () => {
-    if (!match) return;
-    setIsRestoring(true);
-    try {
-      const ok = await restoreMatch(match.id);
-      if (!ok) {
-        alert('Failed to restore match');
-      }
-    } catch (err: any) {
-      alert(err?.message || 'Failed to restore match');
-    } finally {
-      setIsRestoring(false);
-    }
-  };
 
   // Find user's watch purchase and verify if expired
   const watchPurchase = user ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') : null;
@@ -192,16 +177,28 @@ export function MatchDetail() {
     }
   }, [match?.id, effectiveHasAccess]);
 
-  // Live countdown timer for time-limited PPV event access
+  // Match-level event access duration window (applies to Free, Plan/Subscription, and PPV matches)
+  const matchEventExpiresAt = useMemo(() => {
+    if (!match?.event_access_enabled) return null;
+    const durationMins = Number(match.event_access_duration) || 4320;
+    const matchStart = match.start_time || match.date || (match as any).createdAt;
+    if (!matchStart) return null;
+    const startMs = new Date(matchStart).getTime();
+    if (isNaN(startMs)) return null;
+    return new Date(startMs + durationMins * 60 * 1000).toISOString();
+  }, [match?.event_access_enabled, match?.event_access_duration, match?.start_time, match?.date, (match as any)?.createdAt]);
+
+  const effectiveExpiresAt = accessDetails?.access_expires_at || watchPurchase?.access_expires_at || matchEventExpiresAt;
+
+  // Live countdown timer for time-limited event access (Free, Plan, PPV)
   useEffect(() => {
-    const expiresAtStr = accessDetails?.access_expires_at || watchPurchase?.access_expires_at;
-    if (!expiresAtStr) {
+    if (!effectiveExpiresAt) {
       setAccessCountdown('');
       return;
     }
 
     const updateTimer = () => {
-      const diffMs = new Date(expiresAtStr).getTime() - Date.now();
+      const diffMs = new Date(effectiveExpiresAt).getTime() - Date.now();
       if (diffMs <= 0) {
         setAccessCountdown('Expired');
         setIsAccessExpired(true);
@@ -226,7 +223,7 @@ export function MatchDetail() {
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [accessDetails?.access_expires_at, watchPurchase?.access_expires_at]);
+  }, [effectiveExpiresAt]);
 
   const handleRequestAccess = async () => {
     if (!match) return;
@@ -570,43 +567,6 @@ export function MatchDetail() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-24">
-      {/* Revoked Notice Banner */}
-      {isRevoked && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 sm:p-5 text-amber-300">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <ShieldAlert className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-white text-base">Match Temporarily Taken Down (Revoked)</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    {isAdmin ? 'Staff Notice' : 'Notice'}
-                  </span>
-                </div>
-                <p className="text-sm text-slate-300 mt-1">
-                  Reason: <span className="text-amber-200 font-medium">{match.revoke_reason || 'Administrative review'}</span>
-                </p>
-                {match.revoke_expires_at && (
-                  <p className="text-xs text-slate-400 mt-1">
-                    Auto-delete deadline: <span className="text-slate-200">{formatDateSafe(match.revoke_expires_at, 'MMM d, yyyy, h:mm a')}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-            {isAdmin && (
-              <button
-                onClick={handleRestoreThisMatch}
-                disabled={isRestoring}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all shrink-0 active:scale-95"
-              >
-                <RotateCcw className={`w-4 h-4 ${isRestoring ? 'animate-spin' : ''}`} />
-                <span>{isRestoring ? 'Restoring...' : 'Restore Match'}</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Video Player Section */}
       <div className="-mx-4 -mt-8 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
         <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">

@@ -1097,6 +1097,8 @@ export interface Match {
 interface MatchState {
   matches: Match[];
   addMatch: (match: Match) => Promise<void>;
+  adminMatches: Match[];
+  fetchAdminMatches: () => Promise<void>;
   setMatches: (matches: Match[]) => void;
   updateMatch: (id: number, updates: Partial<Match>) => Promise<void>;
   deleteMatch: (id: number) => Promise<void>;
@@ -1109,12 +1111,11 @@ interface MatchState {
 
 export const useMatchStore = create<MatchState>((set, get) => ({
   matches: [],
+  adminMatches: [],
   fetchMatches: async () => {
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch('/api/matches', { 
-        cache: 'no-store',
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        cache: 'no-store'
       });
       if (res.ok) {
         const data = await res.json();
@@ -1122,6 +1123,21 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       }
     } catch (err) {
       console.error('Failed to fetch matches', err);
+    }
+  },
+  fetchAdminMatches: async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/matches', {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        set({ adminMatches: Array.isArray(data) ? data : [] });
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin matches', err);
     }
   },
   addMatch: async (match) => {
@@ -1136,15 +1152,17 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       });
       if (res.ok) {
         const savedMatch = await res.json();
-        // Since backend might return { id: '...' }, construct savedMatch correctly
         const newMatch = { ...match, id: savedMatch.id || match.id };
-        set((state) => ({ matches: [newMatch, ...state.matches] }));
+        set((state) => ({ 
+          matches: [newMatch, ...state.matches],
+          adminMatches: [newMatch, ...state.adminMatches]
+        }));
       }
     } catch (err) {
       console.error('Failed to add match', err);
     }
   },
-  setMatches: (matches) => set({ matches }),
+  setMatches: (matches) => set({ matches, adminMatches: matches }),
   updateMatch: async (id, updates) => {
     try {
       const res = await fetch(`/api/matches/${id}`, {
@@ -1157,7 +1175,8 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       });
       if (res.ok) {
         set((state) => ({
-          matches: state.matches.map(m => String(m.id) === String(id) ? { ...m, ...updates } : m)
+          matches: state.matches.map(m => String(m.id) === String(id) ? { ...m, ...updates } : m),
+          adminMatches: state.adminMatches.map(m => String(m.id) === String(id) ? { ...m, ...updates } : m)
         }));
       }
     } catch (err) {
@@ -1174,7 +1193,8 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       });
       if (res.ok) {
         set((state) => ({
-          matches: state.matches.filter(m => String(m.id) !== String(id))
+          matches: state.matches.filter(m => String(m.id) !== String(id)),
+          adminMatches: state.adminMatches.filter(m => String(m.id) !== String(id))
         }));
       }
     } catch (err) {
@@ -1194,7 +1214,10 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       if (res.ok) {
         const data = await res.json();
         set((state) => ({
-          matches: state.matches.map(m => String(m.id) === String(id) ? { 
+          // Remove from public matches so frontend never shows it
+          matches: state.matches.filter(m => String(m.id) !== String(id)),
+          // Keep in backend adminMatches with updated revoked details
+          adminMatches: state.adminMatches.map(m => String(m.id) === String(id) ? { 
             ...m, 
             revoke_status: 'revoked',
             revoked_at: data.match?.revoked_at || new Date().toISOString(),
@@ -1223,7 +1246,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       if (res.ok) {
         const data = await res.json();
         set((state) => ({
-          matches: state.matches.map(m => String(m.id) === String(id) ? { 
+          adminMatches: state.adminMatches.map(m => String(m.id) === String(id) ? { 
             ...m, 
             revoke_status: null,
             revoked_at: null,
@@ -1232,6 +1255,8 @@ export const useMatchStore = create<MatchState>((set, get) => ({
             status: data.match?.status || (m.original_status as any) || m.status
           } : m)
         }));
+        // Re-fetch public matches so restored match is available publicly again
+        get().fetchMatches();
         return true;
       }
       return false;

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -12,7 +12,7 @@ import { AdminFirebaseSettings } from './AdminFirebaseSettings';
 import { AdminSecuritySettings } from './AdminSecuritySettings';
 
 export function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security'>('payment');
+  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security' | 'event-access'>('payment');
   
   // Payment States
   const { 
@@ -172,6 +172,17 @@ export function AdminSettings() {
         >
           <ShieldCheck className="w-4 h-4 text-emerald-500" />
           Security
+        </button>
+        <button
+          onClick={() => setActiveTab('event-access')}
+          className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
+            activeTab === 'event-access'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+          }`}
+        >
+          <Clock className="w-4 h-4 text-amber-500" />
+          Event Access & Revoke
         </button>
       </div>
 
@@ -693,6 +704,18 @@ export function AdminSettings() {
           </div>
         </div>
       )}
+
+      {activeTab === 'event-access' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-4">
+              <Clock className="w-6 h-6 text-amber-500" />
+              Time-Limited Event Access & Revocation Rules
+            </h2>
+            <AdminEventAccessSettings />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1141,6 +1164,207 @@ function WalletVisibilitySettings() {
           }`}
         >
           {isSaved ? <><CheckCircle className="w-4 h-4" />Saved</> : 'Save Settings'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AdminEventAccessSettings() {
+  const [defaultRevokeDurationDays, setDefaultRevokeDurationDays] = useState<number>(3);
+  const [defaultAccessPreset, setDefaultAccessPreset] = useState<string>('3d');
+  const [autoRevokeOnExpiry, setAutoRevokeOnExpiry] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsLoading(true);
+    fetch('/api/settings/event_access_defaults')
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          if (data.defaultRevokeDurationDays !== undefined) {
+            setDefaultRevokeDurationDays(Number(data.defaultRevokeDurationDays) || 3);
+          }
+          if (data.defaultAccessPreset) {
+            setDefaultAccessPreset(data.defaultAccessPreset);
+          }
+          if (data.autoRevokeOnExpiry !== undefined) {
+            setAutoRevokeOnExpiry(Boolean(data.autoRevokeOnExpiry));
+          }
+        }
+      })
+      .catch(err => console.error('Failed to load event access settings', err))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const presetHoursMap: Record<string, number> = {
+        '3d': 72,
+        '7d': 168,
+        '30d': 720,
+        '1y': 8760
+      };
+      const defaultAccessDurationHours = presetHoursMap[defaultAccessPreset] || 72;
+
+      await fetch('/api/admin/settings/event_access_defaults', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          defaultRevokeDurationDays: Number(defaultRevokeDurationDays) || 3,
+          defaultAccessPreset,
+          defaultAccessDurationHours,
+          autoRevokeOnExpiry
+        })
+      });
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2500);
+    } catch (err) {
+      console.error('Failed to save event access settings', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 text-left">
+      {/* Auto Revoke on Expiration */}
+      <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-amber-500" />
+            <h4 className="font-bold text-slate-900 dark:text-white">Auto-Revoke on Match Expiry</h4>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl">
+            When enabled, matches with Time-Limited Event Access automatically switch to Revoked status as soon as their event access window expires (across Free, Plan/Subscription, and PPV matches).
+          </p>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer shrink-0">
+          <input
+            type="checkbox"
+            checked={autoRevokeOnExpiry}
+            onChange={(e) => {
+              setAutoRevokeOnExpiry(e.target.checked);
+              setIsSaved(false);
+            }}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-slate-600 peer-checked:bg-amber-500"></div>
+        </label>
+      </div>
+
+      {/* Default Revoke Retention Duration */}
+      <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div>
+          <label className="block text-sm font-bold text-slate-900 dark:text-white">
+            Default Revoke Duration (Days)
+          </label>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Default retention window for revoked matches before automated permanent deletion. Operators can review and restore revoked matches from backend Match Management at any time during this window.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={defaultRevokeDurationDays}
+              onChange={(e) => {
+                setDefaultRevokeDurationDays(Math.max(1, Number(e.target.value) || 1));
+                setIsSaved(false);
+              }}
+              className="w-32 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
+              days
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {[3, 7, 14, 30].map(days => (
+              <button
+                key={days}
+                type="button"
+                onClick={() => {
+                  setDefaultRevokeDurationDays(days);
+                  setIsSaved(false);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                  defaultRevokeDurationDays === days
+                    ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                {days} Days {days === 3 ? '(Default)' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Default Match Access Preset */}
+      <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <div>
+          <label className="block text-sm font-bold text-slate-900 dark:text-white">
+            Default Event Access Duration
+          </label>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Default access duration preset selected when creating new time-limited matches.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-xl">
+          {[
+            { id: '3d', label: '3 Days (72h)' },
+            { id: '7d', label: '7 Days (168h)' },
+            { id: '30d', label: '30 Days' },
+            { id: '1y', label: '1 Year' }
+          ].map(preset => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => {
+                setDefaultAccessPreset(preset.id);
+                setIsSaved(false);
+              }}
+              className={`p-3 rounded-xl border text-center font-bold text-xs transition-all ${
+                defaultAccessPreset === preset.id
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Frontend Invisibility Note */}
+      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 space-y-1">
+        <p className="font-bold">🔒 Frontend Invisibility Guarantee</p>
+        <p>Revoked matches are strictly hidden from all frontend pages and direct URLs (displaying 404 / Match Not Found). Operators and administrators manage and restore revoked matches exclusively within Match Management in the admin panel.</p>
+      </div>
+
+      {/* Save Button */}
+      <div className="flex items-center justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
+            isSaved
+              ? 'bg-green-500 text-white'
+              : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+          }`}
+        >
+          {isSaved ? <><CheckCircle className="w-4 h-4" />Saved Successfully</> : isSaving ? 'Saving...' : 'Save Access Settings'}
         </button>
       </div>
     </div>

@@ -344,7 +344,8 @@ export function AdminDashboard() {
 function AdminOverview() {
   const { currency, currencySymbol, seoSettings, perPageSeo = [] } = useSettingsStore();
   const { users = [] } = useUsersStore();
-  const { matches = [] } = useMatchStore();
+  const { matches = [], adminMatches = [], fetchAdminMatches } = useMatchStore();
+  const effectiveMatches = adminMatches.length > 0 ? adminMatches : matches;
   const { posts = [] } = useBlogStore();
   const { comments = [] } = useCommentStore();
   const { creatorContent = [] } = useCreatorStore();
@@ -355,6 +356,7 @@ function AdminOverview() {
   const [transactions, setTransactions] = useState<any[]>([]);
 
   useEffect(() => {
+    fetchAdminMatches();
     const fetchTxns = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -370,7 +372,7 @@ function AdminOverview() {
       }
     };
     fetchTxns();
-  }, []);
+  }, [fetchAdminMatches]);
 
   const getCurrencySymbol = (curr: string) => {
     switch (curr) {
@@ -392,10 +394,10 @@ function AdminOverview() {
   const totalUsers = users.length;
   const newUsersCount = users.filter(u => new Date(u.createdAt) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length || Math.floor(totalUsers * 0.1) || 1;
 
-  const liveCount = matches.filter(m => m.status === 'live').length;
-  const upcomingCount = matches.filter(m => m.status === 'upcoming').length;
-  const revokedMatchesCount = matches.filter(m => m.revoke_status === 'revoked' || m.revoke_status === 'auto_deleted').length;
-  const activeMatchesCount = matches.length;
+  const liveCount = effectiveMatches.filter(m => m.status === 'live').length;
+  const upcomingCount = effectiveMatches.filter(m => m.status === 'upcoming').length;
+  const revokedMatchesCount = effectiveMatches.filter(m => m.revoke_status === 'revoked' || m.revoke_status === 'auto_deleted').length;
+  const activeMatchesCount = effectiveMatches.filter(m => !m.revoke_status || m.revoke_status === 'normal').length;
 
   // Revenue calculates the total amount of completed gateway transactions on the platform
   const completedTxns = transactions.filter(t => t.status === 'completed' || t.status === 'success');
@@ -407,7 +409,7 @@ function AdminOverview() {
   const purchasesCount = contentPurchases.length;
 
   // Engagement starts at 84 and scales with the number of matches views and registered users
-  const totalMatchViews = matches.reduce((acc, m) => acc + (m.views || 0), 0);
+  const totalMatchViews = effectiveMatches.reduce((acc, m) => acc + (m.views || 0), 0);
   const totalBlogViews = posts.reduce((acc, p) => acc + (p.views || 0), 0);
   const totalViews = totalMatchViews + totalBlogViews;
 
@@ -440,7 +442,7 @@ function AdminOverview() {
   // Auto-discovered active platform modules
   const activeModules = useMemo(() => [
     { name: 'Users & Roles', count: users.length, label: 'Accounts', icon: Users, path: '/admin/users', status: 'Healthy', color: 'text-yellow-500' },
-    { name: 'Match Streamer', count: matches.length, label: 'Matches', icon: Video, path: '/admin/matches', status: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : 'Active', color: revokedMatchesCount > 0 ? 'text-amber-500' : 'text-green-500' },
+    { name: 'Match Streamer', count: activeMatchesCount, label: 'Matches', icon: Video, path: '/admin/matches', status: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : 'Active', color: revokedMatchesCount > 0 ? 'text-amber-500' : 'text-green-500' },
     ...(revokedMatchesCount > 0 ? [{ name: 'Revoked Matches', count: revokedMatchesCount, label: 'Under Review', icon: Shield, path: '/admin/matches', status: 'Retention Active', color: 'text-amber-500' }] : []),
     { name: 'Partner Clubs', count: 1, label: 'Portals & Split', icon: Building2, path: '/admin/clubs', status: 'Active', color: 'text-amber-500' },
     { name: 'SEO Engine', count: perPageSeo.length, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
@@ -449,7 +451,7 @@ function AdminOverview() {
     { name: 'Payout Engine', count: 1, label: 'Threshold Engine', icon: DollarSign, path: '/admin/finance', status: 'Active', color: 'text-emerald-500' },
     { name: 'User Feedback', count: 1, label: 'CSAT & Reviews', icon: MessageSquare, path: '/admin/feedback', status: 'Active', color: 'text-yellow-500' },
     { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
-  ], [users, matches, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount]);
+  ], [users, effectiveMatches, activeMatchesCount, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount]);
 
   // Top Performing Content Calculators
   const mostWatchedMatch = useMemo(() => {
