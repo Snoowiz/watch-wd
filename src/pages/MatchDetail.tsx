@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore } from '../store';
@@ -73,6 +73,18 @@ export function MatchDetail() {
   };
 
   const match = matches.find(m => m.slug === slug || String(m.id) === String(slug));
+
+  // All hooks must be called before any early return to satisfy React rules-of-hooks
+  const [accessDetails, setAccessDetails] = useState<{
+    access_starts_at?: string | null;
+    access_expires_at?: string | null;
+    access_status?: string;
+  } | null>(null);
+  const [isAccessExpired, setIsAccessExpired] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [accessCountdown, setAccessCountdown] = useState<string>('');
+  const [isUrgent, setIsUrgent] = useState(false);
   
   useEffect(() => {
     if (match && String(match.id) === String(slug) && match.slug) {
@@ -102,34 +114,12 @@ export function MatchDetail() {
   const isRevoked = match?.revoke_status === 'revoked' || match?.revoke_status === 'auto_deleted';
   const isDraft = match?.publish_status === 'draft' || match?.publish_status === 'deleted';
 
-  if (!match || isRevoked || isDraft) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Match Not Found</h2>
-        <p className="text-slate-500 mt-2 mb-6">The match you're looking for doesn't exist or has been removed.</p>
-        <Link to="/matches" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold">Browse All Matches</Link>
-      </div>
-    );
-  }
-  
-  const [accessDetails, setAccessDetails] = useState<{
-    access_starts_at?: string | null;
-    access_expires_at?: string | null;
-    access_status?: string;
-  } | null>(null);
-  const [isAccessExpired, setIsAccessExpired] = useState(false);
-  const [requestSent, setRequestSent] = useState(false);
-  const [requestLoading, setRequestLoading] = useState(false);
-  const [accessCountdown, setAccessCountdown] = useState<string>('');
-  const [isUrgent, setIsUrgent] = useState(false);
-
-  const isPartnerOwner = user?.role === 'partner' && !!user?.club_id && String(match.club_id || (match as any).clubId) === String(user.club_id);
+  const isPartnerOwner = match ? (user?.role === 'partner' && !!user?.club_id && String(match.club_id || (match as any).clubId) === String(user.club_id)) : false;
   const isAdmin = user?.role === 'admin' || user?.role === 'operator';
-  const hasPlanAccess = match.access_type === 'plan' && !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date()) && (!match.required_plan_id || String(user.planId) === String(match.required_plan_id));
+  const hasPlanAccess = match ? (match.access_type === 'plan' && !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date()) && (!match.required_plan_id || String(user.planId) === String(match.required_plan_id))) : false;
 
   // Find user's watch purchase and verify if expired
-  const watchPurchase = user ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') : null;
+  const watchPurchase = (user && match) ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') : null;
   const isLocalExpired = Boolean(
     watchPurchase && (
       watchPurchase.access_status === 'expired' ||
@@ -138,10 +128,10 @@ export function MatchDetail() {
   );
 
   const hasValidPurchase = Boolean(watchPurchase && !isLocalExpired && !isAccessExpired);
-  const hasAccess = !!(user ? (hasValidPurchase || match.access === 'free' || hasPlanAccess || isPartnerOwner || isAdmin) : match.access === 'free');
+  const hasAccess = !!(match ? (user ? (hasValidPurchase || match.access === 'free' || hasPlanAccess || isPartnerOwner || isAdmin) : match.access === 'free') : false);
   const effectiveHasAccess = hasAccess && (!isRevoked || isAdmin);
-  const hasEmbedCode = user ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
-  const embedCodePurchase = user ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
+  const hasEmbedCode = (user && match) ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
+  const embedCodePurchase = (user && match) ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
 
   useEffect(() => {
     if (match && effectiveHasAccess) {
@@ -224,6 +214,18 @@ export function MatchDetail() {
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [effectiveExpiresAt]);
+
+  // Early return AFTER all hooks have been called
+  if (!match || isRevoked || isDraft) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Match Not Found</h2>
+        <p className="text-slate-500 mt-2 mb-6">The match you're looking for doesn't exist or has been removed.</p>
+        <Link to="/matches" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold">Browse All Matches</Link>
+      </div>
+    );
+  }
 
   const handleRequestAccess = async () => {
     if (!match) return;
@@ -505,13 +507,7 @@ export function MatchDetail() {
      updateUser({ subscribedChannels: newSubs });
   };
 
-  if (!match) return (
-    <div className="text-center py-24">
-      <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-      <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Match not found</h2>
-      <Link to="/matches" className="text-yellow-500 font-bold mt-4 inline-block">Back to all matches</Link>
-    </div>
-  );
+  // Second match guard removed — already handled above after all hooks
 
   const handleUnlockClick = () => {
     if (!user) {
