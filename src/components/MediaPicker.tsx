@@ -32,7 +32,11 @@ export function MediaPicker({ onSelect, onClose }: MediaPickerProps) {
       let url = event.target?.result as string;
       const isVideo = file.type.startsWith('video/');
       if (!isVideo) {
-        url = await compressImage(url);
+        if ((file.type === 'image/png' || file.type === 'image/svg+xml') && file.size <= 5 * 1024 * 1024) {
+          // Keep raw PNG/SVG data URL directly to preserve transparency
+        } else {
+          url = await compressImage(url, 1600, 1000, file.type);
+        }
       }
       addMedia({
         name: file.name,

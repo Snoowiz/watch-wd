@@ -11,6 +11,7 @@ import { MediaPicker } from '../../components/MediaPicker';
 import { AdminFirebaseSettings } from './AdminFirebaseSettings';
 import { AdminSecuritySettings } from './AdminSecuritySettings';
 import { AdminSiteColorSettings } from './AdminSiteColorSettings';
+import { compressImage } from '../../lib/imageCompressor';
 
 export function AdminSettings() {
   const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security' | 'event-access'>('payment');
@@ -824,6 +825,31 @@ function PlatformBrandingSettings() {
   const [pickerTarget, setPickerTarget] = useState<'favicon' | 'logo-light' | 'logo-dark' | null>(null);
   const [isSaved, setIsSaved] = useState(false);
 
+  const lightFileInputRef = useRef<HTMLInputElement>(null);
+  const darkFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDirectLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'light' | 'dark') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      let url = event.target?.result as string;
+      if ((file.type === 'image/png' || file.type === 'image/svg+xml') && file.size <= 5 * 1024 * 1024) {
+        // Keep untouched PNG/SVG data URL directly to preserve 100% transparency
+      } else {
+        url = await compressImage(url, 1600, 1000, file.type);
+      }
+      if (target === 'light') {
+        setLocalLogoLightUrl(url);
+      } else {
+        setLocalLogoDarkUrl(url);
+      }
+      setIsSaved(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   useEffect(() => {
     setLocalName(platformName !== undefined ? platformName : 'WatchWDS');
     setLocalLogoLightUrl(logoLightUrl || logoUrl || '');
@@ -887,11 +913,19 @@ function PlatformBrandingSettings() {
               </p>
 
               <div className="flex items-center gap-3">
+                <input
+                  type="file"
+                  ref={lightFileInputRef}
+                  onChange={(e) => handleDirectLogoUpload(e, 'light')}
+                  accept="image/png,image/svg+xml,image/webp,image/jpeg"
+                  className="hidden"
+                  id="direct-light-logo-input"
+                />
                 <button
                   type="button"
-                  onClick={() => setPickerTarget('logo-light')}
+                  onClick={() => lightFileInputRef.current?.click()}
                   className="relative w-28 h-20 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-500 transition-all overflow-hidden flex items-center justify-center bg-transparent group shrink-0"
-                  title="Click to choose or upload Light Mode logo"
+                  title="Click to select Light Mode logo (PNG/SVG supported)"
                   id="logo-light-picker-btn"
                 >
                   {localLogoLightUrl ? (
@@ -918,11 +952,20 @@ function PlatformBrandingSettings() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setPickerTarget('logo-light')}
+                      onClick={() => lightFileInputRef.current?.click()}
                       className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs transition-all flex items-center gap-1 shadow-sm"
                     >
                       <Upload className="w-3 h-3" />
                       Upload Light Logo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPickerTarget('logo-light')}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs transition-all flex items-center gap-1"
+                      title="Choose from media library"
+                    >
+                      <Image className="w-3 h-3" />
+                      Library
                     </button>
                     {localLogoLightUrl && (
                       <button
@@ -945,7 +988,7 @@ function PlatformBrandingSettings() {
                       setLocalLogoLightUrl(e.target.value);
                       setIsSaved(false);
                     }}
-                    placeholder="Light logo URL (e.g. /logo-dark-text.png)"
+                    placeholder="Light logo URL or PNG data URL"
                     className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
@@ -968,11 +1011,19 @@ function PlatformBrandingSettings() {
               </p>
 
               <div className="flex items-center gap-3">
+                <input
+                  type="file"
+                  ref={darkFileInputRef}
+                  onChange={(e) => handleDirectLogoUpload(e, 'dark')}
+                  accept="image/png,image/svg+xml,image/webp,image/jpeg"
+                  className="hidden"
+                  id="direct-dark-logo-input"
+                />
                 <button
                   type="button"
-                  onClick={() => setPickerTarget('logo-dark')}
+                  onClick={() => darkFileInputRef.current?.click()}
                   className="relative w-28 h-20 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-400 transition-all overflow-hidden flex items-center justify-center bg-transparent group shrink-0"
-                  title="Click to choose or upload Dark Mode logo"
+                  title="Click to select Dark Mode logo (PNG/SVG supported)"
                   id="logo-dark-picker-btn"
                 >
                   {localLogoDarkUrl ? (
@@ -999,11 +1050,20 @@ function PlatformBrandingSettings() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setPickerTarget('logo-dark')}
+                      onClick={() => darkFileInputRef.current?.click()}
                       className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-all flex items-center gap-1 shadow-sm"
                     >
                       <Upload className="w-3 h-3" />
                       Upload Dark Logo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPickerTarget('logo-dark')}
+                      className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs transition-all flex items-center gap-1"
+                      title="Choose from media library"
+                    >
+                      <Image className="w-3 h-3" />
+                      Library
                     </button>
                     {localLogoDarkUrl && (
                       <button
@@ -1026,7 +1086,7 @@ function PlatformBrandingSettings() {
                       setLocalLogoDarkUrl(e.target.value);
                       setIsSaved(false);
                     }}
-                    placeholder="Dark logo URL (e.g. /logo-white-text.png)"
+                    placeholder="Dark logo URL or PNG data URL"
                     className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>

@@ -38,7 +38,12 @@ export function MediaPickerModal({ isOpen, onClose, onSelect, title = "Select Me
     reader.onload = async (event) => {
       let url = event.target?.result as string;
       if (file.type.startsWith('image/')) {
-        url = await compressImage(url);
+        // For PNG or SVG under 5MB, keep untouched original to preserve 100% transparency
+        if ((file.type === 'image/png' || file.type === 'image/svg+xml') && file.size <= 5 * 1024 * 1024) {
+          // Keep raw PNG/SVG data URL directly
+        } else {
+          url = await compressImage(url, 1600, 1000, file.type);
+        }
       }
       const newMedia = {
         name: file.name,
