@@ -13,6 +13,41 @@
   --color-slate-800: #141414;
   --color-slate-900: #0a0a0a;
   --color-slate-950: #050505;
+
+  --color-yellow-50: var(--color-yellow-50, #fefce8);
+  --color-yellow-100: var(--color-yellow-100, #fef9c3);
+  --color-yellow-200: var(--color-yellow-200, #fef08a);
+  --color-yellow-300: var(--color-yellow-300, #fde047);
+  --color-yellow-400: var(--color-yellow-400, #facc15);
+  --color-yellow-500: var(--color-yellow-500, #eab308);
+  --color-yellow-600: var(--color-yellow-600, #ca8a04);
+  --color-yellow-700: var(--color-yellow-700, #a16207);
+  --color-yellow-800: var(--color-yellow-800, #854d0e);
+  --color-yellow-900: var(--color-yellow-900, #713f12);
+  --color-yellow-950: var(--color-yellow-950, #422006);
+
+  --color-amber-400: var(--color-amber-400, #fbbf24);
+  --color-amber-500: var(--color-amber-500, #f59e0b);
+  --color-amber-600: var(--color-amber-600, #d97706);
+}
+
+:root {
+  --color-yellow-50: #fefce8;
+  --color-yellow-100: #fef9c3;
+  --color-yellow-200: #fef08a;
+  --color-yellow-300: #fde047;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+  --color-yellow-600: #ca8a04;
+  --color-yellow-700: #a16207;
+  --color-yellow-800: #854d0e;
+  --color-yellow-900: #713f12;
+  --color-yellow-950: #422006;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #eab308;
+  --color-amber-600: #ca8a04;
+  --primary-500: #eab308;
+  --secondary-500: #6366f1;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -87,10 +122,10 @@
   height: 200%;
   background: conic-gradient(
     from 0deg,
-    #eab308 0deg,
-    #22c55e 120deg,
-    #eab308 240deg,
-    #22c55e 360deg
+    var(--color-yellow-500, #eab308) 0deg,
+    var(--color-secondary-500, #22c55e) 120deg,
+    var(--color-yellow-500, #eab308) 240deg,
+    var(--color-secondary-500, #22c55e) 360deg
   );
   animation: border-spin 3s linear infinite;
 }

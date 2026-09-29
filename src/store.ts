@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { GoogleAuthSettings } from './services/settingsService';
+import { applyThemeColors, getStoredThemeColors, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from './utils/themeColors';
 
 export interface User {
   id: number;
@@ -569,6 +570,11 @@ export interface WalletSettings {
   enabled: boolean;
 }
 
+export interface SiteColorSettings {
+  primaryColor: string;
+  secondaryColor: string;
+}
+
 interface SettingsState {
   currency: string;
   setCurrency: (currency: string) => void;
@@ -598,6 +604,8 @@ interface SettingsState {
   setBlogSettings: (settings: BlogSettings) => void;
   walletSettings: WalletSettings;
   setWalletSettings: (settings: WalletSettings) => void;
+  siteColorSettings: SiteColorSettings;
+  setSiteColorSettings: (settings: SiteColorSettings) => void;
   captchaEnabled: boolean;
   setCaptchaEnabled: (enabled: boolean) => void;
   captchaTolerance: number;
@@ -756,6 +764,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       );
     } catch (e) {}
   },
+  siteColorSettings: {
+    primaryColor: getStoredThemeColors().primary,
+    secondaryColor: getStoredThemeColors().secondary,
+  },
+  setSiteColorSettings: (settings) => {
+    set({ siteColorSettings: settings });
+    applyThemeColors(settings.primaryColor, settings.secondaryColor);
+    saveSettingHelper('site_colors', settings);
+  },
   captchaEnabled: false,
   captchaTolerance: 25,
   setCaptchaEnabled: (enabled) => {
@@ -833,6 +850,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           captchaEnabled: data.enabled === true,
           captchaTolerance: typeof data.tolerance === 'number' ? data.tolerance : 25
         });
+      }
+      const colorsRes = await fetch('/api/settings/site_colors');
+      if (colorsRes.ok) {
+        const data = await colorsRes.json();
+        if (data && (data.primaryColor || data.secondaryColor)) {
+          const primary = data.primaryColor || DEFAULT_PRIMARY_COLOR;
+          const secondary = data.secondaryColor || DEFAULT_SECONDARY_COLOR;
+          set({
+            siteColorSettings: {
+              primaryColor: primary,
+              secondaryColor: secondary,
+            }
+          });
+          applyThemeColors(primary, secondary);
+        }
       }
       get().fetchPerPageSeo();
     } catch (err) {

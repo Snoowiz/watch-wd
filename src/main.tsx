@@ -4,6 +4,10 @@ import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 import { initializeFirebaseSync } from './services/firebaseSync';
+import { initThemeColors } from './utils/themeColors';
+
+// Initialize global theme colors immediately to prevent style flashes
+initThemeColors();
 
 // Register Service Worker Safely
 try {

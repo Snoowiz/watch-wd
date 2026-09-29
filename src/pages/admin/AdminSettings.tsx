@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -10,6 +10,7 @@ import { AdminGoogleAuthSettings } from './AdminGoogleAuthSettings';
 import { MediaPicker } from '../../components/MediaPicker';
 import { AdminFirebaseSettings } from './AdminFirebaseSettings';
 import { AdminSecuritySettings } from './AdminSecuritySettings';
+import { AdminSiteColorSettings } from './AdminSiteColorSettings';
 
 export function AdminSettings() {
   const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security' | 'event-access'>('payment');
@@ -607,13 +608,13 @@ export function AdminSettings() {
 
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
              <div className="flex items-center gap-3 mb-5">
-                <Wallet className="w-6 h-6 text-yellow-500" />
+                <Palette className="w-6 h-6 text-yellow-500" />
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">User Wallet & Balance System</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Enable or disable user digital wallet balances and deposit capabilities</p>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Site Color Configuration</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Customize the platform's primary brand accent and theme colors</p>
                 </div>
              </div>
-             <WalletVisibilitySettings />
+             <AdminSiteColorSettings />
           </div>
 
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">

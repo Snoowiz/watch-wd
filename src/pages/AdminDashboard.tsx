@@ -5,7 +5,7 @@ import {
   Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
   Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
-  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid
+  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid, Palette
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -96,6 +96,7 @@ export function AdminDashboard() {
     { id: 'feedback-hub', type: 'feedback', title: 'User Feedback & Reviews', subtitle: 'Ratings, CSAT scores, customer reviews & replies', icon: MessageSquare, path: '/admin/feedback' },
     { id: 'match-access-duration', type: 'match', title: 'PPV Event Access & Duration', subtitle: 'Time-limited access rules & financial record protection', icon: Clock, path: '/admin/matches' },
     { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Match Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/matches' },
+    { id: 'settings-site-colors', type: 'settings', title: 'Site Color Configuration', subtitle: 'Platform primary brand accent and theme colors', icon: Palette, path: '/admin/settings' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
