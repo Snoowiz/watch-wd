@@ -77,8 +77,8 @@ export function Slider({ id }: SliderProps) {
             <div className="mt-10 flex flex-wrap gap-4">
               {currentSlide.link && (
                 <Link to={currentSlide.link} className="rotating-border-effect btn-rotating-border transition-all shadow-lg shadow-yellow-500/30 active:scale-95 group/btn inline-flex">
-                  <div className="btn-rotating-border-inner px-8 py-4 bg-yellow-500 hover:bg-yellow-400 focus:bg-yellow-400 text-slate-900 font-black text-lg gap-3 transition-colors">
-                    <PlayCircle className="w-6 h-6" />
+                  <div className="btn-rotating-border-inner px-8 py-4 bg-yellow-500 hover:bg-yellow-400 focus:bg-yellow-400 text-white font-black text-lg gap-3 transition-colors">
+                    <PlayCircle className="w-6 h-6 text-white" />
                     {currentSlide.buttonText || 'Watch Now'}
                   </div>
                 </Link>

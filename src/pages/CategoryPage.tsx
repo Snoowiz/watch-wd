@@ -69,7 +69,7 @@ export function CategoryPage() {
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent"></div>
                   <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
                     <div className={`text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider ${
-                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-slate-900'
+                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-white'
                     }`}>
                       {match.status}
                     </div>
@@ -78,7 +78,7 @@ export function CategoryPage() {
                         PLAN
                       </div>
                     ) : match.access === 'paid' ? (
-                      <div className="bg-slate-900/80 backdrop-blur-sm text-yellow-500 text-sm font-bold px-3 py-1 rounded-lg border border-white/10">
+                      <div className="bg-slate-900/80 backdrop-blur-sm text-white text-sm font-bold px-3 py-1 rounded-lg border border-white/10">
                         {currencySymbol}{match.price}
                       </div>
                     ) : (
@@ -129,7 +129,7 @@ export function CategoryPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                      match.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-slate-900'
+                      match.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'
                     }`}>
                       {match.status}
                     </span>

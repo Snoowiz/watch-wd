@@ -123,7 +123,7 @@ export function Matches() {
           onClick={() => setSelectedCategory('all')}
           className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap snap-start ${
             selectedCategory === 'all' 
-              ? 'bg-yellow-500 text-slate-900 shadow-lg shadow-yellow-500/20' 
+              ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/20' 
               : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700 hover:border-yellow-500'
           }`}
         >
@@ -135,7 +135,7 @@ export function Matches() {
             onClick={() => setSelectedCategory(cat.id)}
             className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap snap-start ${
               selectedCategory === cat.id 
-                ? 'bg-yellow-500 text-slate-900 shadow-lg shadow-yellow-500/20' 
+                ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/20' 
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700 hover:border-yellow-500'
             }`}
           >
@@ -160,7 +160,7 @@ export function Matches() {
                   
                   <div className="absolute top-4 left-4 flex gap-2">
                     <div className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest shadow-lg ${
-                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-slate-900'
+                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-white'
                     }`}>
                       {match.status}
                     </div>
@@ -188,7 +188,7 @@ export function Matches() {
                         PLAN
                       </div>
                     ) : match.access === 'paid' ? (
-                      <div className="bg-slate-900/90 backdrop-blur-md text-yellow-500 text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
+                      <div className="bg-slate-900/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
                         {currencySymbol}{match.price}
                       </div>
                     ) : (
@@ -200,7 +200,7 @@ export function Matches() {
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 bg-slate-900/40 backdrop-blur-[2px]">
                     <div className="w-16 h-16 rotating-border-effect play-rotating-border transform scale-75 group-hover:scale-100 transition-transform duration-500 shadow-2xl">
                       <div className="play-rotating-border-inner bg-yellow-500 hover:bg-yellow-400 transition-colors">
-                        <PlayCircle className="w-8 h-8 text-slate-900" />
+                        <PlayCircle className="w-8 h-8 text-white" />
                       </div>
                     </div>
                   </div>
@@ -240,7 +240,7 @@ export function Matches() {
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 bg-slate-900/40 backdrop-blur-[2px]">
                     <div className="w-10 h-10 sm:w-14 sm:h-14 rotating-border-effect play-rotating-border transform scale-75 group-hover:scale-100 transition-transform duration-500 shadow-2xl">
                       <div className="play-rotating-border-inner bg-yellow-500 hover:bg-yellow-400 transition-colors">
-                        <PlayCircle className="w-5 h-5 sm:w-6 sm:h-6 text-slate-900" />
+                        <PlayCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                       </div>
                     </div>
                   </div>
@@ -258,7 +258,7 @@ export function Matches() {
                     {/* Badges row */}
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1 sm:mb-2 text-slate-100">
                       <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-widest ${
-                        match.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-slate-900'
+                        match.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'
                       }`}>
                         {match.status}
                       </span>

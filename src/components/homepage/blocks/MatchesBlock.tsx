@@ -247,7 +247,7 @@ function MatchCard({
               className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${
                 match.status === 'live'
                   ? 'bg-red-500 text-white animate-pulse'
-                  : 'bg-yellow-500 text-slate-900'
+                  : 'bg-yellow-500 text-white'
               }`}
             >
               {match.status}
@@ -257,7 +257,7 @@ function MatchCard({
                 PLAN
               </div>
             ) : match.access === 'paid' ? (
-              <div className="bg-slate-900/90 backdrop-blur-md text-yellow-500 text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
+              <div className="bg-slate-900/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
                 {currencySymbol}{match.price}
               </div>
             ) : (
@@ -270,7 +270,7 @@ function MatchCard({
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 bg-slate-900/40 backdrop-blur-[2px]">
             <div className="w-16 h-16 rotating-border-effect play-rotating-border transform scale-75 group-hover:scale-100 transition-transform duration-500 shadow-2xl">
               <div className="play-rotating-border-inner bg-yellow-500 hover:bg-yellow-400 transition-colors">
-                <PlayCircle className="w-8 h-8 text-slate-900" />
+                <PlayCircle className="w-8 h-8 text-white" />
               </div>
             </div>
           </div>
@@ -324,7 +324,7 @@ function MatchListItem({
             referrerPolicy="no-referrer"
           />
           <div className={`absolute top-1 left-1 text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
-            match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-slate-900'
+            match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-white'
           }`}>
             {match.status}
           </div>
@@ -362,7 +362,7 @@ function MatchListItem({
         >
           <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-yellow-500 text-yellow-500' : ''}`} />
         </button>
-        <span className="px-4 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs group-hover:bg-yellow-500 group-hover:text-slate-900 transition-colors">
+        <span className="px-4 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs group-hover:bg-yellow-500 group-hover:text-white transition-colors">
           Watch
         </span>
       </div>
