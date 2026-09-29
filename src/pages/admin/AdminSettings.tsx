@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette, Sun, Moon } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -810,27 +810,33 @@ function PlatformBrandingSettings() {
   const { 
     platformName, setPlatformName, 
     logoUrl, setLogoUrl, 
+    logoLightUrl, setLogoLightUrl,
+    logoDarkUrl, setLogoDarkUrl,
     favicon, setFavicon, 
     preloaderEnabled, setPreloaderEnabled 
   } = useSettingsStore();
 
   const [localName, setLocalName] = useState(platformName !== undefined ? platformName : 'WatchWDS');
-  const [localLogoUrl, setLocalLogoUrl] = useState(logoUrl || '');
+  const [localLogoLightUrl, setLocalLogoLightUrl] = useState(logoLightUrl || logoUrl || '');
+  const [localLogoDarkUrl, setLocalLogoDarkUrl] = useState(logoDarkUrl || logoUrl || '');
   const [localFavicon, setLocalFavicon] = useState(favicon || '/favicon.ico');
   const [localPreloaderEnabled, setLocalPreloaderEnabled] = useState(preloaderEnabled !== false);
-  const [pickerTarget, setPickerTarget] = useState<'favicon' | 'logo' | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<'favicon' | 'logo-light' | 'logo-dark' | null>(null);
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     setLocalName(platformName !== undefined ? platformName : 'WatchWDS');
-    setLocalLogoUrl(logoUrl || '');
+    setLocalLogoLightUrl(logoLightUrl || logoUrl || '');
+    setLocalLogoDarkUrl(logoDarkUrl || logoUrl || '');
     setLocalFavicon(favicon || '/favicon.ico');
     setLocalPreloaderEnabled(preloaderEnabled !== false);
-  }, [platformName, logoUrl, favicon, preloaderEnabled]);
+  }, [platformName, logoUrl, logoLightUrl, logoDarkUrl, favicon, preloaderEnabled]);
 
   const handleSave = () => {
     setPlatformName(localName);
-    setLogoUrl(localLogoUrl);
+    setLogoLightUrl(localLogoLightUrl);
+    setLogoDarkUrl(localLogoDarkUrl);
+    setLogoUrl(localLogoLightUrl || localLogoDarkUrl);
     setFavicon(localFavicon);
     setPreloaderEnabled(localPreloaderEnabled);
     setIsSaved(true);
@@ -852,81 +858,178 @@ function PlatformBrandingSettings() {
     <div className="space-y-6 text-left">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* Site Logo Control */}
-        <div className="space-y-2 md:col-span-2 bg-slate-50/50 dark:bg-slate-900/40 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800">
-          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">
-            Platform Logo (Replaces default "{computedInitials}" badge)
-          </label>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-            Upload or choose a custom site logo (.png, .jpg, .jpeg, .webp, .svg). When added, this replaces the initials icon in the application header and footer.
-          </p>
+        {/* Dual Platform Logos: Light & Dark Mode */}
+        <div className="space-y-4 md:col-span-2 bg-slate-50/50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+          <div>
+            <h4 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Image className="w-5 h-5 text-indigo-500" />
+              Platform Logos (Light & Dark Mode)
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Upload two dedicated logos to ensure crisp visibility across all backgrounds. Upload a <strong>dark logo</strong> (e.g. black lettering) for Light Mode, and a <strong>light logo</strong> (e.g. white/luminous lettering) for Dark Mode.
+            </p>
+          </div>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setPickerTarget('logo')}
-              className="relative w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 transition-all overflow-hidden flex items-center justify-center bg-white dark:bg-slate-950 group shrink-0 shadow-sm"
-              title="Click to choose or upload logo from media library"
-              id="logo-picker-btn"
-            >
-              {localLogoUrl ? (
-                <img
-                  src={localLogoUrl}
-                  alt="Platform Logo Preview"
-                  className="w-full h-full object-contain p-1 group-hover:opacity-40 transition-all"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-1 text-slate-400 group-hover:text-indigo-500">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-xs shadow-md">
-                    {computedInitials}
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-400">Default Badge</span>
-                </div>
-              )}
-              <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <span className="text-xs font-black text-white px-2 py-1 bg-indigo-600 rounded-lg text-center shadow">
-                  CHANGE
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pt-2">
+            {/* 1. Light Mode Logo Box */}
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Sun className="w-4 h-4 text-amber-500" />
+                  Light Mode Logo
+                </span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40">
+                  White / Light Theme
                 </span>
               </div>
-            </button>
+              <p className="text-2xs text-slate-500 dark:text-slate-400">
+                Shown when visitors view the site in Light Mode. Recommended: dark lettering on transparent background.
+              </p>
 
-            <div className="flex-1 space-y-2.5 w-full">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setPickerTarget('logo')}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                  onClick={() => setPickerTarget('logo-light')}
+                  className="relative w-24 h-20 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-amber-500 dark:hover:border-amber-500 transition-all overflow-hidden flex items-center justify-center bg-slate-100 group shrink-0 shadow-inner"
+                  title="Click to choose or upload Light Mode logo"
+                  id="logo-light-picker-btn"
                 >
-                  <Upload className="w-3.5 h-3.5" />
-                  Choose / Upload Logo
+                  {localLogoLightUrl ? (
+                    <img
+                      src={localLogoLightUrl}
+                      alt="Light Mode Logo Preview"
+                      className="w-full h-full object-contain p-1.5 group-hover:opacity-40 transition-all"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-0.5 text-slate-400 group-hover:text-amber-500">
+                      <Sun className="w-6 h-6 text-amber-500/60" />
+                      <span className="text-[9px] font-bold text-slate-500">Add Light Logo</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-2xs font-black text-white px-2 py-1 bg-amber-500 rounded text-center shadow">
+                      CHANGE
+                    </span>
+                  </div>
                 </button>
-                {localLogoUrl && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLocalLogoUrl('');
+
+                <div className="flex-1 space-y-2 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPickerTarget('logo-light')}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs transition-all flex items-center gap-1 shadow-sm"
+                    >
+                      <Upload className="w-3 h-3" />
+                      Upload Light Logo
+                    </button>
+                    {localLogoLightUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalLogoLightUrl('');
+                          setIsSaved(false);
+                        }}
+                        className="px-2.5 py-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={localLogoLightUrl}
+                    onChange={(e) => {
+                      setLocalLogoLightUrl(e.target.value);
                       setIsSaved(false);
                     }}
-                    className="px-3 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-colors border border-red-200 dark:border-red-900/40 flex items-center gap-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Remove Logo (Use Initials)
-                  </button>
-                )}
+                    placeholder="Light logo URL (e.g. /logo-dark-text.png)"
+                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
               </div>
-              
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={localLogoUrl}
-                  onChange={(e) => {
-                    setLocalLogoUrl(e.target.value);
-                    setIsSaved(false);
-                  }}
-                  placeholder="Or enter image URL directly (e.g. https://.../logo.png)"
-                  className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                />
+            </div>
+
+            {/* 2. Dark Mode Logo Box */}
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Moon className="w-4 h-4 text-indigo-400" />
+                  Dark Mode Logo
+                </span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/40">
+                  Dark / Black Theme
+                </span>
+              </div>
+              <p className="text-2xs text-slate-500 dark:text-slate-400">
+                Shown when visitors view the site in Dark Mode. Recommended: white/light lettering on transparent background.
+              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPickerTarget('logo-dark')}
+                  className="relative w-24 h-20 rounded-xl border-2 border-dashed border-slate-600 dark:border-slate-600 hover:border-indigo-400 transition-all overflow-hidden flex items-center justify-center bg-slate-950 group shrink-0 shadow-inner"
+                  title="Click to choose or upload Dark Mode logo"
+                  id="logo-dark-picker-btn"
+                >
+                  {localLogoDarkUrl ? (
+                    <img
+                      src={localLogoDarkUrl}
+                      alt="Dark Mode Logo Preview"
+                      className="w-full h-full object-contain p-1.5 group-hover:opacity-40 transition-all"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-0.5 text-slate-400 group-hover:text-indigo-400">
+                      <Moon className="w-6 h-6 text-indigo-400/60" />
+                      <span className="text-[9px] font-bold text-slate-400">Add Dark Logo</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-2xs font-black text-white px-2 py-1 bg-indigo-600 rounded text-center shadow">
+                      CHANGE
+                    </span>
+                  </div>
+                </button>
+
+                <div className="flex-1 space-y-2 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPickerTarget('logo-dark')}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-all flex items-center gap-1 shadow-sm"
+                    >
+                      <Upload className="w-3 h-3" />
+                      Upload Dark Logo
+                    </button>
+                    {localLogoDarkUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalLogoDarkUrl('');
+                          setIsSaved(false);
+                        }}
+                        className="px-2.5 py-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={localLogoDarkUrl}
+                    onChange={(e) => {
+                      setLocalLogoDarkUrl(e.target.value);
+                      setIsSaved(false);
+                    }}
+                    placeholder="Dark logo URL (e.g. /logo-white-text.png)"
+                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1036,8 +1139,10 @@ function PlatformBrandingSettings() {
       {pickerTarget && (
         <MediaPicker
           onSelect={(url) => {
-            if (pickerTarget === 'logo') {
-              setLocalLogoUrl(url);
+            if (pickerTarget === 'logo-light') {
+              setLocalLogoLightUrl(url);
+            } else if (pickerTarget === 'logo-dark') {
+              setLocalLogoDarkUrl(url);
             } else if (pickerTarget === 'favicon') {
               setLocalFavicon(url);
             }

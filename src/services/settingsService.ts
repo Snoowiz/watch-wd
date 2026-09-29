@@ -84,12 +84,18 @@ export const saveCookieSettings = (settings: CookieSettings) => saveSetting('coo
 
 export interface BrandingSettings {
   platformName: string;
+  logoUrl?: string;
+  logoLightUrl?: string;
+  logoDarkUrl?: string;
   favicon: string;
   preloaderEnabled: boolean;
 }
 
 const defaultBranding: BrandingSettings = {
   platformName: 'WatchWDS',
+  logoUrl: '',
+  logoLightUrl: '',
+  logoDarkUrl: '',
   favicon: '/favicon.ico',
   preloaderEnabled: true
 };

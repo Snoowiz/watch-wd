@@ -46,8 +46,9 @@ export function AdminDashboard() {
   const { user, setLogoutModalOpen } = useAuthStore();
   const { isDarkMode, toggleDarkMode } = useThemeStore();
   const { users = [], setUsers } = useUsersStore();
-  const { blogSettings } = useSettingsStore();
+  const { blogSettings, platformName, logoUrl, logoLightUrl, logoDarkUrl } = useSettingsStore();
   const blogEnabled = blogSettings?.enabled !== false;
+  const adminLogo = isDarkMode ? (logoDarkUrl || logoUrl) : (logoLightUrl || logoUrl);
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -151,13 +152,23 @@ export function AdminDashboard() {
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0`}>
         <div className="h-20 flex items-center px-8 border-b border-slate-200 dark:border-slate-700 shrink-0 justify-between">
-          <div>
-            <div className="text-2xl font-black tracking-tighter">
-              <span className="text-slate-900 dark:text-white">Watch</span>
-              <span className="text-yellow-500">WDS</span>
-            </div>
-            <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase mt-0.5">Admin Console</div>
-          </div>
+          <Link to="/admin" className="flex items-center gap-2">
+            {adminLogo ? (
+              <img
+                src={adminLogo}
+                alt={platformName || 'Logo'}
+                className="h-9 max-w-[150px] object-contain"
+              />
+            ) : (
+              <div>
+                <div className="text-2xl font-black tracking-tighter">
+                  <span className="text-slate-900 dark:text-white">Watch</span>
+                  <span className="text-yellow-500">WDS</span>
+                </div>
+                <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase mt-0.5">Admin Console</div>
+              </div>
+            )}
+          </Link>
           <button className="lg:hidden text-slate-500 dark:text-slate-400" onClick={() => setIsSidebarOpen(false)}>
             <X className="w-6 h-6" />
           </button>

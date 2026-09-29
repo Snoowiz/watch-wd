@@ -594,6 +594,10 @@ interface SettingsState {
   setPlatformName: (name: string) => void;
   logoUrl: string;
   setLogoUrl: (logoUrl: string) => void;
+  logoLightUrl: string;
+  setLogoLightUrl: (logoLightUrl: string) => void;
+  logoDarkUrl: string;
+  setLogoDarkUrl: (logoDarkUrl: string) => void;
   favicon: string;
   setFavicon: (favicon: string) => void;
   preloaderEnabled: boolean;
@@ -709,22 +713,74 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   platformName: 'WatchWDS',
   setPlatformName: (name) => {
     set({ platformName: name });
-    saveSettingHelper('branding', { platformName: name, logoUrl: get().logoUrl, favicon: get().favicon, preloaderEnabled: get().preloaderEnabled });
+    saveSettingHelper('branding', { 
+      platformName: name, 
+      logoUrl: get().logoUrl, 
+      logoLightUrl: get().logoLightUrl, 
+      logoDarkUrl: get().logoDarkUrl, 
+      favicon: get().favicon, 
+      preloaderEnabled: get().preloaderEnabled 
+    });
   },
   logoUrl: '',
   setLogoUrl: (logoUrl) => {
     set({ logoUrl });
-    saveSettingHelper('branding', { platformName: get().platformName, logoUrl, favicon: get().favicon, preloaderEnabled: get().preloaderEnabled });
+    saveSettingHelper('branding', { 
+      platformName: get().platformName, 
+      logoUrl, 
+      logoLightUrl: get().logoLightUrl, 
+      logoDarkUrl: get().logoDarkUrl, 
+      favicon: get().favicon, 
+      preloaderEnabled: get().preloaderEnabled 
+    });
+  },
+  logoLightUrl: '',
+  setLogoLightUrl: (logoLightUrl) => {
+    set({ logoLightUrl });
+    saveSettingHelper('branding', { 
+      platformName: get().platformName, 
+      logoUrl: get().logoUrl || logoLightUrl, 
+      logoLightUrl, 
+      logoDarkUrl: get().logoDarkUrl, 
+      favicon: get().favicon, 
+      preloaderEnabled: get().preloaderEnabled 
+    });
+  },
+  logoDarkUrl: '',
+  setLogoDarkUrl: (logoDarkUrl) => {
+    set({ logoDarkUrl });
+    saveSettingHelper('branding', { 
+      platformName: get().platformName, 
+      logoUrl: get().logoUrl || logoDarkUrl, 
+      logoLightUrl: get().logoLightUrl, 
+      logoDarkUrl, 
+      favicon: get().favicon, 
+      preloaderEnabled: get().preloaderEnabled 
+    });
   },
   favicon: '/favicon.ico',
   setFavicon: (favicon) => {
     set({ favicon });
-    saveSettingHelper('branding', { platformName: get().platformName, logoUrl: get().logoUrl, favicon, preloaderEnabled: get().preloaderEnabled });
+    saveSettingHelper('branding', { 
+      platformName: get().platformName, 
+      logoUrl: get().logoUrl, 
+      logoLightUrl: get().logoLightUrl, 
+      logoDarkUrl: get().logoDarkUrl, 
+      favicon, 
+      preloaderEnabled: get().preloaderEnabled 
+    });
   },
   preloaderEnabled: true,
   setPreloaderEnabled: (enabled) => {
     set({ preloaderEnabled: enabled });
-    saveSettingHelper('branding', { platformName: get().platformName, logoUrl: get().logoUrl, favicon: get().favicon, preloaderEnabled: enabled });
+    saveSettingHelper('branding', { 
+      platformName: get().platformName, 
+      logoUrl: get().logoUrl, 
+      logoLightUrl: get().logoLightUrl, 
+      logoDarkUrl: get().logoDarkUrl, 
+      favicon: get().favicon, 
+      preloaderEnabled: enabled 
+    });
   },
   googleAuthSettings: {
     enabled: false,
@@ -790,7 +846,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const data = await brandingRes.json();
         set({
           platformName: data.platformName !== undefined ? data.platformName : 'WatchWDS',
-          logoUrl: data.logoUrl || '',
+          logoUrl: data.logoUrl || data.logoLightUrl || data.logoDarkUrl || '',
+          logoLightUrl: data.logoLightUrl || data.logoUrl || '',
+          logoDarkUrl: data.logoDarkUrl || data.logoUrl || '',
           favicon: data.favicon || '/favicon.ico',
           preloaderEnabled: data.preloaderEnabled !== false
         });

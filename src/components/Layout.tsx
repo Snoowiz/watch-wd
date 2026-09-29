@@ -11,7 +11,7 @@ import { CookieBanner } from './CookieBanner';
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, setLogoutModalOpen } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
-  const { currencySymbol, platformName: storedPlatformName, logoUrl, favicon, blogSettings, walletSettings } = useSettingsStore();
+  const { currencySymbol, platformName: storedPlatformName, logoUrl, logoLightUrl, logoDarkUrl, favicon, blogSettings, walletSettings } = useSettingsStore();
   const platformName = storedPlatformName !== undefined ? storedPlatformName : 'WatchWDS';
   const blogEnabled = blogSettings?.enabled !== false;
   const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
@@ -58,6 +58,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return cleanName.substring(0, 2).toUpperCase() || 'WD';
   })();
 
+  const activeLogo = isDarkMode ? (logoDarkUrl || logoUrl) : (logoLightUrl || logoUrl);
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <nav className={`fixed w-full top-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-sm dark:shadow-none border-b border-slate-200 dark:border-slate-800/50' : 'bg-transparent border-b border-transparent'}`}>
@@ -65,9 +67,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               <Link to="/" className="flex items-center gap-2.5">
-                {logoUrl ? (
+                {activeLogo ? (
                   <img
-                    src={logoUrl}
+                    src={activeLogo}
                     alt={platformName || 'Logo'}
                     className="h-8 max-w-[160px] object-contain rounded-md"
                   />
