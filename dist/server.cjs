@@ -2150,6 +2150,20 @@ var authenticate = (req, res, next) => {
     return res.status(401).json({ error: "Invalid token" });
   }
 };
+var optionalAuthenticate = (req, _res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    const token = authHeader.split(" ")[1];
+    try {
+      req.user = import_jsonwebtoken.default.verify(token, JWT_SECRET);
+    } catch (_err) {
+      req.user = null;
+    }
+  } else {
+    req.user = null;
+  }
+  next();
+};
 var requireRole = (roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) return res.status(403).json({ error: "Forbidden" });
@@ -3228,14 +3242,14 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.post("/api/matches/:id/stream", authenticate, async (req, res) => {
+  app.post("/api/matches/:id/stream", optionalAuthenticate, async (req, res) => {
     try {
       const matchId = req.params.id;
       const matchDoc = await db.collection("matches").doc(matchId).get();
       if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
       const match = { id: matchDoc.id, ...matchDoc.data() };
-      const userId = req.user.id.toString();
-      const userRole = req.user.role;
+      const userId = req.user?.id?.toString() || null;
+      const userRole = req.user?.role || null;
       const rStatus = match.revoke_status || match.revokeStatus;
       if (rStatus && ["revoked", "auto_deleted"].includes(rStatus) && userRole !== "admin" && userRole !== "operator") {
         return res.status(403).json({
@@ -3247,11 +3261,13 @@ async function startServer() {
       }
       let hasAccess = false;
       let matchingPurchase = null;
-      if (match.access === "free" || userRole === "admin" || userRole === "operator") {
+      if (match.access === "free") {
+        hasAccess = true;
+      } else if (userRole === "admin" || userRole === "operator") {
         hasAccess = true;
       } else if (userRole === "partner" && req.user.club_id && String(match.club_id || match.clubId) === String(req.user.club_id)) {
         hasAccess = true;
-      } else {
+      } else if (userId) {
         const purchasesSnap = await db.collection("purchases").where("userId", "==", userId).where("matchId", "==", matchId).where("type", "==", "watch").get();
         let isExpired = false;
         if (purchasesSnap.docs && purchasesSnap.docs.length > 0) {

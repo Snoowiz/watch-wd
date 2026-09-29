@@ -212,6 +212,21 @@ const authenticate = (req: any, res: any, next: any) => {
     return res.status(401).json({ error: "Invalid token" });
   }
 };
+const optionalAuthenticate = (req: any, _res: any, next: any) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    const token = authHeader.split(" ")[1];
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (_err) {
+      // Token invalid — proceed as guest
+      req.user = null;
+    }
+  } else {
+    req.user = null;
+  }
+  next();
+};
 const requireRole = (roles: string[]) => {
   return (req: any, res: any, next: any) => {
     if (!req.user || !roles.includes(req.user.role)) return res.status(403).json({ error: "Forbidden" });
@@ -1473,15 +1488,15 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/matches/:id/stream", authenticate, async (req: any, res) => {
+  app.post("/api/matches/:id/stream", optionalAuthenticate, async (req: any, res) => {
     try {
       const matchId = req.params.id;
       const matchDoc = await db.collection("matches").doc(matchId).get();
       if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
       const match = { id: matchDoc.id, ...matchDoc.data() };
       
-      const userId = req.user.id.toString();
-      const userRole = req.user.role;
+      const userId = req.user?.id?.toString() || null;
+      const userRole = req.user?.role || null;
       
       // If match is revoked or auto-deleted, deny non-admin streaming
       const rStatus = match.revoke_status || match.revokeStatus;
@@ -1496,12 +1511,16 @@ async function startServer() {
 
       let hasAccess = false;
       let matchingPurchase: any = null;
-      if (match.access === 'free' || userRole === 'admin' || userRole === 'operator') {
+
+      // Free matches are accessible to everyone, including guests
+      if (match.access === 'free') {
+        hasAccess = true;
+      } else if (userRole === 'admin' || userRole === 'operator') {
         hasAccess = true;
       } else if (userRole === 'partner' && req.user.club_id && String(match.club_id || match.clubId) === String(req.user.club_id)) {
         hasAccess = true;
-      } else {
-        // Check PPV purchase
+      } else if (userId) {
+        // Check PPV purchase (only for authenticated users)
         const purchasesSnap = await db.collection("purchases")
           .where("userId", "==", userId)
           .where("matchId", "==", matchId)
@@ -1549,6 +1568,7 @@ async function startServer() {
           });
         }
       }
+      // If user is not authenticated and match is not free, deny access
 
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied. Purchase or valid subscription required.", hasAccess: false });
