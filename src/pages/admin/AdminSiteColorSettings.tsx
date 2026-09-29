@@ -11,13 +11,16 @@ import {
   Tv, 
   Flame, 
   ShieldCheck, 
-  Eye
+  Eye,
+  Type,
+  MousePointerClick
 } from 'lucide-react';
 import { useSettingsStore } from '../../store';
 import { 
   COLOR_PRESETS, 
   DEFAULT_PRIMARY_COLOR, 
   DEFAULT_SECONDARY_COLOR, 
+  DEFAULT_BUTTON_TEXT_COLOR,
   generateShades, 
   getContrastTextColor,
   applyThemeColors,
@@ -33,12 +36,18 @@ export function AdminSiteColorSettings() {
   const [secondaryColor, setSecondaryColor] = useState<string>(
     siteColorSettings?.secondaryColor || DEFAULT_SECONDARY_COLOR
   );
+  const [buttonTextColor, setButtonTextColor] = useState<string>(
+    siteColorSettings?.buttonTextColor || DEFAULT_BUTTON_TEXT_COLOR
+  );
 
   const [hexInput, setHexInput] = useState<string>(
     (siteColorSettings?.primaryColor || DEFAULT_PRIMARY_COLOR).toUpperCase()
   );
   const [secondaryHexInput, setSecondaryHexInput] = useState<string>(
     (siteColorSettings?.secondaryColor || DEFAULT_SECONDARY_COLOR).toUpperCase()
+  );
+  const [buttonTextHexInput, setButtonTextHexInput] = useState<string>(
+    (siteColorSettings?.buttonTextColor || DEFAULT_BUTTON_TEXT_COLOR).toUpperCase()
   );
 
   const [isSaved, setIsSaved] = useState<boolean>(false);
@@ -54,13 +63,17 @@ export function AdminSiteColorSettings() {
       setSecondaryColor(siteColorSettings.secondaryColor);
       setSecondaryHexInput(siteColorSettings.secondaryColor.toUpperCase());
     }
+    if (siteColorSettings?.buttonTextColor) {
+      setButtonTextColor(siteColorSettings.buttonTextColor);
+      setButtonTextHexInput(siteColorSettings.buttonTextColor.toUpperCase());
+    }
   }, [siteColorSettings]);
 
   // Handle primary color change
   const handlePrimaryChange = (newHex: string) => {
     setPrimaryColor(newHex);
     setHexInput(newHex.toUpperCase());
-    applyThemeColors(newHex, secondaryColor);
+    applyThemeColors(newHex, secondaryColor, buttonTextColor);
     setIsSaved(false);
   };
 
@@ -68,7 +81,15 @@ export function AdminSiteColorSettings() {
   const handleSecondaryChange = (newHex: string) => {
     setSecondaryColor(newHex);
     setSecondaryHexInput(newHex.toUpperCase());
-    applyThemeColors(primaryColor, newHex);
+    applyThemeColors(primaryColor, newHex, buttonTextColor);
+    setIsSaved(false);
+  };
+
+  // Handle button text color change
+  const handleButtonTextChange = (newHex: string) => {
+    setButtonTextColor(newHex);
+    setButtonTextHexInput(newHex.toUpperCase());
+    applyThemeColors(primaryColor, secondaryColor, newHex);
     setIsSaved(false);
   };
 
@@ -81,7 +102,7 @@ export function AdminSiteColorSettings() {
     setHexInput(clean.toUpperCase());
     if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(clean)) {
       setPrimaryColor(clean);
-      applyThemeColors(clean, secondaryColor);
+      applyThemeColors(clean, secondaryColor, buttonTextColor);
       setIsSaved(false);
     }
   };
@@ -95,7 +116,21 @@ export function AdminSiteColorSettings() {
     setSecondaryHexInput(clean.toUpperCase());
     if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(clean)) {
       setSecondaryColor(clean);
-      applyThemeColors(primaryColor, clean);
+      applyThemeColors(primaryColor, clean, buttonTextColor);
+      setIsSaved(false);
+    }
+  };
+
+  // Handle typing in button text hex input
+  const handleButtonTextHexInput = (val: string) => {
+    let clean = val.trim();
+    if (!clean.startsWith('#')) {
+      clean = '#' + clean;
+    }
+    setButtonTextHexInput(clean.toUpperCase());
+    if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(clean)) {
+      setButtonTextColor(clean);
+      applyThemeColors(primaryColor, secondaryColor, clean);
       setIsSaved(false);
     }
   };
@@ -106,17 +141,19 @@ export function AdminSiteColorSettings() {
     setSecondaryColor(preset.secondary);
     setHexInput(preset.primary.toUpperCase());
     setSecondaryHexInput(preset.secondary.toUpperCase());
-    applyThemeColors(preset.primary, preset.secondary);
+    applyThemeColors(preset.primary, preset.secondary, buttonTextColor);
     setIsSaved(false);
   };
 
-  // Reset to default WatchWDS gold
+  // Reset to default WatchWDS gold & white button text
   const handleResetToDefault = () => {
     setPrimaryColor(DEFAULT_PRIMARY_COLOR);
     setSecondaryColor(DEFAULT_SECONDARY_COLOR);
+    setButtonTextColor(DEFAULT_BUTTON_TEXT_COLOR);
     setHexInput(DEFAULT_PRIMARY_COLOR);
     setSecondaryHexInput(DEFAULT_SECONDARY_COLOR);
-    applyThemeColors(DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR);
+    setButtonTextHexInput(DEFAULT_BUTTON_TEXT_COLOR);
+    applyThemeColors(DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR, DEFAULT_BUTTON_TEXT_COLOR);
     setIsSaved(false);
   };
 
@@ -124,7 +161,8 @@ export function AdminSiteColorSettings() {
   const handleSave = () => {
     setSiteColorSettings({
       primaryColor,
-      secondaryColor
+      secondaryColor,
+      buttonTextColor
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2500);
@@ -138,7 +176,7 @@ export function AdminSiteColorSettings() {
   };
 
   // Native EyeDropper API if supported in modern browsers
-  const handleEyeDropper = async (target: 'primary' | 'secondary') => {
+  const handleEyeDropper = async (target: 'primary' | 'secondary' | 'buttonText') => {
     if (typeof window !== 'undefined' && 'EyeDropper' in window) {
       try {
         const eyeDropper = new (window as any).EyeDropper();
@@ -146,8 +184,10 @@ export function AdminSiteColorSettings() {
         if (result?.sRGBHex) {
           if (target === 'primary') {
             handlePrimaryChange(result.sRGBHex);
-          } else {
+          } else if (target === 'secondary') {
             handleSecondaryChange(result.sRGBHex);
+          } else if (target === 'buttonText') {
+            handleButtonTextChange(result.sRGBHex);
           }
         }
       } catch (e) {
@@ -262,14 +302,14 @@ export function AdminSiteColorSettings() {
       </div>
 
       {/* 2. Custom Color Pickers & Hex Inputs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
         
         {/* Primary Accent Color Control */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: primaryColor }} />
-              Primary Accent Color (Replaces Yellow)
+              Primary Accent Color
             </label>
             <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               {primaryColor.toUpperCase()}
@@ -331,7 +371,7 @@ export function AdminSiteColorSettings() {
             </div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Main brand color used for action buttons, video badges, glows, and header accents.
+            Background color for primary buttons, active badges, navigation highlights, and glows.
           </p>
         </div>
 
@@ -340,7 +380,7 @@ export function AdminSiteColorSettings() {
           <div className="flex items-center justify-between">
             <label className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: secondaryColor }} />
-              Secondary / Highlight Accent Color
+              Secondary / Highlight Accent
             </label>
             <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
               {secondaryColor.toUpperCase()}
@@ -403,6 +443,101 @@ export function AdminSiteColorSettings() {
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Accent color used for gradient animations, secondary badges, and complementary highlights.
+          </p>
+        </div>
+
+        {/* Button Text Color Control (NEW) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full border border-black/20 dark:border-white/20" style={{ backgroundColor: buttonTextColor }} />
+              Button Text Color
+            </label>
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+              {buttonTextColor.toUpperCase()}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Color Swatch & Native Color Input */}
+            <div className="relative group shrink-0">
+              <input
+                type="color"
+                value={buttonTextColor}
+                onChange={(e) => handleButtonTextChange(e.target.value)}
+                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                id="button-text-color-native-picker"
+                title="Click to open button text color picker"
+              />
+              <div 
+                className="w-12 h-12 rounded-xl border-2 border-slate-300 dark:border-slate-600 shadow-sm flex items-center justify-center group-hover:scale-105 transition-transform"
+                style={{ backgroundColor: buttonTextColor }}
+              >
+                <Type 
+                  className="w-5 h-5 opacity-80 group-hover:opacity-100 transition-opacity drop-shadow" 
+                  style={{ color: getContrastTextColor(buttonTextColor) }} 
+                />
+              </div>
+            </div>
+
+            {/* Hex Input Field */}
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={buttonTextHexInput}
+                onChange={(e) => handleButtonTextHexInput(e.target.value)}
+                placeholder="#FFFFFF"
+                maxLength={7}
+                className="w-full pl-3 pr-20 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {'EyeDropper' in (typeof window !== 'undefined' ? window : {}) && (
+                  <button
+                    type="button"
+                    onClick={() => handleEyeDropper('buttonText')}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                    title="Pick color from screen"
+                  >
+                    <Pipette className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleCopy(buttonTextColor)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                  title="Copy Hex Code"
+                >
+                  {copiedHex === buttonTextColor ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick presets for button text */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            {[
+              { label: 'White', hex: '#FFFFFF' },
+              { label: 'Dark Slate', hex: '#0F172A' },
+              { label: 'Black', hex: '#000000' },
+              { label: 'Amber Cream', hex: '#FEFCE8' }
+            ].map((preset) => (
+              <button
+                key={preset.hex}
+                type="button"
+                onClick={() => handleButtonTextChange(preset.hex)}
+                className={`px-2 py-1 text-[10px] font-bold rounded-lg border transition-all flex items-center gap-1 ${
+                  buttonTextColor.toLowerCase() === preset.hex.toLowerCase()
+                    ? 'border-yellow-500 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 font-black'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full border border-black/20" style={{ backgroundColor: preset.hex }} />
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Controls text & icon color on action buttons across the site (e.g. choose White for dark primary colors).
           </p>
         </div>
       </div>
@@ -517,13 +652,23 @@ export function AdminSiteColorSettings() {
                   </button>
                 </div>
 
-                {/* Primary Solid Action Button */}
+                {/* Primary Solid Action Button with Customizable Text Color */}
                 <button
                   type="button"
-                  className="px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all hover:scale-105"
-                  style={{ backgroundColor: primaryColor, color: contrastText }}
+                  className="px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all hover:scale-105 flex items-center gap-1.5"
+                  style={{ backgroundColor: primaryColor, color: buttonTextColor }}
                 >
+                  <Tv className="w-3.5 h-3.5" style={{ color: buttonTextColor }} />
                   Unlock PPV
+                </button>
+
+                {/* Second Primary Solid Button Preview */}
+                <button
+                  type="button"
+                  className="px-4 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all hover:scale-105"
+                  style={{ backgroundColor: primaryColor, color: buttonTextColor }}
+                >
+                  Subscribe
                 </button>
               </div>
             </div>
@@ -536,7 +681,7 @@ export function AdminSiteColorSettings() {
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5 text-emerald-500" />
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            Colors are saved to system settings and cached locally for instantaneous page loading.
+            Colors & button text styling are saved to system settings and cached locally for instantaneous page loading.
           </span>
         </div>
 
@@ -548,7 +693,7 @@ export function AdminSiteColorSettings() {
               ? 'bg-emerald-600 text-white scale-105' 
               : 'hover:opacity-90'
           }`}
-          style={!isSaved ? { backgroundColor: primaryColor, color: contrastText } : undefined}
+          style={!isSaved ? { backgroundColor: primaryColor, color: buttonTextColor } : undefined}
           id="save-site-colors-btn"
         >
           {isSaved ? (

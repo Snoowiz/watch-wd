@@ -97,7 +97,7 @@ export function AdminDashboard() {
     { id: 'feedback-hub', type: 'feedback', title: 'User Feedback & Reviews', subtitle: 'Ratings, CSAT scores, customer reviews & replies', icon: MessageSquare, path: '/admin/feedback' },
     { id: 'match-access-duration', type: 'match', title: 'PPV Event Access & Duration', subtitle: 'Time-limited access rules & financial record protection', icon: Clock, path: '/admin/matches' },
     { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Match Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/matches' },
-    { id: 'settings-site-colors', type: 'settings', title: 'Site Color Configuration', subtitle: 'Platform primary brand accent and theme colors', icon: Palette, path: '/admin/settings' },
+    { id: 'settings-site-colors', type: 'settings', title: 'Site Color Configuration', subtitle: 'Brand accents, theme palettes & button text color', icon: Palette, path: '/admin/settings' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
@@ -157,7 +157,7 @@ export function AdminDashboard() {
               <img
                 src={adminLogo}
                 alt={platformName || 'Logo'}
-                className="h-9 max-w-[150px] object-contain"
+                className="h-9 max-w-[150px] object-contain bg-transparent"
               />
             ) : (
               <div>

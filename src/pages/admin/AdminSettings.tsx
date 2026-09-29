@@ -883,14 +883,14 @@ function PlatformBrandingSettings() {
                 </span>
               </div>
               <p className="text-2xs text-slate-500 dark:text-slate-400">
-                Shown when visitors view the site in Light Mode. Recommended: dark lettering on transparent background.
+                Shown when visitors view the site in Light Mode. Supports transparent PNG, SVG, or JPG with zero forced background styling.
               </p>
 
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setPickerTarget('logo-light')}
-                  className="relative w-24 h-20 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-amber-500 dark:hover:border-amber-500 transition-all overflow-hidden flex items-center justify-center bg-slate-100 group shrink-0 shadow-inner"
+                  className="relative w-28 h-20 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500 dark:hover:border-amber-500 transition-all overflow-hidden flex items-center justify-center bg-transparent group shrink-0"
                   title="Click to choose or upload Light Mode logo"
                   id="logo-light-picker-btn"
                 >
@@ -898,7 +898,7 @@ function PlatformBrandingSettings() {
                     <img
                       src={localLogoLightUrl}
                       alt="Light Mode Logo Preview"
-                      className="w-full h-full object-contain p-1.5 group-hover:opacity-40 transition-all"
+                      className="w-full h-full object-contain p-1 group-hover:opacity-40 transition-all bg-transparent"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
@@ -964,14 +964,14 @@ function PlatformBrandingSettings() {
                 </span>
               </div>
               <p className="text-2xs text-slate-500 dark:text-slate-400">
-                Shown when visitors view the site in Dark Mode. Recommended: white/light lettering on transparent background.
+                Shown when visitors view the site in Dark Mode. Supports transparent PNG, SVG, or JPG with zero forced background styling.
               </p>
 
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setPickerTarget('logo-dark')}
-                  className="relative w-24 h-20 rounded-xl border-2 border-dashed border-slate-600 dark:border-slate-600 hover:border-indigo-400 transition-all overflow-hidden flex items-center justify-center bg-slate-950 group shrink-0 shadow-inner"
+                  className="relative w-28 h-20 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-400 transition-all overflow-hidden flex items-center justify-center bg-transparent group shrink-0"
                   title="Click to choose or upload Dark Mode logo"
                   id="logo-dark-picker-btn"
                 >
@@ -979,7 +979,7 @@ function PlatformBrandingSettings() {
                     <img
                       src={localLogoDarkUrl}
                       alt="Dark Mode Logo Preview"
-                      className="w-full h-full object-contain p-1.5 group-hover:opacity-40 transition-all"
+                      className="w-full h-full object-contain p-1 group-hover:opacity-40 transition-all bg-transparent"
                       referrerPolicy="no-referrer"
                     />
                   ) : (

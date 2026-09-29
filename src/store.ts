@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { GoogleAuthSettings } from './services/settingsService';
-import { applyThemeColors, getStoredThemeColors, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR } from './utils/themeColors';
+import { applyThemeColors, getStoredThemeColors, DEFAULT_PRIMARY_COLOR, DEFAULT_SECONDARY_COLOR, DEFAULT_BUTTON_TEXT_COLOR } from './utils/themeColors';
 
 export interface User {
   id: number;
@@ -573,6 +573,7 @@ export interface WalletSettings {
 export interface SiteColorSettings {
   primaryColor: string;
   secondaryColor: string;
+  buttonTextColor?: string;
 }
 
 interface SettingsState {
@@ -823,10 +824,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   siteColorSettings: {
     primaryColor: getStoredThemeColors().primary,
     secondaryColor: getStoredThemeColors().secondary,
+    buttonTextColor: getStoredThemeColors().buttonTextColor,
   },
   setSiteColorSettings: (settings) => {
     set({ siteColorSettings: settings });
-    applyThemeColors(settings.primaryColor, settings.secondaryColor);
+    applyThemeColors(
+      settings.primaryColor, 
+      settings.secondaryColor, 
+      settings.buttonTextColor || DEFAULT_BUTTON_TEXT_COLOR
+    );
     saveSettingHelper('site_colors', settings);
   },
   captchaEnabled: false,
@@ -912,16 +918,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const colorsRes = await fetch('/api/settings/site_colors');
       if (colorsRes.ok) {
         const data = await colorsRes.json();
-        if (data && (data.primaryColor || data.secondaryColor)) {
+        if (data && (data.primaryColor || data.secondaryColor || data.buttonTextColor)) {
           const primary = data.primaryColor || DEFAULT_PRIMARY_COLOR;
           const secondary = data.secondaryColor || DEFAULT_SECONDARY_COLOR;
+          const buttonText = data.buttonTextColor || DEFAULT_BUTTON_TEXT_COLOR;
           set({
             siteColorSettings: {
               primaryColor: primary,
               secondaryColor: secondary,
+              buttonTextColor: buttonText,
             }
           });
-          applyThemeColors(primary, secondary);
+          applyThemeColors(primary, secondary, buttonText);
         }
       }
       get().fetchPerPageSeo();

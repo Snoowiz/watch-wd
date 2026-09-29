@@ -77,6 +77,7 @@ export const COLOR_PRESETS: ColorPreset[] = [
 
 export const DEFAULT_PRIMARY_COLOR = '#EAB308';
 export const DEFAULT_SECONDARY_COLOR = '#6366F1';
+export const DEFAULT_BUTTON_TEXT_COLOR = '#FFFFFF';
 
 // Convert hex (#RRGGBB or #RGB) to [r, g, b]
 export function hexToRgb(hex: string): [number, number, number] {
@@ -139,7 +140,11 @@ export function getContrastTextColor(hex: string): '#0a0a0a' | '#ffffff' {
 }
 
 // Apply colors globally to document root and styles
-export function applyThemeColors(primaryHex: string, secondaryHex: string = DEFAULT_SECONDARY_COLOR) {
+export function applyThemeColors(
+  primaryHex: string, 
+  secondaryHex: string = DEFAULT_SECONDARY_COLOR,
+  buttonTextHex: string = DEFAULT_BUTTON_TEXT_COLOR
+) {
   if (typeof document === 'undefined') return;
 
   const validPrimary = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(primaryHex)
@@ -148,6 +153,9 @@ export function applyThemeColors(primaryHex: string, secondaryHex: string = DEFA
   const validSecondary = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(secondaryHex)
     ? secondaryHex
     : DEFAULT_SECONDARY_COLOR;
+  const validButtonText = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(buttonTextHex)
+    ? buttonTextHex
+    : DEFAULT_BUTTON_TEXT_COLOR;
 
   const primaryShades = generateShades(validPrimary);
   const secondaryShades = generateShades(validSecondary);
@@ -170,6 +178,7 @@ export function applyThemeColors(primaryHex: string, secondaryHex: string = DEFA
   });
   root.style.setProperty('--color-secondary-500', validSecondary);
   root.style.setProperty('--primary-contrast-text', contrastText);
+  root.style.setProperty('--button-text-color', validButtonText);
 
   // In addition to root properties, inject a high-priority style tag
   // ensuring Tailwind v4 compiled rules and fallbacks update instantaneously
@@ -213,6 +222,45 @@ export function applyThemeColors(primaryHex: string, secondaryHex: string = DEFA
       --secondary-500: ${validSecondary} !important;
       --color-secondary-500: ${validSecondary} !important;
       --primary-contrast-text: ${contrastText} !important;
+      --button-text-color: ${validButtonText} !important;
+    }
+
+    /* Primary and action button text colors configured by admin */
+    button.bg-yellow-500,
+    a.bg-yellow-500,
+    button.bg-yellow-400,
+    a.bg-yellow-400,
+    button.bg-amber-500,
+    a.bg-amber-500,
+    .btn-primary,
+    .btn-solid-primary,
+    button[class*="bg-yellow-500"],
+    a[class*="bg-yellow-500"],
+    button[class*="bg-yellow-400"],
+    a[class*="bg-yellow-400"],
+    button[class*="bg-amber-500"],
+    a[class*="bg-amber-500"],
+    [role="button"].bg-yellow-500,
+    [role="button"][class*="bg-yellow-500"] {
+      color: var(--button-text-color) !important;
+    }
+
+    /* Ensure icons inside these primary buttons match the button text color */
+    button.bg-yellow-500 svg,
+    a.bg-yellow-500 svg,
+    button.bg-yellow-400 svg,
+    a.bg-yellow-400 svg,
+    button.bg-amber-500 svg,
+    a.bg-amber-500 svg,
+    .btn-primary svg,
+    .btn-solid-primary svg,
+    button[class*="bg-yellow-500"] svg,
+    a[class*="bg-yellow-500"] svg,
+    button[class*="bg-yellow-400"] svg,
+    a[class*="bg-yellow-400"] svg,
+    [role="button"].bg-yellow-500 svg,
+    [role="button"][class*="bg-yellow-500"] svg {
+      color: var(--button-text-color) !important;
     }
 
     /* Live update rotating border effect with active theme colors */
@@ -231,18 +279,24 @@ export function applyThemeColors(primaryHex: string, secondaryHex: string = DEFA
   try {
     localStorage.setItem('watchwds_primary_color', validPrimary);
     localStorage.setItem('watchwds_secondary_color', validSecondary);
+    localStorage.setItem('watchwds_button_text_color', validButtonText);
   } catch (e) {
     // LocalStorage quota or privacy mode handling
   }
 }
 
 // Read stored colors from LocalStorage (synchronous for fast boot)
-export function getStoredThemeColors(): { primary: string; secondary: string } {
+export function getStoredThemeColors(): { primary: string; secondary: string; buttonTextColor: string } {
   if (typeof window === 'undefined') {
-    return { primary: DEFAULT_PRIMARY_COLOR, secondary: DEFAULT_SECONDARY_COLOR };
+    return { 
+      primary: DEFAULT_PRIMARY_COLOR, 
+      secondary: DEFAULT_SECONDARY_COLOR,
+      buttonTextColor: DEFAULT_BUTTON_TEXT_COLOR
+    };
   }
   const storedPrimary = localStorage.getItem('watchwds_primary_color');
   const storedSecondary = localStorage.getItem('watchwds_secondary_color');
+  const storedButtonText = localStorage.getItem('watchwds_button_text_color');
   return {
     primary: storedPrimary && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(storedPrimary)
       ? storedPrimary
@@ -250,11 +304,14 @@ export function getStoredThemeColors(): { primary: string; secondary: string } {
     secondary: storedSecondary && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(storedSecondary)
       ? storedSecondary
       : DEFAULT_SECONDARY_COLOR,
+    buttonTextColor: storedButtonText && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(storedButtonText)
+      ? storedButtonText
+      : DEFAULT_BUTTON_TEXT_COLOR,
   };
 }
 
 // Initialize theme colors at bootstrap
 export function initThemeColors() {
-  const { primary, secondary } = getStoredThemeColors();
-  applyThemeColors(primary, secondary);
+  const { primary, secondary, buttonTextColor } = getStoredThemeColors();
+  applyThemeColors(primary, secondary, buttonTextColor);
 }

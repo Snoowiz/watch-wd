@@ -71,7 +71,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <img
                     src={activeLogo}
                     alt={platformName || 'Logo'}
-                    className="h-8 max-w-[160px] object-contain rounded-md"
+                    className="h-8 max-w-[160px] object-contain bg-transparent"
                   />
                 ) : (
                   <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-white shrink-0">
