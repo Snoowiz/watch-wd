@@ -115,6 +115,13 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
   const displayedMatches = filtered.slice(0, block.maxItems || 9);
   const layout = block.layout || 'carousel';
 
+  const colors = {
+    statusBgColor: block.colors?.statusBgColor || block.config?.statusBgColor,
+    statusTextColor: block.colors?.statusTextColor || block.config?.statusTextColor,
+    priceBgColor: block.colors?.priceBgColor || block.config?.priceBgColor,
+    priceTextColor: block.colors?.priceTextColor || block.config?.priceTextColor,
+  };
+
   return (
     <section className="space-y-8">
       {/* Section Header */}
@@ -185,7 +192,7 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
         >
           {displayedMatches.map(match => (
             <div key={match.id} className="flex-none w-[80vw] sm:w-[350px] md:w-[380px] snap-start">
-              <MatchCard match={match} currencySymbol={currencySymbol} onToggleSave={handleToggleSave} isSaved={savedMatches.includes(match.id)} />
+              <MatchCard match={match} currencySymbol={currencySymbol} onToggleSave={handleToggleSave} isSaved={savedMatches.includes(match.id)} colors={colors} />
             </div>
           ))}
         </div>
@@ -193,14 +200,14 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
         /* Grid Layout */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {displayedMatches.map(match => (
-            <MatchCard key={match.id} match={match} currencySymbol={currencySymbol} onToggleSave={handleToggleSave} isSaved={savedMatches.includes(match.id)} />
+            <MatchCard key={match.id} match={match} currencySymbol={currencySymbol} onToggleSave={handleToggleSave} isSaved={savedMatches.includes(match.id)} colors={colors} />
           ))}
         </div>
       ) : (
         /* List Layout */
         <div className="space-y-3">
           {displayedMatches.map(match => (
-            <MatchListItem key={match.id} match={match} currencySymbol={currencySymbol} onToggleSave={handleToggleSave} isSaved={savedMatches.includes(match.id)} />
+            <MatchListItem key={match.id} match={match} currencySymbol={currencySymbol} onToggleSave={handleToggleSave} isSaved={savedMatches.includes(match.id)} colors={colors} />
           ))}
         </div>
       )}
@@ -213,12 +220,19 @@ function MatchCard({
   match,
   currencySymbol,
   onToggleSave,
-  isSaved
+  isSaved,
+  colors
 }: {
   match: Match;
   currencySymbol: string;
   onToggleSave: (e: React.MouseEvent, id: number) => void;
   isSaved: boolean;
+  colors?: {
+    statusBgColor?: string;
+    statusTextColor?: string;
+    priceBgColor?: string;
+    priceTextColor?: string;
+  };
 }) {
   const matchUrl = `/matches/${match.slug || match.id}`;
 
@@ -245,10 +259,12 @@ function MatchCard({
           <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
             <div
               className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${
-                match.status === 'live'
-                  ? 'bg-red-500 text-white animate-pulse'
-                  : 'bg-yellow-500 text-white'
-              }`}
+                match.status === 'live' ? 'animate-pulse' : ''
+              } ${!colors?.statusBgColor ? (match.status === 'live' ? 'bg-red-500' : 'bg-yellow-500') : ''} ${!colors?.statusTextColor ? 'text-white' : ''}`}
+              style={{
+                ...(colors?.statusBgColor ? { backgroundColor: colors.statusBgColor } : {}),
+                ...(colors?.statusTextColor ? { color: colors.statusTextColor } : {})
+              }}
             >
               {match.status}
             </div>
@@ -257,7 +273,13 @@ function MatchCard({
                 PLAN
               </div>
             ) : match.access === 'paid' ? (
-              <div className="bg-slate-900/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
+              <div
+                className={`backdrop-blur-md text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl ${!colors?.priceBgColor ? 'bg-slate-900/90' : ''} ${!colors?.priceTextColor ? 'text-white' : ''}`}
+                style={{
+                  ...(colors?.priceBgColor ? { backgroundColor: colors.priceBgColor } : {}),
+                  ...(colors?.priceTextColor ? { color: colors.priceTextColor } : {})
+                }}
+              >
                 {currencySymbol}{match.price}
               </div>
             ) : (
@@ -301,12 +323,19 @@ function MatchListItem({
   match,
   currencySymbol,
   onToggleSave,
-  isSaved
+  isSaved,
+  colors
 }: {
   match: Match;
   currencySymbol: string;
   onToggleSave: (e: React.MouseEvent, id: number) => void;
   isSaved: boolean;
+  colors?: {
+    statusBgColor?: string;
+    statusTextColor?: string;
+    priceBgColor?: string;
+    priceTextColor?: string;
+  };
 }) {
   const matchUrl = `/matches/${match.slug || match.id}`;
 
@@ -323,9 +352,15 @@ function MatchListItem({
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             referrerPolicy="no-referrer"
           />
-          <div className={`absolute top-1 left-1 text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
-            match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-white'
-          }`}>
+          <div
+            className={`absolute top-1 left-1 text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
+              match.status === 'live' ? 'animate-pulse' : ''
+            } ${!colors?.statusBgColor ? (match.status === 'live' ? 'bg-red-500' : 'bg-yellow-500') : ''} ${!colors?.statusTextColor ? 'text-white' : ''}`}
+            style={{
+              ...(colors?.statusBgColor ? { backgroundColor: colors.statusBgColor } : {}),
+              ...(colors?.statusTextColor ? { color: colors.statusTextColor } : {})
+            }}
+          >
             {match.status}
           </div>
         </div>
@@ -347,7 +382,13 @@ function MatchListItem({
             PLAN
           </span>
         ) : match.access === 'paid' ? (
-          <span className="px-3 py-1 rounded-lg text-xs font-black bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">
+          <span
+            className={`px-3 py-1 rounded-lg text-xs font-black border ${!colors?.priceBgColor ? 'bg-yellow-500/10 border-yellow-500/20' : ''} ${!colors?.priceTextColor ? 'text-yellow-500' : ''}`}
+            style={{
+              ...(colors?.priceBgColor ? { backgroundColor: colors.priceBgColor, borderColor: 'transparent' } : {}),
+              ...(colors?.priceTextColor ? { color: colors.priceTextColor } : {})
+            }}
+          >
             {currencySymbol}{match.price}
           </span>
         ) : (

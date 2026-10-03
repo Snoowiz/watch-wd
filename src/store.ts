@@ -442,6 +442,13 @@ export interface HomepageBlockFilter {
   dateRange?: { start?: string; end?: string };
 }
 
+export interface BlockColors {
+  statusBgColor?: string;
+  statusTextColor?: string;
+  priceBgColor?: string;
+  priceTextColor?: string;
+}
+
 export interface HomepageBlock {
   id: string;
   type: BlockType;
@@ -455,6 +462,7 @@ export interface HomepageBlock {
   showViewAll?: boolean;
   viewAllUrl?: string;
   config?: Record<string, any>;
+  colors?: BlockColors;
 }
 
 export interface HomepageBuilderConfig {
