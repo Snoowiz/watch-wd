@@ -181,10 +181,7 @@ export function NewMatch() {
       return;
     }
 
-    if (accessType === 'ppv' && !clubId) {
-      addToast('Please select a Partner Club for PPV revenue splitting.', 'error');
-      return;
-    }
+
 
     setIsSaving(true);
     const toastId = addToast(isEditing ? 'Updating match...' : 'Creating match...', 'loading');
@@ -519,28 +516,27 @@ export function NewMatch() {
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                     Partner Club (For PPV Revenue Split)
-                    <span className="text-red-500 font-bold ml-1">*Required for PPV</span>
+                    <span className="text-slate-400 font-medium ml-1">— Optional</span>
                   </label>
                   <select
                     value={clubId || ''}
                     onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
-                    className={`w-full bg-slate-50 dark:bg-slate-900 border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors ${
-                      !clubId ? 'border-amber-400 dark:border-amber-500' : 'border-slate-200 dark:border-slate-700'
-                    }`}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                   >
-                    <option value="">Select a partner club...</option>
+                    <option value="">No club — Platform keeps 100%</option>
                     {clubs.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
-                  {!clubId && (
-                    <p className="mt-1 text-xs text-amber-500 font-medium">
-                      ⚠️ A partner club is required so Stripe Connect can automatically split the PPV revenue with the club.
+                  {!clubId ? (
+                    <p className="mt-1.5 text-xs text-emerald-500 font-medium bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg">
+                      💰 No partner club assigned — the platform will retain 100% of PPV revenue from this match.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-400">
+                      Revenue will be automatically split with the selected club via Stripe Connect based on the configured revenue policy.
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-slate-400">
-                    Select the partner club to receive automatic revenue distribution via Stripe Connect.
-                  </p>
                 </div>
               </div>
             )}

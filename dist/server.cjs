@@ -4914,11 +4914,6 @@ async function startServer() {
           return res.status(400).json({ error: "Invalid top-up amount" });
         }
       }
-      if (type === "watch" && gateway === "stripe" && !connectedAccountId) {
-        return res.status(409).json({
-          error: "Partner club has no Stripe connected account. Cannot process split payment."
-        });
-      }
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
       const transactionId = `txn_${Date.now()}_${userId}`;
@@ -7213,33 +7208,39 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (match.access === "free" || match.access_type !== "ppv") {
         return res.status(400).json({ error: "This match is not a PPV event" });
       }
-      const clubId = match.club_id || match.clubId;
-      if (!clubId) return res.status(400).json({ error: "No club assigned to this match" });
+      const clubId = match.club_id || match.clubId || null;
       const ppvPrice = Number(match.ppv_price || match.ppvPrice || match.price);
       if (!ppvPrice || ppvPrice <= 0) return res.status(400).json({ error: "Invalid PPV price" });
-      const clubDoc = await db.collection("clubs").doc(String(clubId)).get();
-      if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
-      const club = clubDoc.data();
-      const connectedAccountId = club.stripe_account_id || club.stripeAccountId;
-      const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", String(clubId)).where("is_active", "==", 1).limit(1).get();
-      let platformFeePercent = 20;
-      if (!policiesSnap.empty) {
-        const policy = policiesSnap.docs[0].data();
-        platformFeePercent = Number(policy.platform_fee_percent || policy.platformFeePercent || 20);
+      let club = null;
+      let connectedAccountId = null;
+      let platformFeePercent = 100;
+      if (clubId) {
+        const clubDoc = await db.collection("clubs").doc(String(clubId)).get();
+        if (clubDoc.exists) {
+          club = clubDoc.data();
+          connectedAccountId = club.stripe_account_id || club.stripeAccountId || null;
+        }
+        const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", String(clubId)).where("is_active", "==", 1).limit(1).get();
+        platformFeePercent = 20;
+        if (!policiesSnap.empty) {
+          const policy = policiesSnap.docs[0].data();
+          platformFeePercent = Number(policy.platform_fee_percent || policy.platformFeePercent || 20);
+        }
       }
       const totalAmountCents = Math.round(ppvPrice * 100);
-      const applicationFeeCents = Math.round(totalAmountCents * (platformFeePercent / 100));
+      const applicationFeeCents = clubId ? Math.round(totalAmountCents * (platformFeePercent / 100)) : 0;
+      const isSplitPayment = !!(clubId && connectedAccountId);
       const transactionId = `txn_${Date.now()}_${userId}`;
       const metadata = {
         matchId: String(matchId),
-        clubId: String(clubId),
+        clubId: clubId ? String(clubId) : null,
         type: "watch",
         fromMatchSlug: match.slug || null,
-        platformFeePercent,
-        applicationFeeCents,
+        platformFeePercent: isSplitPayment ? platformFeePercent : 100,
+        applicationFeeCents: isSplitPayment ? applicationFeeCents : 0,
         connectedAccountId: connectedAccountId || null,
-        isDestinationCharge: true,
-        settlement_model: "STRIPE_DESTINATION_ROUTED"
+        isDestinationCharge: isSplitPayment,
+        settlement_model: isSplitPayment ? "STRIPE_DESTINATION_ROUTED" : "PLATFORM_DIRECT"
       };
       await db.collection("transactions").doc(transactionId).set({
         userId,
@@ -7264,19 +7265,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         }
         const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
         const targetCurrency = settings.stripe.merchantCurrency || currency;
-        if (!connectedAccountId) {
-          return res.status(409).json({ error: "Partner club has no Stripe connected account. Cannot process split payment." });
-        }
-        try {
-          const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
-          const transfersCapability = connectedAccount.capabilities?.transfers;
-          if (transfersCapability !== "active") {
-            return res.status(409).json({ error: "Partner account is not yet eligible to receive transfers. Onboarding may be incomplete." });
-          }
-        } catch (acctErr) {
-          console.error(`[ConnectPPV] Failed to verify connected account ${connectedAccountId}:`, acctErr.message);
-          return res.status(409).json({ error: `Could not verify partner Stripe account: ${acctErr.message}` });
-        }
         const sessionParams = {
           payment_method_types: ["card"],
           line_items: [
@@ -7285,7 +7273,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
                 currency: targetCurrency.toLowerCase(),
                 product_data: {
                   name: match.title || "Match Access",
-                  description: `PPV access \u2014 ${club.name || "Partner Club"}`
+                  description: isSplitPayment ? `PPV access \u2014 ${club?.name || "Partner Club"}` : `PPV access \u2014 ${match.title || "Match"}`
                 },
                 unit_amount: totalAmountCents
               },
@@ -7299,26 +7287,38 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           metadata: {
             txn_id: transactionId,
             match_id: String(matchId),
-            club_id: String(clubId),
+            club_id: clubId ? String(clubId) : "",
             user_id: userId,
             payment_type: "ppv_watch",
-            settlement_model: "STRIPE_DESTINATION_ROUTED"
-          },
-          payment_intent_data: {
-            application_fee_amount: applicationFeeCents,
-            transfer_data: {
-              destination: connectedAccountId
-            },
-            metadata: {
-              txn_id: transactionId,
-              match_id: String(matchId),
-              club_id: String(clubId),
-              user_id: userId,
-              payment_type: "ppv_watch",
-              settlement_model: "STRIPE_DESTINATION_ROUTED"
-            }
+            settlement_model: isSplitPayment ? "STRIPE_DESTINATION_ROUTED" : "PLATFORM_DIRECT"
           }
         };
+        if (isSplitPayment) {
+          try {
+            const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+            const transfersCapability = connectedAccount.capabilities?.transfers;
+            if (transfersCapability !== "active") {
+              console.warn(`[ConnectPPV] Partner account ${connectedAccountId} transfers not active \u2014 falling back to platform-direct payment.`);
+            } else {
+              sessionParams.payment_intent_data = {
+                application_fee_amount: applicationFeeCents,
+                transfer_data: {
+                  destination: connectedAccountId
+                },
+                metadata: {
+                  txn_id: transactionId,
+                  match_id: String(matchId),
+                  club_id: String(clubId),
+                  user_id: userId,
+                  payment_type: "ppv_watch",
+                  settlement_model: "STRIPE_DESTINATION_ROUTED"
+                }
+              };
+            }
+          } catch (acctErr) {
+            console.warn(`[ConnectPPV] Failed to verify connected account ${connectedAccountId}: ${acctErr.message} \u2014 falling back to platform-direct payment.`);
+          }
+        }
         const session = await stripe.checkout.sessions.create(sessionParams);
         return res.json({ checkoutUrl: session.url });
       }

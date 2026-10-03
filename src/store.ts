@@ -1184,12 +1184,14 @@ export interface Match {
   event_access_enabled?: boolean | number;
   event_access_duration?: number;
   event_access_duration_label?: string;
-  revoke_status?: 'revoked' | 'auto_deleted' | null;
+  revoke_status?: 'revoked' | 'auto_deleted' | 'normal' | null;
   revoked_at?: string | null;
   revoke_expires_at?: string | null;
   revoke_reason?: string | null;
   revoked_by?: string | null;
   original_status?: string | null;
+  start_time?: string | null;
+  publish_status?: 'pending' | 'approved' | 'rejected' | 'published' | 'draft' | 'scheduled' | 'deleted' | null;
 }
 
 interface MatchState {
