@@ -176,23 +176,25 @@ function cdnEdgeSim(ttlSeconds: number) {
 
 // === DEPLOY CACHE WARMING FUNCTION ===
 async function warmCriticalCaches() {
-  return true;
   try {
-    console.log('[Cache Warmer] Pre-heating database collections and API cache content...');
+    console.log('[Cache Warmer] Pre-heating database collections and multi-layer cache content...');
     
-    const collectionsToWarm = ['features', 'matches', 'plans', 'tasks'];
+    const collectionsToWarm = ['features', 'matches', 'plans', 'match_categories', 'clubs', 'tasks'];
     for (const coll of collectionsToWarm) {
       const snapshot = await db.collection(coll).get();
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       
-      // Warm API Route cache keys
-      cacheEngine.set('fragment', `fragment::/api/${coll}`, docs);
+      // Warm Database Cache layer
+      cacheEngine.set('database', `db::${coll}::all`, docs, 180000);
+
+      // Warm API Route fragment cache keys
+      cacheEngine.set('fragment', `fragment::/api/${coll}`, docs, 180000);
       
       // Warm CDN Cache keys
-      cacheEngine.set('cdn', `cdn::/api/${coll}`, docs);
+      cacheEngine.set('cdn', `cdn::/api/${coll}`, docs, 300000);
     }
     
-    cacheEngine.logEvent('Deploy Cache Warming', 'Successfully pre-heated database collections, fragment API paths, and CDN POP simulators', 'general');
+    cacheEngine.logEvent('Deploy Cache Warming', 'Successfully pre-heated multi-layer caches for matches, plans, categories, clubs, and features', 'general');
     return true;
   } catch (err: any) {
     console.error('[Cache Warmer] Error warming critical paths:', err);
@@ -4418,6 +4420,131 @@ async function startServer() {
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // === CENTRALIZED MEDIA LIBRARY ENDPOINTS ===
+  app.get("/api/admin/media", optionalAuthenticate, async (_req, res) => {
+    try {
+      let dbMedia: any[] = [];
+      try {
+        dbMedia = await query("SELECT * FROM media_items ORDER BY created_at DESC");
+      } catch (err) {
+        // Table may not have been created yet on cold start
+      }
+
+      const mediaMap = new Map<string, any>();
+      for (const item of dbMedia) {
+        if (item.url) {
+          mediaMap.set(item.url, {
+            id: String(item.id),
+            name: item.name || 'Media Item',
+            url: item.url,
+            type: item.type || 'image',
+            size: Number(item.size) || 0,
+            createdAt: item.created_at ? new Date(item.created_at).toISOString() : new Date().toISOString()
+          });
+        }
+      }
+
+      // Automatically harvest match thumbnails so match uploads are globally available on sliders and elsewhere!
+      try {
+        const matchesRows = await query(
+          "SELECT id, title, thumbnail, created_at FROM matches WHERE thumbnail IS NOT NULL AND thumbnail != '' ORDER BY created_at DESC"
+        );
+        for (const m of (matchesRows || [])) {
+          const thumbUrl = (m.thumbnail || '').trim();
+          if (thumbUrl && !mediaMap.has(thumbUrl)) {
+            const harvestedItem = {
+              id: 'match_thumb_' + m.id,
+              name: `${m.title || 'Match'} Thumbnail`,
+              url: thumbUrl,
+              type: 'image',
+              size: 0,
+              createdAt: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString()
+            };
+            mediaMap.set(thumbUrl, harvestedItem);
+            execute(
+              "INSERT IGNORE INTO media_items (id, name, url, type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+              [harvestedItem.id, harvestedItem.name, harvestedItem.url, 'image', 0, m.created_at || new Date()]
+            ).catch(() => {});
+          }
+        }
+      } catch (matchErr) {
+        console.error("Failed to harvest match thumbnails for media library:", matchErr);
+      }
+
+      // Also harvest slider images from settings if present
+      try {
+        const sliderSetting = await db.collection("settings").doc("sliders").get();
+        if (sliderSetting.exists) {
+          const sData = sliderSetting.data();
+          const groups = Array.isArray(sData) ? sData : (sData?.groups || sData?.sliders || []);
+          for (const g of groups) {
+            for (const slide of (g.slides || [])) {
+              if (slide.image && !mediaMap.has(slide.image)) {
+                mediaMap.set(slide.image, {
+                  id: 'slide_' + (slide.id || Math.random().toString(36).substring(7)),
+                  name: `${slide.title || 'Slide'} Image`,
+                  url: slide.image,
+                  type: 'image',
+                  size: 0,
+                  createdAt: new Date().toISOString()
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      const allMedia = Array.from(mediaMap.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      res.json(allMedia);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/media", authenticate, async (req: any, res) => {
+    try {
+      const { id, name, url, type, size } = req.body;
+      if (!url) return res.status(400).json({ error: "Media URL is required" });
+      const finalId = id || ('med_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6));
+      const finalName = name || (url.split('/').pop() || 'Media Item');
+      const finalType = type || (url.match(/\.(mp4|webm|ogg)$/i) ? 'video' : 'image');
+      const finalSize = Number(size) || 0;
+
+      await execute(
+        "INSERT INTO media_items (id, name, url, type, size, created_at) VALUES (?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE name = VALUES(name), url = VALUES(url), type = VALUES(type), size = VALUES(size)",
+        [finalId, finalName, url, finalType, finalSize]
+      );
+      cacheEngine.invalidateCollection("media");
+
+      res.json({
+        success: true,
+        item: {
+          id: finalId,
+          name: finalName,
+          url,
+          type: finalType,
+          size: finalSize,
+          createdAt: new Date().toISOString()
+        }
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/admin/media/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      await execute("DELETE FROM media_items WHERE id = ?", [req.params.id]);
+      cacheEngine.invalidateCollection("media");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   
   // === CACHE MANAGEMENT ENDPOINTS ===
   app.get("/api/admin/cache/stats", authenticate, requireRole(["admin"]), async (req, res) => {
@@ -4730,6 +4857,8 @@ async function startServer() {
         "INSERT INTO match_categories (name, slug, description) VALUES (?, ?, ?)",
         [name, slug, description || '']
       );
+      cacheEngine.invalidateCollection("match_categories");
+      cacheEngine.invalidateCollection("matches");
       res.json({ success: true, id: result.insertId, name, slug, description: description || '' });
     } catch (e: any) {
       if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: "A category with that slug already exists" });
@@ -4744,6 +4873,8 @@ async function startServer() {
         "UPDATE match_categories SET name = COALESCE(?, name), slug = COALESCE(?, slug), description = COALESCE(?, description) WHERE id = ?",
         [name, slug, description, req.params.id]
       );
+      cacheEngine.invalidateCollection("match_categories");
+      cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
     } catch (e: any) {
       if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: "A category with that slug already exists" });
@@ -4754,6 +4885,8 @@ async function startServer() {
   app.delete("/api/admin/match-categories/:id", authenticate, requireRole(["admin"]), async (req: any, res) => {
     try {
       await execute("DELETE FROM match_categories WHERE id = ?", [req.params.id]);
+      cacheEngine.invalidateCollection("match_categories");
+      cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -7322,6 +7455,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `).catch(err => console.error("Failed to ensure blog_categories table exists", err));
+
+    // Ensure media_items table exists
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`media_items\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`name\` VARCHAR(255) NOT NULL,
+        \`url\` LONGTEXT NOT NULL,
+        \`type\` VARCHAR(50) DEFAULT 'image',
+        \`size\` INT DEFAULT 0,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure media_items table exists", err));
 
     // Ensure comments status column exists (safe incremental upgrade)
     execute(`

@@ -1,34 +1,78 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCategoryStore } from '../../store';
-import { Plus, Trash2, Edit2, X, Save, Tag, Search } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Save, Tag, Search, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
 export function Categories() {
-  const { categories, addCategory, updateCategory, deleteCategory } = useCategoryStore();
+  const { categories, addCategory, updateCategory, deleteCategory, fetchCategories } = useCategoryStore();
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({ name: '', slug: '', description: '' });
 
-  const handleSave = () => {
-    if (!formData.name || !formData.slug) return;
-    
-    if (editingId) {
-      updateCategory(editingId, formData);
-      setEditingId(null);
-    } else {
-      addCategory({ id: Date.now(), ...formData });
-      setIsAdding(false);
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  const handleSave = async () => {
+    if (!formData.name.trim() || !formData.slug.trim()) {
+      setErrorMsg('Category name and slug are required.');
+      return;
     }
-    setFormData({ name: '', slug: '', description: '' });
+
+    setIsSaving(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    
+    try {
+      if (editingId) {
+        const res = await updateCategory(editingId, formData);
+        if (res.success) {
+          setEditingId(null);
+          setFormData({ name: '', slug: '', description: '' });
+          setSuccessMsg('Category updated successfully!');
+          setTimeout(() => setSuccessMsg(null), 3500);
+        } else {
+          setErrorMsg(res.error || 'Failed to update category');
+        }
+      } else {
+        const res = await addCategory(formData);
+        if (res.success) {
+          setIsAdding(false);
+          setFormData({ name: '', slug: '', description: '' });
+          setSuccessMsg('Category created successfully!');
+          setTimeout(() => setSuccessMsg(null), 3500);
+        } else {
+          setErrorMsg(res.error || 'Failed to create category');
+        }
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: any) => {
+    if (!window.confirm('Are you sure you want to delete this category? Matches linked to it will not be deleted.')) return;
+    setErrorMsg(null);
+    const res = await deleteCategory(id);
+    if (res.success) {
+      setSuccessMsg('Category deleted successfully.');
+      setTimeout(() => setSuccessMsg(null), 3500);
+    } else {
+      setErrorMsg(res.error || 'Failed to delete category');
+    }
   };
 
   const startEdit = (cat: any) => {
     setEditingId(cat.id);
-    setFormData({ name: cat.name, slug: cat.slug, description: cat.description });
+    setFormData({ name: cat.name, slug: cat.slug, description: cat.description || '' });
     setIsAdding(false);
+    setErrorMsg(null);
   };
 
   const filteredCategories = categories.filter(c => 
@@ -51,6 +95,19 @@ export function Categories() {
           Add Category
         </button>
       </div>
+
+      {errorMsg && (
+        <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-medium flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+      {successMsg && (
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl text-sm font-medium flex items-center gap-3">
+          <CheckCircle className="w-5 h-5 shrink-0" />
+          <span>{successMsg}</span>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-12 gap-8">
         {/* Form Area */}
@@ -115,10 +172,11 @@ export function Categories() {
 
               <button 
                 onClick={handleSave}
-                className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-800 dark:hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
+                disabled={isSaving}
+                className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
               >
-                <Save className="w-4 h-4" />
-                {editingId ? 'Update Category' : 'Save Category'}
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {isSaving ? 'Saving...' : (editingId ? 'Update Category' : 'Save Category')}
               </button>
             </div>
           </div>
@@ -176,7 +234,7 @@ export function Categories() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => deleteCategory(cat.id)}
+                            onClick={() => handleDelete(cat.id)}
                             className="p-2 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-500 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />

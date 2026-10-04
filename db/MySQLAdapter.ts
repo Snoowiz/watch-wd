@@ -10,6 +10,14 @@
 
 import pool from './connection.js';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import { cacheEngine } from '../src/utils/cacheManager.js';
+
+// ===== Tables that participate in multi-layer database caching =====
+const CACHEABLE_TABLES = new Set([
+  'matches', 'plans', 'features', 'match_categories', 'blog_categories',
+  'clubs', 'revenue_policies', 'settings', 'payment_settings', 'email_settings',
+  'email_branding', 'ads', 'media_items'
+]);
 
 // ===== JSON settings tables (key-value pattern) =====
 const KEY_VALUE_TABLES = new Set([
@@ -38,6 +46,30 @@ function isKeyValueTable(table: string): boolean {
   return KEY_VALUE_TABLES.has(table);
 }
 
+// ===== Introspect table columns to guard against unknown column insert/update crashes =====
+const tableColumnsCache = new Map<string, Set<string>>();
+
+async function getTableColumns(tableName: string): Promise<Set<string> | null> {
+  if (isKeyValueTable(tableName)) return null;
+  if (tableColumnsCache.has(tableName)) return tableColumnsCache.get(tableName)!;
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [tableName]
+    );
+    const arr = rows as RowDataPacket[];
+    if (arr.length > 0) {
+      const set = new Set<string>(arr.map(r => r.COLUMN_NAME));
+      tableColumnsCache.set(tableName, set);
+      return set;
+    }
+  } catch (_) {
+    // If permission or error, continue without filtering
+  }
+  return null;
+}
+
 /** Parse a value that might be JSON string or already an object */
 function parseJson(val: any): any {
   if (val === null || val === undefined) return null;
@@ -54,15 +86,19 @@ function unwrapKVRow(row: any): any {
   return parseJson(val);
 }
 
-/** Build SET clause and values from a data object, skipping undefined and primary key */
-function buildSetClause(data: Record<string, any>, table: string): { clause: string; values: any[] } {
+/** Build SET clause and values from a data object, filtering known columns and skipping primary key */
+async function buildSetClause(data: Record<string, any>, table: string): Promise<{ clause: string; values: any[] }> {
   const snakeData: Record<string, any> = {};
   const pk = getPkColumn(table);
+  const knownCols = await getTableColumns(table);
+
   for (const [k, v] of Object.entries(data)) {
     if (v !== undefined) {
       const snakeKey = camelToSnake(k, table);
       if (snakeKey !== pk) {
-        snakeData[snakeKey] = v;
+        if (!knownCols || knownCols.has(snakeKey)) {
+          snakeData[snakeKey] = v;
+        }
       }
     }
   }
@@ -318,20 +354,37 @@ class DocWrapper {
 
   async get(): Promise<{ id: string; exists: boolean; ref: DocWrapper; data: () => any }> {
     const pk = getPkColumn(this.tableName);
+    const isCacheable = CACHEABLE_TABLES.has(this.tableName);
+    const docCacheKey = `db-doc::${this.tableName}::${this.id}`;
+
+    if (isCacheable) {
+      const cached = cacheEngine.get('database', docCacheKey);
+      if (cached !== null && cached !== undefined) {
+        return {
+          id: this.id,
+          exists: cached.exists,
+          ref: this,
+          data: () => (cached.data ? { ...cached.data } : null)
+        };
+      }
+    }
 
     if (isKeyValueTable(this.tableName)) {
       const [rows] = await pool.execute(`SELECT * FROM \`${this.tableName}\` WHERE \`${pk}\` = ?`, [this.id]);
       const arr = rows as RowDataPacket[];
       if (arr.length === 0) {
+        if (isCacheable) cacheEngine.set('database', docCacheKey, { exists: false, data: null });
         return { id: this.id, exists: false, ref: this, data: () => null };
       }
       const unwrapped = unwrapKVRow(arr[0]);
+      if (isCacheable) cacheEngine.set('database', docCacheKey, { exists: true, data: unwrapped });
       return { id: this.id, exists: true, ref: this, data: () => unwrapped };
     }
 
     const [rows] = await pool.execute(`SELECT * FROM \`${this.tableName}\` WHERE \`${pk}\` = ?`, [this.id]);
     const arr = rows as RowDataPacket[];
     if (arr.length === 0) {
+      if (isCacheable) cacheEngine.set('database', docCacheKey, { exists: false, data: null });
       return { id: this.id, exists: false, ref: this, data: () => null };
     }
     const row = { ...arr[0] };
@@ -386,6 +439,11 @@ class DocWrapper {
       mappedRow.start_time = matchDate.slice(0, 19).replace('T', ' ');
       mappedRow.startTime = mappedRow.start_time;
     }
+
+    if (isCacheable) {
+      cacheEngine.set('database', docCacheKey, { exists: true, data: mappedRow });
+    }
+
     return { id: this.id, exists: true, ref: this, data: () => mappedRow };
   }
 
@@ -398,14 +456,20 @@ class DocWrapper {
         `INSERT INTO \`${this.tableName}\` (\`${pk}\`, \`value\`) VALUES (?, ?) ON DUPLICATE KEY UPDATE \`value\` = ?`,
         [this.id, jsonVal, jsonVal]
       );
+      cacheEngine.invalidateCollection(this.tableName);
       return;
     }
 
     // For regular tables: UPSERT
     const allData = { ...data };
     const snakeData: Record<string, any> = {};
+    const knownCols = await getTableColumns(this.tableName);
+
     for (const [k, v] of Object.entries(allData)) {
-      snakeData[camelToSnake(k, this.tableName)] = v;
+      const snakeKey = camelToSnake(k, this.tableName);
+      if (!knownCols || knownCols.has(snakeKey)) {
+        snakeData[snakeKey] = v;
+      }
     }
     // Ensure the PK value is set
     const pkSnake = camelToSnake(pk, this.tableName);
@@ -418,6 +482,7 @@ class DocWrapper {
 
     const sql = `INSERT INTO \`${this.tableName}\` (${keys.map(k => `\`${k}\``).join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateParts}`;
     await pool.execute(sql, vals);
+    cacheEngine.invalidateCollection(this.tableName);
   }
 
   async update(data: any): Promise<void> {
@@ -437,17 +502,20 @@ class DocWrapper {
         `INSERT INTO \`${this.tableName}\` (\`${pk}\`, \`value\`) VALUES (?, ?) ON DUPLICATE KEY UPDATE \`value\` = ?`,
         [this.id, jsonVal, jsonVal]
       );
+      cacheEngine.invalidateCollection(this.tableName);
       return;
     }
 
-    const { clause, values } = buildSetClause(data, this.tableName);
+    const { clause, values } = await buildSetClause(data, this.tableName);
     if (!clause) return;
     await pool.execute(`UPDATE \`${this.tableName}\` SET ${clause} WHERE \`${pk}\` = ?`, [...values, this.id]);
+    cacheEngine.invalidateCollection(this.tableName);
   }
 
   async delete(): Promise<void> {
     const pk = getPkColumn(this.tableName);
     await pool.execute(`DELETE FROM \`${this.tableName}\` WHERE \`${pk}\` = ?`, [this.id]);
+    cacheEngine.invalidateCollection(this.tableName);
   }
 }
 
@@ -487,6 +555,25 @@ class CollectionWrapper {
     size: number;
     docs: Array<{ id: string; ref: DocWrapper; exists: boolean; data: () => any }>;
   }> {
+    const isCacheable = CACHEABLE_TABLES.has(this.tableName);
+    const cacheKey = `db::${this.tableName}::${JSON.stringify({ w: this.whereClauses, o: this.orderClauses, l: this.limitVal })}`;
+
+    if (isCacheable) {
+      const cached = cacheEngine.get('database', cacheKey);
+      if (cached && Array.isArray(cached.rows)) {
+        return {
+          empty: cached.empty,
+          size: cached.size,
+          docs: cached.rows.map((row: any) => ({
+            id: row.__id,
+            ref: new DocWrapper(this.tableName, row.__id),
+            exists: true,
+            data: () => ({ ...row.__data })
+          }))
+        };
+      }
+    }
+
     const pk = getPkColumn(this.tableName);
     let sql = `SELECT * FROM \`${this.tableName}\``;
     const params: any[] = [];
@@ -577,6 +664,14 @@ class CollectionWrapper {
       };
     });
 
+    if (isCacheable) {
+      cacheEngine.set('database', cacheKey, {
+        empty: docs.length === 0,
+        size: docs.length,
+        rows: docs.map(d => ({ __id: d.id, __data: d.data() }))
+      });
+    }
+
     return { empty: docs.length === 0, size: docs.length, docs };
   }
 
@@ -598,8 +693,13 @@ class CollectionWrapper {
     }
 
     const snakeData: Record<string, any> = {};
+    const knownCols = await getTableColumns(this.tableName);
+
     for (const [k, v] of Object.entries(allData)) {
-      snakeData[camelToSnake(k, this.tableName)] = v;
+      const snakeKey = camelToSnake(k, this.tableName);
+      if (!knownCols || knownCols.has(snakeKey)) {
+        snakeData[snakeKey] = v;
+      }
     }
 
     const keys = Object.keys(snakeData);
@@ -608,6 +708,7 @@ class CollectionWrapper {
 
     const sql = `INSERT INTO \`${this.tableName}\` (${keys.map(k => `\`${k}\``).join(', ')}) VALUES (${placeholders})`;
     const [result] = await pool.execute(sql, vals);
+    cacheEngine.invalidateCollection(this.tableName);
     
     // If we didn't generate an ID, fallback to what we passed or insertId (if auto_increment exists somewhere)
     const finalId = generatedId || allData.id || String((result as ResultSetHeader).insertId);

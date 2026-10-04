@@ -8,10 +8,11 @@ import {
   Eye, Code, Layout, Type, Plus, MessageSquare, Clock, Loader2
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
-import DOMPurify from 'dompurify';
 import 'react-quill-new/dist/quill.snow.css';
 import { MediaPicker } from '../../components/MediaPicker';
 import { compressImage } from '../../lib/imageCompressor';
+import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../../utils/embedHelper';
+import { useMediaStore } from '../../store';
 
 export function NewMatch() {
   const { id } = useParams();
@@ -151,6 +152,10 @@ export function NewMatch() {
     }
   }, [existingMatch]);
 
+  useEffect(() => {
+    loadMuxPlayerIfNeeded(description);
+  }, [description]);
+
   const [isManualOverride, setIsManualOverride] = useState(existingMatch?.status === 'completed' || existingMatch?.status === 'live');
 
   const getCalculatedStatus = (): 'upcoming' | 'live' | 'completed' => {
@@ -255,13 +260,22 @@ export function NewMatch() {
         }
       };
 
+      if (finalThumbnail) {
+        useMediaStore.getState().addMedia({
+          name: `${title || 'Match'} Thumbnail`,
+          url: finalThumbnail,
+          type: 'image'
+        });
+      }
+
       if (isEditing) {
         await updateMatch(String(id) as any, matchData);
         // Re-fetch matches to ensure store has the latest data from DB
         await useMatchStore.getState().fetchMatches();
         updateToast(toastId, { message: 'Match updated successfully!', type: 'success' });
       } else {
-        addMatch(matchData);
+        await addMatch(matchData);
+        await useMatchStore.getState().fetchMatches();
         updateToast(toastId, { message: 'Match published successfully!', type: 'success' });
       }
 
@@ -383,7 +397,7 @@ export function NewMatch() {
               </div>
               <div className="bg-slate-100 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
                 {description ? (
-                  <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(description) }} />
+                  <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block" dangerouslySetInnerHTML={{ __html: formatStreamHtml(description) }} />
                 ) : (
                   <>
                     <Eye className="w-8 h-8 text-slate-300 mb-2" />

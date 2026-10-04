@@ -1,16 +1,20 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useMediaStore } from '../../store';
 import { Image as ImageIcon, Video, File, Link as LinkIcon, Trash2, Copy, Search, Plus, X, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { compressImage } from '../../lib/imageCompressor';
 
 export function AdminMedia() {
-  const { media = [], addMedia, deleteMedia, updateMedia } = useMediaStore();
+  const { media = [], addMedia, deleteMedia, updateMedia, fetchMedia } = useMediaStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadUrl, setUploadUrl] = useState('');
   const [selectedMedia, setSelectedMedia] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetchMedia();
+  }, [fetchMedia]);
 
   const filteredMedia = media.filter(m => 
     (m.name || '').toLowerCase().includes((searchTerm || '').toLowerCase())

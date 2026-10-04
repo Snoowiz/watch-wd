@@ -98,6 +98,8 @@ export function AdminDashboard() {
     { id: 'match-access-duration', type: 'match', title: 'PPV Event Access & Duration', subtitle: 'Time-limited access rules & financial record protection', icon: Clock, path: '/admin/matches' },
     { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Match Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/matches' },
     { id: 'settings-site-colors', type: 'settings', title: 'Site Color Configuration', subtitle: 'Brand accents, theme palettes & button text color', icon: Palette, path: '/admin/settings' },
+    { id: 'cache-management', type: 'system', title: 'Performance & Multi-Layer Cache', subtitle: 'Purge cache, telemetry, Hit/Miss ratios & warming', icon: Zap, path: '/admin/cache' },
+    { id: 'media-library', type: 'media', title: 'Media Library & Uploads', subtitle: 'Centralized images, thumbnails & assets', icon: ImageIcon, path: '/admin/media' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 

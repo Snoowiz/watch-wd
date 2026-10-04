@@ -8,6 +8,7 @@ import { MatchComments } from '../components/MatchComments';
 import { AdOverlay } from '../components/AdOverlay';
 import { AddFundsModal } from '../components/AddFundsModal';
 import { requestNotificationPermission, subscribeToMatch, setupMessageListener, unsubscribeFromMatch, getNotificationPermission } from '../services/notificationService';
+import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
 
 export function MatchDetail() {
   const { slug } = useParams();
@@ -251,70 +252,11 @@ export function MatchDetail() {
 
   const rawStreamContent = streamData?.embed_code || streamData?.video_url || streamData?.description || match?.description || '';
 
-  const formatStreamHtml = (raw: string, mobileAutoplay: boolean): string => {
-    if (!raw) return '';
-    let content = raw.trim();
+  useEffect(() => {
+    loadMuxPlayerIfNeeded(rawStreamContent);
+  }, [rawStreamContent]);
 
-    // Check if raw is a plain YouTube URL without an iframe
-    const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
-    const matchYt = content.match(ytRegex);
-
-    if (!content.includes('<iframe') && matchYt && matchYt[1]) {
-      const videoId = matchYt[1];
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      content = `<iframe src="https://www.youtube.com/embed/${videoId}?enablejsapi=1${origin ? `&origin=${encodeURIComponent(origin)}` : ''}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`;
-    } else if (content.includes('<iframe')) {
-      // If it contains an iframe for YouTube, ensure proper referrerpolicy, allow, and origin parameter
-      if (/youtube\.com|youtu\.be|youtube-nocookie\.com/i.test(content)) {
-        // Ensure referrerpolicy="strict-origin-when-cross-origin"
-        if (!content.includes('referrerpolicy')) {
-          content = content.replace(/<iframe\s/i, '<iframe referrerpolicy="strict-origin-when-cross-origin" ');
-        } else {
-          content = content.replace(/referrerpolicy="[^"]*"/i, 'referrerpolicy="strict-origin-when-cross-origin"');
-        }
-
-        // Ensure allow permissions
-        const requiredAllow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
-        if (!content.includes('allow=')) {
-          content = content.replace(/<iframe\s/i, `<iframe allow="${requiredAllow}" `);
-        }
-
-        // Ensure origin param if window.location is available
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        if (origin && !content.includes('origin=')) {
-          content = content.replace(/src="([^"]+)"/i, (m, p1) => {
-            const sep = p1.includes('?') ? '&' : '?';
-            return `src="${p1}${sep}origin=${encodeURIComponent(origin)}&enablejsapi=1"`;
-          });
-        }
-      }
-    }
-
-    if (mobileAutoplay && content) {
-      content = content.replace(/src="([^"]+)"/gi, (m: string, p1: string) => `src="${p1}${p1.includes('?') ? '&' : '?'}autoplay=1"`);
-    }
-
-    return DOMPurify.sanitize(content, {
-      ADD_TAGS: ['iframe', 'video', 'source'],
-      ADD_ATTR: [
-        'allow',
-        'allowfullscreen',
-        'frameborder',
-        'scrolling',
-        'target',
-        'src',
-        'width',
-        'height',
-        'style',
-        'class',
-        'referrerpolicy',
-        'title',
-        'loading'
-      ]
-    });
-  };
-
-  const sanitizedStreamHtml = formatStreamHtml(rawStreamContent, mobileVideoStarted);
+  const sanitizedStreamHtml = formatStreamHtml(rawStreamContent, { autoplay: mobileVideoStarted });
 
   useEffect(() => {
     if (user && hasAccess && match) {
@@ -581,7 +523,7 @@ export function MatchDetail() {
             rawStreamContent ? (
               <div 
                 ref={videoContainerRef}
-                className="w-full h-full absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:border-0 flex items-center justify-center bg-slate-900"
+                className="w-full h-full absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:border-0 [&_video]:w-full [&_video]:h-full [&_video]:object-contain [&_mux-player]:w-full [&_mux-player]:h-full [&_mux-player]:block flex items-center justify-center bg-slate-900"
               >
                 {!mobileVideoStarted && isMobile ? (
                   <div className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer bg-slate-900" onClick={handleMobilePlay}>

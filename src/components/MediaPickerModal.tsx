@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useMediaStore } from '../store';
 import { Image as ImageIcon, Search, Upload, Link as LinkIcon, X, Check, Plus } from 'lucide-react';
 import { compressImage } from '../lib/imageCompressor';
@@ -11,12 +11,18 @@ interface MediaPickerModalProps {
 }
 
 export function MediaPickerModal({ isOpen, onClose, onSelect, title = "Select Media" }: MediaPickerModalProps) {
-  const { media = [], addMedia } = useMediaStore();
+  const { media = [], addMedia, fetchMedia } = useMediaStore();
   const [activeTab, setActiveTab] = useState<'library' | 'upload' | 'url'>('library');
   const [searchTerm, setSearchTerm] = useState('');
   const [uploadUrl, setUploadUrl] = useState('');
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchMedia();
+    }
+  }, [isOpen, fetchMedia]);
 
   if (!isOpen) return null;
 

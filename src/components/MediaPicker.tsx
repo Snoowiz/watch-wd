@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useMediaStore } from '../store';
 import { Image as ImageIcon, Video, Search, Upload, X, Check } from 'lucide-react';
 import { compressImage } from '../lib/imageCompressor';
@@ -9,12 +9,16 @@ interface MediaPickerProps {
 }
 
 export function MediaPicker({ onSelect, onClose }: MediaPickerProps) {
-  const { media = [], addMedia } = useMediaStore();
+  const { media = [], addMedia, fetchMedia } = useMediaStore();
   const [activeTab, setActiveTab] = useState<'library' | 'upload' | 'url'>('library');
   const [searchTerm, setSearchTerm] = useState('');
   const [uploadUrl, setUploadUrl] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetchMedia();
+  }, [fetchMedia]);
 
   const filteredMedia = media.filter(m => (m.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()));
 

@@ -1391,9 +1391,9 @@ export interface Category {
 
 interface CategoryState {
   categories: Category[];
-  addCategory: (category: any) => Promise<void>;
-  updateCategory: (id: any, updates: Partial<Category>) => Promise<void>;
-  deleteCategory: (id: any) => Promise<void>;
+  addCategory: (category: any) => Promise<{ success: boolean; error?: string }>;
+  updateCategory: (id: any, updates: Partial<Category>) => Promise<{ success: boolean; error?: string }>;
+  deleteCategory: (id: any) => Promise<{ success: boolean; error?: string }>;
   fetchCategories: () => Promise<void>;
 }
 
@@ -1414,52 +1414,70 @@ export const useCategoryStore = create<CategoryState>((set, get) => ({
   },
   addCategory: async (category) => {
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch('/api/admin/match-categories', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(category)
       });
       if (res.ok) {
         const data = await res.json();
         set({ categories: [...get().categories, { ...category, id: data.id }] });
+        return { success: true };
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        return { success: false, error: errData.error || 'Failed to save match category' };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save match category', err);
+      return { success: false, error: err.message || 'Network error saving category' };
     }
   },
   updateCategory: async (id, updates) => {
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(`/api/admin/match-categories/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(updates)
       });
       if (res.ok) {
         set({ categories: get().categories.map(c => String(c.id) === String(id) ? { ...c, ...updates } : c) });
+        return { success: true };
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        return { success: false, error: errData.error || 'Failed to update match category' };
       }
-    } catch (err) {
-      console.error('Failed to save match category', err);
+    } catch (err: any) {
+      console.error('Failed to update match category', err);
+      return { success: false, error: err.message || 'Network error updating category' };
     }
   },
   deleteCategory: async (id) => {
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(`/api/admin/match-categories/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
       if (res.ok) {
         set({ categories: get().categories.filter(c => String(c.id) !== String(id)) });
+        return { success: true };
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        return { success: false, error: errData.error || 'Failed to delete category' };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete match category', err);
+      return { success: false, error: err.message || 'Network error deleting category' };
     }
   },
 }));
@@ -2000,34 +2018,103 @@ export interface MediaItem {
 
 interface MediaState {
   media: MediaItem[];
-  addMedia: (media: Omit<MediaItem, 'id' | 'createdAt'>) => void;
-  updateMedia: (id: string, updates: Partial<MediaItem>) => void;
-  deleteMedia: (id: string) => void;
+  fetchMedia: () => Promise<void>;
+  addMedia: (media: Omit<MediaItem, 'id' | 'createdAt'> & { id?: string }) => Promise<void>;
+  updateMedia: (id: string, updates: Partial<MediaItem>) => Promise<void>;
+  deleteMedia: (id: string) => Promise<void>;
 }
 
 export const useMediaStore = create<MediaState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       media: [],
-      addMedia: (media) =>
-        set((state) => ({
-          media: [
-            {
-              ...media,
-              id: Math.random().toString(36).substring(7),
-              createdAt: new Date().toISOString()
+      fetchMedia: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch('/api/admin/media', {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
+          if (res.ok) {
+            const serverMedia = await res.json();
+            if (Array.isArray(serverMedia)) {
+              const localMedia = get().media || [];
+              const combined = [...serverMedia];
+              for (const item of localMedia) {
+                if (!combined.some(s => s.url === item.url || s.id === item.id)) {
+                  combined.push(item);
+                }
+              }
+              set({ media: combined });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch media library:', err);
+        }
+      },
+      addMedia: async (media) => {
+        const id = media.id || ('med_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6));
+        const createdAt = new Date().toISOString();
+        const newItem: MediaItem = { ...media, id, createdAt };
+
+        set((state) => {
+          const existingIdx = state.media.findIndex(m => m.url === media.url);
+          if (existingIdx >= 0) {
+            const copy = [...state.media];
+            copy[existingIdx] = { ...copy[existingIdx], ...media };
+            return { media: copy };
+          }
+          return { media: [newItem, ...state.media] };
+        });
+
+        try {
+          const token = localStorage.getItem('token');
+          await fetch('/api/admin/media', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
             },
-            ...state.media
-          ]
-        })),
-      updateMedia: (id, updates) =>
+            body: JSON.stringify(newItem)
+          });
+        } catch (err) {
+          console.error('Failed to persist media to backend:', err);
+        }
+      },
+      updateMedia: async (id, updates) => {
         set((state) => ({
           media: state.media.map(m => m.id === id ? { ...m, ...updates } : m)
-        })),
-      deleteMedia: (id) =>
+        }));
+        try {
+          const token = localStorage.getItem('token');
+          const existing = get().media.find(m => m.id === id);
+          if (existing) {
+            await fetch('/api/admin/media', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({ ...existing, ...updates })
+            });
+          }
+        } catch (err) {
+          console.error('Failed to update media on backend:', err);
+        }
+      },
+      deleteMedia: async (id) => {
         set((state) => ({
           media: state.media.filter(m => m.id !== id)
-        }))
+        }));
+        try {
+          const token = localStorage.getItem('token');
+          await fetch(`/api/admin/media/${id}`, {
+            method: 'DELETE',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
+        } catch (err) {
+          console.error('Failed to delete media from backend:', err);
+        }
+      }
     }),
     { name: 'media-storage' }
   )

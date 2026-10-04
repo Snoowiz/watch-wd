@@ -994,6 +994,21 @@ async function execute(sql, params) {
 }
 
 // db/MySQLAdapter.ts
+var CACHEABLE_TABLES = /* @__PURE__ */ new Set([
+  "matches",
+  "plans",
+  "features",
+  "match_categories",
+  "blog_categories",
+  "clubs",
+  "revenue_policies",
+  "settings",
+  "payment_settings",
+  "email_settings",
+  "email_branding",
+  "ads",
+  "media_items"
+]);
 var KEY_VALUE_TABLES = /* @__PURE__ */ new Set([
   "settings",
   "payment_settings",
@@ -1022,6 +1037,25 @@ function getPkColumn(table) {
 function isKeyValueTable(table) {
   return KEY_VALUE_TABLES.has(table);
 }
+var tableColumnsCache = /* @__PURE__ */ new Map();
+async function getTableColumns(tableName) {
+  if (isKeyValueTable(tableName)) return null;
+  if (tableColumnsCache.has(tableName)) return tableColumnsCache.get(tableName);
+  try {
+    const [rows] = await connection_default.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [tableName]
+    );
+    const arr = rows;
+    if (arr.length > 0) {
+      const set = new Set(arr.map((r) => r.COLUMN_NAME));
+      tableColumnsCache.set(tableName, set);
+      return set;
+    }
+  } catch (_) {
+  }
+  return null;
+}
 function parseJson(val) {
   if (val === null || val === void 0) return null;
   if (typeof val === "string") {
@@ -1038,14 +1072,17 @@ function unwrapKVRow(row) {
   const val = row.value;
   return parseJson(val);
 }
-function buildSetClause(data, table) {
+async function buildSetClause(data, table) {
   const snakeData = {};
   const pk = getPkColumn(table);
+  const knownCols = await getTableColumns(table);
   for (const [k, v] of Object.entries(data)) {
     if (v !== void 0) {
       const snakeKey = camelToSnake(k, table);
       if (snakeKey !== pk) {
-        snakeData[snakeKey] = v;
+        if (!knownCols || knownCols.has(snakeKey)) {
+          snakeData[snakeKey] = v;
+        }
       }
     }
   }
@@ -1294,18 +1331,34 @@ var DocWrapper = class {
   }
   async get() {
     const pk = getPkColumn(this.tableName);
+    const isCacheable = CACHEABLE_TABLES.has(this.tableName);
+    const docCacheKey = `db-doc::${this.tableName}::${this.id}`;
+    if (isCacheable) {
+      const cached = cacheEngine.get("database", docCacheKey);
+      if (cached !== null && cached !== void 0) {
+        return {
+          id: this.id,
+          exists: cached.exists,
+          ref: this,
+          data: () => cached.data ? { ...cached.data } : null
+        };
+      }
+    }
     if (isKeyValueTable(this.tableName)) {
       const [rows2] = await connection_default.execute(`SELECT * FROM \`${this.tableName}\` WHERE \`${pk}\` = ?`, [this.id]);
       const arr2 = rows2;
       if (arr2.length === 0) {
+        if (isCacheable) cacheEngine.set("database", docCacheKey, { exists: false, data: null });
         return { id: this.id, exists: false, ref: this, data: () => null };
       }
       const unwrapped = unwrapKVRow(arr2[0]);
+      if (isCacheable) cacheEngine.set("database", docCacheKey, { exists: true, data: unwrapped });
       return { id: this.id, exists: true, ref: this, data: () => unwrapped };
     }
     const [rows] = await connection_default.execute(`SELECT * FROM \`${this.tableName}\` WHERE \`${pk}\` = ?`, [this.id]);
     const arr = rows;
     if (arr.length === 0) {
+      if (isCacheable) cacheEngine.set("database", docCacheKey, { exists: false, data: null });
       return { id: this.id, exists: false, ref: this, data: () => null };
     }
     const row = { ...arr[0] };
@@ -1363,6 +1416,9 @@ var DocWrapper = class {
       mappedRow.start_time = matchDate.slice(0, 19).replace("T", " ");
       mappedRow.startTime = mappedRow.start_time;
     }
+    if (isCacheable) {
+      cacheEngine.set("database", docCacheKey, { exists: true, data: mappedRow });
+    }
     return { id: this.id, exists: true, ref: this, data: () => mappedRow };
   }
   async set(data, _options) {
@@ -1373,12 +1429,17 @@ var DocWrapper = class {
         `INSERT INTO \`${this.tableName}\` (\`${pk}\`, \`value\`) VALUES (?, ?) ON DUPLICATE KEY UPDATE \`value\` = ?`,
         [this.id, jsonVal, jsonVal]
       );
+      cacheEngine.invalidateCollection(this.tableName);
       return;
     }
     const allData = { ...data };
     const snakeData = {};
+    const knownCols = await getTableColumns(this.tableName);
     for (const [k, v] of Object.entries(allData)) {
-      snakeData[camelToSnake(k, this.tableName)] = v;
+      const snakeKey = camelToSnake(k, this.tableName);
+      if (!knownCols || knownCols.has(snakeKey)) {
+        snakeData[snakeKey] = v;
+      }
     }
     const pkSnake = camelToSnake(pk, this.tableName);
     if (!snakeData[pkSnake]) snakeData[pkSnake] = this.id;
@@ -1388,6 +1449,7 @@ var DocWrapper = class {
     const updateParts = keys.map((k) => `\`${k}\` = VALUES(\`${k}\`)`).join(", ");
     const sql = `INSERT INTO \`${this.tableName}\` (${keys.map((k) => `\`${k}\``).join(", ")}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateParts}`;
     await connection_default.execute(sql, vals);
+    cacheEngine.invalidateCollection(this.tableName);
   }
   async update(data) {
     const pk = getPkColumn(this.tableName);
@@ -1404,15 +1466,18 @@ var DocWrapper = class {
         `INSERT INTO \`${this.tableName}\` (\`${pk}\`, \`value\`) VALUES (?, ?) ON DUPLICATE KEY UPDATE \`value\` = ?`,
         [this.id, jsonVal, jsonVal]
       );
+      cacheEngine.invalidateCollection(this.tableName);
       return;
     }
-    const { clause, values } = buildSetClause(data, this.tableName);
+    const { clause, values } = await buildSetClause(data, this.tableName);
     if (!clause) return;
     await connection_default.execute(`UPDATE \`${this.tableName}\` SET ${clause} WHERE \`${pk}\` = ?`, [...values, this.id]);
+    cacheEngine.invalidateCollection(this.tableName);
   }
   async delete() {
     const pk = getPkColumn(this.tableName);
     await connection_default.execute(`DELETE FROM \`${this.tableName}\` WHERE \`${pk}\` = ?`, [this.id]);
+    cacheEngine.invalidateCollection(this.tableName);
   }
 };
 var CollectionWrapper = class _CollectionWrapper {
@@ -1438,6 +1503,23 @@ var CollectionWrapper = class _CollectionWrapper {
     return clone;
   }
   async get() {
+    const isCacheable = CACHEABLE_TABLES.has(this.tableName);
+    const cacheKey = `db::${this.tableName}::${JSON.stringify({ w: this.whereClauses, o: this.orderClauses, l: this.limitVal })}`;
+    if (isCacheable) {
+      const cached = cacheEngine.get("database", cacheKey);
+      if (cached && Array.isArray(cached.rows)) {
+        return {
+          empty: cached.empty,
+          size: cached.size,
+          docs: cached.rows.map((row) => ({
+            id: row.__id,
+            ref: new DocWrapper(this.tableName, row.__id),
+            exists: true,
+            data: () => ({ ...row.__data })
+          }))
+        };
+      }
+    }
     const pk = getPkColumn(this.tableName);
     let sql = `SELECT * FROM \`${this.tableName}\``;
     const params = [];
@@ -1525,6 +1607,13 @@ var CollectionWrapper = class _CollectionWrapper {
         data: () => mappedRow
       };
     });
+    if (isCacheable) {
+      cacheEngine.set("database", cacheKey, {
+        empty: docs.length === 0,
+        size: docs.length,
+        rows: docs.map((d) => ({ __id: d.id, __data: d.data() }))
+      });
+    }
     return { empty: docs.length === 0, size: docs.length, docs };
   }
   doc(id) {
@@ -1541,14 +1630,19 @@ var CollectionWrapper = class _CollectionWrapper {
       allData.id = generatedId;
     }
     const snakeData = {};
+    const knownCols = await getTableColumns(this.tableName);
     for (const [k, v] of Object.entries(allData)) {
-      snakeData[camelToSnake(k, this.tableName)] = v;
+      const snakeKey = camelToSnake(k, this.tableName);
+      if (!knownCols || knownCols.has(snakeKey)) {
+        snakeData[snakeKey] = v;
+      }
     }
     const keys = Object.keys(snakeData);
     const vals = Object.values(snakeData).map((v) => serializeValue(v));
     const placeholders = keys.map(() => "?").join(", ");
     const sql = `INSERT INTO \`${this.tableName}\` (${keys.map((k) => `\`${k}\``).join(", ")}) VALUES (${placeholders})`;
     const [result] = await connection_default.execute(sql, vals);
+    cacheEngine.invalidateCollection(this.tableName);
     const finalId = generatedId || allData.id || String(result.insertId);
     return { id: finalId, ref: new DocWrapper(this.tableName, finalId) };
   }
@@ -2122,17 +2216,17 @@ function cdnEdgeSim(ttlSeconds) {
   };
 }
 async function warmCriticalCaches() {
-  return true;
   try {
-    console.log("[Cache Warmer] Pre-heating database collections and API cache content...");
-    const collectionsToWarm = ["features", "matches", "plans", "tasks"];
+    console.log("[Cache Warmer] Pre-heating database collections and multi-layer cache content...");
+    const collectionsToWarm = ["features", "matches", "plans", "match_categories", "clubs", "tasks"];
     for (const coll of collectionsToWarm) {
       const snapshot = await db.collection(coll).get();
       const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      cacheEngine.set("fragment", `fragment::/api/${coll}`, docs);
-      cacheEngine.set("cdn", `cdn::/api/${coll}`, docs);
+      cacheEngine.set("database", `db::${coll}::all`, docs, 18e4);
+      cacheEngine.set("fragment", `fragment::/api/${coll}`, docs, 18e4);
+      cacheEngine.set("cdn", `cdn::/api/${coll}`, docs, 3e5);
     }
-    cacheEngine.logEvent("Deploy Cache Warming", "Successfully pre-heated database collections, fragment API paths, and CDN POP simulators", "general");
+    cacheEngine.logEvent("Deploy Cache Warming", "Successfully pre-heated multi-layer caches for matches, plans, categories, clubs, and features", "general");
     return true;
   } catch (err) {
     console.error("[Cache Warmer] Error warming critical paths:", err);
@@ -5744,6 +5838,119 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
+  app.get("/api/admin/media", optionalAuthenticate, async (_req, res) => {
+    try {
+      let dbMedia = [];
+      try {
+        dbMedia = await query("SELECT * FROM media_items ORDER BY created_at DESC");
+      } catch (err) {
+      }
+      const mediaMap = /* @__PURE__ */ new Map();
+      for (const item of dbMedia) {
+        if (item.url) {
+          mediaMap.set(item.url, {
+            id: String(item.id),
+            name: item.name || "Media Item",
+            url: item.url,
+            type: item.type || "image",
+            size: Number(item.size) || 0,
+            createdAt: item.created_at ? new Date(item.created_at).toISOString() : (/* @__PURE__ */ new Date()).toISOString()
+          });
+        }
+      }
+      try {
+        const matchesRows = await query(
+          "SELECT id, title, thumbnail, created_at FROM matches WHERE thumbnail IS NOT NULL AND thumbnail != '' ORDER BY created_at DESC"
+        );
+        for (const m of matchesRows || []) {
+          const thumbUrl = (m.thumbnail || "").trim();
+          if (thumbUrl && !mediaMap.has(thumbUrl)) {
+            const harvestedItem = {
+              id: "match_thumb_" + m.id,
+              name: `${m.title || "Match"} Thumbnail`,
+              url: thumbUrl,
+              type: "image",
+              size: 0,
+              createdAt: m.created_at ? new Date(m.created_at).toISOString() : (/* @__PURE__ */ new Date()).toISOString()
+            };
+            mediaMap.set(thumbUrl, harvestedItem);
+            execute(
+              "INSERT IGNORE INTO media_items (id, name, url, type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+              [harvestedItem.id, harvestedItem.name, harvestedItem.url, "image", 0, m.created_at || /* @__PURE__ */ new Date()]
+            ).catch(() => {
+            });
+          }
+        }
+      } catch (matchErr) {
+        console.error("Failed to harvest match thumbnails for media library:", matchErr);
+      }
+      try {
+        const sliderSetting = await db.collection("settings").doc("sliders").get();
+        if (sliderSetting.exists) {
+          const sData = sliderSetting.data();
+          const groups = Array.isArray(sData) ? sData : sData?.groups || sData?.sliders || [];
+          for (const g of groups) {
+            for (const slide of g.slides || []) {
+              if (slide.image && !mediaMap.has(slide.image)) {
+                mediaMap.set(slide.image, {
+                  id: "slide_" + (slide.id || Math.random().toString(36).substring(7)),
+                  name: `${slide.title || "Slide"} Image`,
+                  url: slide.image,
+                  type: "image",
+                  size: 0,
+                  createdAt: (/* @__PURE__ */ new Date()).toISOString()
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {
+      }
+      const allMedia = Array.from(mediaMap.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      res.json(allMedia);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/media", authenticate, async (req, res) => {
+    try {
+      const { id, name, url, type, size } = req.body;
+      if (!url) return res.status(400).json({ error: "Media URL is required" });
+      const finalId = id || "med_" + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
+      const finalName = name || (url.split("/").pop() || "Media Item");
+      const finalType = type || (url.match(/\.(mp4|webm|ogg)$/i) ? "video" : "image");
+      const finalSize = Number(size) || 0;
+      await execute(
+        "INSERT INTO media_items (id, name, url, type, size, created_at) VALUES (?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE name = VALUES(name), url = VALUES(url), type = VALUES(type), size = VALUES(size)",
+        [finalId, finalName, url, finalType, finalSize]
+      );
+      cacheEngine.invalidateCollection("media");
+      res.json({
+        success: true,
+        item: {
+          id: finalId,
+          name: finalName,
+          url,
+          type: finalType,
+          size: finalSize,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.delete("/api/admin/media/:id", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
+    try {
+      await execute("DELETE FROM media_items WHERE id = ?", [req.params.id]);
+      cacheEngine.invalidateCollection("media");
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/api/admin/cache/stats", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const memory = cacheEngine.getMemoryStats();
@@ -6023,6 +6230,8 @@ async function startServer() {
         "INSERT INTO match_categories (name, slug, description) VALUES (?, ?, ?)",
         [name, slug, description || ""]
       );
+      cacheEngine.invalidateCollection("match_categories");
+      cacheEngine.invalidateCollection("matches");
       res.json({ success: true, id: result.insertId, name, slug, description: description || "" });
     } catch (e) {
       if (e.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "A category with that slug already exists" });
@@ -6036,6 +6245,8 @@ async function startServer() {
         "UPDATE match_categories SET name = COALESCE(?, name), slug = COALESCE(?, slug), description = COALESCE(?, description) WHERE id = ?",
         [name, slug, description, req.params.id]
       );
+      cacheEngine.invalidateCollection("match_categories");
+      cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
     } catch (e) {
       if (e.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "A category with that slug already exists" });
@@ -6045,6 +6256,8 @@ async function startServer() {
   app.delete("/api/admin/match-categories/:id", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       await execute("DELETE FROM match_categories WHERE id = ?", [req.params.id]);
+      cacheEngine.invalidateCollection("match_categories");
+      cacheEngine.invalidateCollection("matches");
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -8270,6 +8483,16 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `).catch((err) => console.error("Failed to ensure blog_categories table exists", err));
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`media_items\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`name\` VARCHAR(255) NOT NULL,
+        \`url\` LONGTEXT NOT NULL,
+        \`type\` VARCHAR(50) DEFAULT 'image',
+        \`size\` INT DEFAULT 0,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch((err) => console.error("Failed to ensure media_items table exists", err));
     execute(`
       ALTER TABLE \`comments\` ADD COLUMN \`status\` VARCHAR(50) DEFAULT 'active'
     `).catch((err) => {
