@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore, useSettingsStore } from '../store';
-import { UserPlus, AlertCircle } from 'lucide-react';
+import { UserPlus, AlertCircle, Building2 } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
@@ -52,7 +52,7 @@ export function Register() {
       if (data.device_id) localStorage.setItem('device_id', data.device_id);
 
       setAuth(data.user, data.token);
-      navigate(redirectTo);
+      navigate(redirectTo, { state: { from: redirectTo, autoPlay: (location.state as any)?.autoPlay, matchId: (location.state as any)?.matchId } });
     } catch (err: any) {
       setError(err.message === 'Firebase: Error (auth/popup-closed-by-user).' ? 'Signup cancelled.' : err.message);
     } finally {
@@ -84,7 +84,7 @@ export function Register() {
       localStorage.removeItem('profileModalDismissed');
 
       setAuth(data.user, data.token);
-      navigate(redirectTo);
+      navigate(redirectTo, { state: { from: redirectTo, autoPlay: (location.state as any)?.autoPlay, matchId: (location.state as any)?.matchId } });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -226,10 +226,35 @@ export function Register() {
 
         <p className="mt-8 text-center text-sm text-slate-600 dark:text-slate-400">
           Already have an account?{' '}
-          <Link to="/login" state={{ from: redirectTo !== '/' ? redirectTo : undefined }} className="text-yellow-600 dark:text-yellow-500 font-bold hover:underline">
+          <Link 
+            to="/login" 
+            state={{ from: redirectTo !== '/' ? redirectTo : undefined, autoPlay: (location.state as any)?.autoPlay, matchId: (location.state as any)?.matchId }} 
+            className="text-yellow-600 dark:text-yellow-500 font-bold hover:underline"
+          >
             Log in
           </Link>
         </p>
+
+        {/* Partner Club Application CTA */}
+        <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800 text-left">
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
+            <Building2 className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider mb-0.5">
+                Represent a Sports Club or Team?
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mb-2 leading-relaxed">
+                Looking to broadcast your club's matches? Apply to join as an official Partner Club instead.
+              </p>
+              <Link
+                to="/partner/apply"
+                className="inline-flex items-center gap-1.5 text-xs font-extrabold text-amber-600 dark:text-amber-400 hover:text-amber-500 hover:underline"
+              >
+                Join as a Partner Club &rarr;
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Sliding Puzzle CAPTCHA Modal */}

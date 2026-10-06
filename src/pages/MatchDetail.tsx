@@ -1,18 +1,20 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore } from '../store';
-import { Lock, PlayCircle, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing, RefreshCw, Loader2, ShieldAlert, RotateCcw } from 'lucide-react';
+import { Lock, Play, PlayCircle, LogIn, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing, RefreshCw, Loader2, ShieldAlert, Shield, Sparkles, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { MatchComments } from '../components/MatchComments';
 import { AdOverlay } from '../components/AdOverlay';
 import { AddFundsModal } from '../components/AddFundsModal';
+import { AccountGateModal } from '../components/AccountGateModal';
 import { requestNotificationPermission, subscribeToMatch, setupMessageListener, unsubscribeFromMatch, getNotificationPermission } from '../services/notificationService';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
 
 export function MatchDetail() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   // ... other hooks
 
   const { user, updateUser } = useAuthStore();
@@ -129,10 +131,131 @@ export function MatchDetail() {
   );
 
   const hasValidPurchase = Boolean(watchPurchase && !isLocalExpired && !isAccessExpired);
-  const hasAccess = !!(match ? (user ? (hasValidPurchase || match.access === 'free' || hasPlanAccess || isPartnerOwner || isAdmin) : match.access === 'free') : false);
+  const isFree = match?.access === 'free';
+  const isFreeGated = isFree && !user;
+  const hasAccess = !!(match ? (user ? (hasValidPurchase || isFree || hasPlanAccess || isPartnerOwner || isAdmin) : false) : false);
   const effectiveHasAccess = hasAccess && (!isRevoked || isAdmin);
   const hasEmbedCode = (user && match) ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
   const embedCodePurchase = (user && match) ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
+
+  const [showAccountGateModal, setShowAccountGateModal] = useState(false);
+  const sessionIdRef = useRef<string>('');
+
+  const sendTrackingEvent = useCallback((action: 'attempt' | 'authenticated' | 'play_start' | 'heartbeat' | 'end', extra?: { watchDuration?: number }) => {
+    if (!match || !sessionIdRef.current) return;
+    const token = localStorage.getItem('token');
+    const playbackType = match.status === 'live' ? 'live' : 'replay';
+
+    fetch(`/api/matches/${match.id}/view-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        sessionId: sessionIdRef.current,
+        action,
+        playbackType,
+        matchTitle: match.title,
+        watchDuration: extra?.watchDuration || 0
+      })
+    }).catch(err => {
+      console.warn('[View Tracking Error]:', err?.message);
+    });
+  }, [match]);
+
+  // Persistent session tracking ID for this match (persisted in sessionStorage)
+  useEffect(() => {
+    if (match) {
+      const storageKey = `watch_sess_${match.id}`;
+      let sId = sessionStorage.getItem(storageKey);
+      if (!sId) {
+        sId = `mvs_${match.id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        sessionStorage.setItem(storageKey, sId);
+      }
+      sessionIdRef.current = sId;
+
+      if (!user && match.access === 'free') {
+        sendTrackingEvent('attempt');
+      }
+    }
+  }, [match?.id, user, sendTrackingEvent]);
+
+  const handleAuthGateRedirect = (target: 'login' | 'register') => {
+    if (!match) return;
+    sendTrackingEvent('attempt');
+
+    sessionStorage.setItem('pending_watch_match', JSON.stringify({
+      matchId: match.id,
+      slug: match.slug,
+      title: match.title,
+      autoPlay: true,
+      timestamp: Date.now()
+    }));
+
+    navigate(`/${target}`, {
+      state: {
+        from: location.pathname,
+        matchId: match.id,
+        autoPlay: true
+      }
+    });
+  };
+
+  const handleFreePlayClick = () => {
+    if (isFreeGated) {
+      sendTrackingEvent('attempt');
+      setShowAccountGateModal(true);
+    }
+  };
+
+  // Restore playback and mark authenticated event after successful login / registration
+  useEffect(() => {
+    if (user && match) {
+      const pendingRaw = sessionStorage.getItem('pending_watch_match');
+      const locationState = location.state as any;
+      let shouldAutoPlay = Boolean(locationState?.autoPlay);
+
+      if (pendingRaw) {
+        try {
+          const pending = JSON.parse(pendingRaw);
+          if (String(pending.matchId) === String(match.id)) {
+            shouldAutoPlay = true;
+          }
+        } catch (_) {}
+        sessionStorage.removeItem('pending_watch_match');
+      }
+
+      if (shouldAutoPlay) {
+        if (locationState?.autoPlay) {
+          window.history.replaceState({}, document.title);
+        }
+
+        sendTrackingEvent('authenticated');
+        sendTrackingEvent('play_start');
+
+        if (isMobile) {
+          setMobileVideoStarted(true);
+        }
+      }
+    }
+  }, [user, match?.id, location.state, isMobile, sendTrackingEvent]);
+
+  // Periodic watch heartbeat and session end tracking
+  useEffect(() => {
+    if (effectiveHasAccess && streamData && user && match) {
+      sendTrackingEvent('play_start');
+
+      const interval = setInterval(() => {
+        sendTrackingEvent('heartbeat', { watchDuration: 30 });
+      }, 30000);
+
+      return () => {
+        clearInterval(interval);
+        sendTrackingEvent('end');
+      };
+    }
+  }, [effectiveHasAccess, Boolean(streamData), user?.id, match?.id, sendTrackingEvent]);
 
   useEffect(() => {
     if (match && effectiveHasAccess) {
@@ -145,10 +268,13 @@ export function MatchDetail() {
         }
       })
         .then(async res => {
-          if (res.status === 403) {
+          if (res.status === 401 || res.status === 403) {
             const data = await res.json().catch(() => null);
             if (data?.isExpired) {
               setIsAccessExpired(true);
+            }
+            if (data?.authRequired) {
+              setShowAccountGateModal(true);
             }
             return null;
           }
@@ -617,6 +743,45 @@ export function MatchDetail() {
                     )}
                   </div>
                 </>
+              ) : isFreeGated ? (
+                <div className="flex flex-col items-center justify-center max-w-lg mx-auto p-4 sm:p-6 text-center animate-fade-in">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 mb-4 shadow-lg backdrop-blur-md">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Free Match Broadcast</span>
+                  </div>
+
+                  <button
+                    onClick={handleFreePlayClick}
+                    className="group relative flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 shadow-2xl shadow-yellow-500/40 transition-all duration-300 hover:scale-105 active:scale-95 mb-5 cursor-pointer"
+                    aria-label="Play Free Match"
+                  >
+                    <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-current ml-1 transition-transform group-hover:scale-110" />
+                  </button>
+
+                  <h2 className="text-xl sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-3 tracking-tight uppercase text-balance">
+                    Account Required to Watch Free
+                  </h2>
+                  <p className="text-slate-300 mb-6 sm:mb-8 max-w-md text-xs sm:text-sm md:text-base leading-relaxed text-balance">
+                    This match is 100% free to stream live and on replay. Simply sign in or create your free account to unlock instant playback.
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row justify-center items-center gap-3 w-full sm:w-auto">
+                    <button
+                      onClick={() => handleAuthGateRedirect('login')}
+                      className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-3.5 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-95"
+                    >
+                      <LogIn className="w-4 h-4" />
+                      <span>Log In to Watch Free</span>
+                    </button>
+                    <button
+                      onClick={() => handleAuthGateRedirect('register')}
+                      className="w-full sm:w-auto bg-white/10 hover:bg-white/20 text-white font-bold px-6 py-3.5 rounded-xl transition-all backdrop-blur-md border border-white/15 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-95"
+                    >
+                      <UserPlus className="w-4 h-4 text-yellow-400" />
+                      <span>Create Free Account</span>
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   <h2 className="text-lg sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-4 tracking-tight uppercase text-balance mt-4 sm:mt-0">
@@ -957,6 +1122,15 @@ export function MatchDetail() {
           directCheckoutMetadata={checkoutData.metadata}
         />
       )}
+
+      {/* Mandatory Account Gate Modal for Free Match Viewing */}
+      <AccountGateModal
+        isOpen={showAccountGateModal}
+        onClose={() => setShowAccountGateModal(false)}
+        match={match || null}
+        onLogin={() => handleAuthGateRedirect('login')}
+        onRegister={() => handleAuthGateRedirect('register')}
+      />
     </div>
   );
 }

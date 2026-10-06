@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   Building2, Plus, Edit3, Trash2, Save, X, CheckCircle, XCircle, 
   DollarSign, Link as LinkIcon, Mail, Loader2, Percent, Shield,
-  ExternalLink, AlertCircle, Image as ImageIcon, Key, Lock, Copy, Check, RefreshCw
+  ExternalLink, AlertCircle, Image as ImageIcon, Key, Lock, Copy, Check, RefreshCw,
+  Search, Eye, Clock, FileText, Sparkles, Filter, CheckCircle2, ChevronRight,
+  Phone, Globe, Trophy, MapPin, Users, UserCheck, ShieldCheck, Sliders
 } from 'lucide-react';
 import { MediaPickerModal } from '../../components/MediaPickerModal';
 
@@ -32,6 +34,61 @@ interface RevenuePolicy {
   club_share_percent?: number;
   isActive: boolean | number;
   is_active?: boolean | number;
+}
+
+interface PartnerApplicationItem {
+  id: string;
+  userId?: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  contactEmail?: string;
+  phone?: string;
+  contactPhone?: string;
+  username?: string;
+  clubName: string;
+  clubSlug?: string;
+  sportCategory?: string;
+  leagueDivision?: string;
+  league?: string;
+  venue?: string;
+  capacity?: string | number;
+  city?: string;
+  country?: string;
+  foundedYear?: string;
+  stadiumVenue?: string;
+  stadiumCapacity?: string;
+  website?: string;
+  websiteUrl?: string;
+  socialLinks?: any;
+  expectedMonthlyMatches?: string;
+  description?: string;
+  customFields?: Record<string, any>;
+  status: 'pending' | 'approved' | 'rejected';
+  adminNotes?: string;
+  rejectionReason?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  approvedClubId?: string;
+  clubId?: string;
+  createdAt: string;
+  updatedAt: string;
+  userAccount?: any;
+  clubAccount?: any;
+}
+
+interface DynamicFieldItem {
+  id: string;
+  fieldKey: string;
+  label: string;
+  fieldType: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'url';
+  placeholder?: string;
+  description?: string;
+  options?: string[];
+  required: boolean;
+  step: number;
+  orderIndex: number;
+  isActive: boolean;
 }
 
 export function AdminClubs() {
@@ -194,7 +251,247 @@ export function AdminClubs() {
     }
   };
 
-  useEffect(() => { fetchClubs(); }, []);
+  const location = useLocation();
+  const [mainTab, setMainTab] = useState<'clubs' | 'applications' | 'fields'>('clubs');
+
+  // Applications management state
+  const [applications, setApplications] = useState<PartnerApplicationItem[]>([]);
+  const [appStats, setAppStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [appFilter, setAppFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [appSearch, setAppSearch] = useState('');
+  const [appLoading, setAppLoading] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState<PartnerApplicationItem | null>(null);
+  const [approvingApp, setApprovingApp] = useState<PartnerApplicationItem | null>(null);
+  const [rejectingApp, setRejectingApp] = useState<PartnerApplicationItem | null>(null);
+  const [approvePlatformFee, setApprovePlatformFee] = useState(20);
+  const [approveClubShare, setApproveClubShare] = useState(80);
+  const [approveNotes, setApproveNotes] = useState('');
+  const [approveSendEmail, setApproveSendEmail] = useState(true);
+  const [rejectReason, setRejectReason] = useState('Incomplete broadcast verification or unverified organizational identity.');
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [rejectSendEmail, setRejectSendEmail] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Dynamic Fields state
+  const [onboardingFields, setOnboardingFields] = useState<DynamicFieldItem[]>([]);
+  const [editingField, setEditingField] = useState<DynamicFieldItem | null>(null);
+  const [showFieldModal, setShowFieldModal] = useState(false);
+  const [fieldFormKey, setFieldFormKey] = useState('');
+  const [fieldFormLabel, setFieldFormLabel] = useState('');
+  const [fieldFormType, setFieldFormType] = useState('text');
+  const [fieldFormPlaceholder, setFieldFormPlaceholder] = useState('');
+  const [fieldFormDescription, setFieldFormDescription] = useState('');
+  const [fieldFormOptions, setFieldFormOptions] = useState('');
+  const [fieldFormRequired, setFieldFormRequired] = useState(false);
+  const [fieldFormStep, setFieldFormStep] = useState(3);
+  const [fieldFormOrder, setFieldFormOrder] = useState(0);
+  const [fieldFormActive, setFieldFormActive] = useState(true);
+  const [fieldSaving, setFieldSaving] = useState(false);
+
+  const fetchApplications = async () => {
+    setAppLoading(true);
+    try {
+      const res = await fetch(`/api/admin/partner-applications?status=${appFilter}&search=${encodeURIComponent(appSearch)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setApplications(data.applications || []);
+        if (data.stats) setAppStats(data.stats);
+      }
+    } catch (err) {
+      console.error('Failed to fetch partner applications:', err);
+    } finally {
+      setAppLoading(false);
+    }
+  };
+
+  const fetchOnboardingFields = async () => {
+    try {
+      const res = await fetch('/api/admin/partner-onboarding-fields', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOnboardingFields(data.fields || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch onboarding fields:', err);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'applications') setMainTab('applications');
+    else if (tabParam === 'fields') setMainTab('fields');
+    else if (tabParam === 'clubs') setMainTab('clubs');
+  }, [location.search]);
+
+  useEffect(() => {
+    fetchClubs();
+    fetchApplications();
+    fetchOnboardingFields();
+  }, []);
+
+  useEffect(() => {
+    if (mainTab === 'applications') {
+      fetchApplications();
+    }
+  }, [mainTab, appFilter]);
+
+  const handleApproveApplication = async () => {
+    if (!approvingApp) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/admin/partner-applications/${approvingApp.id}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          platformFeePercent: approvePlatformFee,
+          clubSharePercent: approveClubShare,
+          adminNotes: approveNotes,
+          sendEmail: approveSendEmail
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setApprovingApp(null);
+        setSelectedApplication(null);
+        fetchApplications();
+        fetchClubs();
+      } else {
+        alert(data.error || 'Failed to approve application');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error approving application');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectApplication = async () => {
+    if (!rejectingApp) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/admin/partner-applications/${rejectingApp.id}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          reason: rejectReason,
+          adminNotes: rejectNotes,
+          sendEmail: rejectSendEmail
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRejectingApp(null);
+        setSelectedApplication(null);
+        fetchApplications();
+      } else {
+        alert(data.error || 'Failed to reject application');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error rejecting application');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openFieldModal = (field?: DynamicFieldItem) => {
+    if (field) {
+      setEditingField(field);
+      setFieldFormKey(field.fieldKey);
+      setFieldFormLabel(field.label);
+      setFieldFormType(field.fieldType);
+      setFieldFormPlaceholder(field.placeholder || '');
+      setFieldFormDescription(field.description || '');
+      setFieldFormOptions(Array.isArray(field.options) ? field.options.join('\n') : '');
+      setFieldFormRequired(field.required);
+      setFieldFormStep(field.step || 3);
+      setFieldFormOrder(field.orderIndex || 0);
+      setFieldFormActive(field.isActive);
+    } else {
+      setEditingField(null);
+      setFieldFormKey('');
+      setFieldFormLabel('');
+      setFieldFormType('text');
+      setFieldFormPlaceholder('');
+      setFieldFormDescription('');
+      setFieldFormOptions('');
+      setFieldFormRequired(false);
+      setFieldFormStep(3);
+      setFieldFormOrder(onboardingFields.length + 1);
+      setFieldFormActive(true);
+    }
+    setShowFieldModal(true);
+  };
+
+  const handleSaveField = async () => {
+    if (!fieldFormKey.trim() || !fieldFormLabel.trim()) {
+      alert('Field Key and Label are required');
+      return;
+    }
+    setFieldSaving(true);
+    try {
+      const parsedOptions = fieldFormType === 'select' 
+        ? fieldFormOptions.split('\n').map(s => s.trim()).filter(Boolean)
+        : null;
+
+      const res = await fetch('/api/admin/partner-onboarding-fields', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: editingField?.id,
+          fieldKey: fieldFormKey.trim(),
+          label: fieldFormLabel.trim(),
+          fieldType: fieldFormType,
+          placeholder: fieldFormPlaceholder.trim(),
+          description: fieldFormDescription.trim(),
+          options: parsedOptions,
+          required: fieldFormRequired,
+          step: fieldFormStep,
+          orderIndex: fieldFormOrder,
+          isActive: fieldFormActive
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setShowFieldModal(false);
+        fetchOnboardingFields();
+      } else {
+        alert(data.error || 'Failed to save field');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error saving field');
+    } finally {
+      setFieldSaving(false);
+    }
+  };
+
+  const handleDeleteField = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this custom onboarding field?')) return;
+    try {
+      const res = await fetch(`/api/admin/partner-onboarding-fields/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchOnboardingFields();
+      }
+    } catch (err) {
+      console.error('Failed to delete onboarding field:', err);
+    }
+  };
 
   const resetForm = () => {
     setFormName('');
@@ -356,8 +653,65 @@ export function AdminClubs() {
         </div>
       </div>
 
-      {/* Info Banner */}
-      <div className="bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-500/10 dark:to-purple-500/10 rounded-xl p-5 border border-violet-200 dark:border-violet-500/20">
+      {/* Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 overflow-x-auto">
+        <button
+          onClick={() => setMainTab('clubs')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all ${
+            mainTab === 'clubs'
+              ? 'bg-violet-600 text-white shadow-md shadow-violet-600/20'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Active Partner Clubs</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 dark:bg-slate-700">
+            {clubs.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setMainTab('applications')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all relative ${
+            mainTab === 'applications'
+              ? 'bg-violet-600 text-white shadow-md shadow-violet-600/20'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Partner Applications</span>
+          {appStats.pending > 0 ? (
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500 text-slate-950 font-black animate-pulse">
+              {appStats.pending} Pending
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 dark:bg-slate-700">
+              {appStats.total}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setMainTab('fields')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all ${
+            mainTab === 'fields'
+              ? 'bg-violet-600 text-white shadow-md shadow-violet-600/20'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Onboarding Form Fields</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/20 dark:bg-slate-700">
+            {onboardingFields.length}
+          </span>
+        </button>
+      </div>
+
+      {/* TAB 1: ACTIVE CLUBS */}
+      {mainTab === 'clubs' && (
+        <div className="space-y-8">
+          {/* Info Banner */}
+          <div className="bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-500/10 dark:to-purple-500/10 rounded-xl p-5 border border-violet-200 dark:border-violet-500/20">
         <div className="flex items-start gap-3">
           <Shield className="w-5 h-5 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5" />
           <div>
@@ -755,6 +1109,262 @@ export function AdminClubs() {
           })}
         </div>
       )}
+        </div>
+      )}
+
+      {/* TAB 2: PARTNER APPLICATIONS */}
+      {mainTab === 'applications' && (
+        <div className="space-y-6">
+          {/* Stats Bar */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Total Submissions</span>
+              <span className="text-2xl font-black text-slate-900 dark:text-white">{appStats.total}</span>
+            </div>
+            <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-sm">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-amber-500 uppercase tracking-wider block">Pending Review</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+              </div>
+              <span className="text-2xl font-black text-amber-500">{appStats.pending}</span>
+            </div>
+            <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 shadow-sm">
+              <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider block mb-1">Approved & Active</span>
+              <span className="text-2xl font-black text-emerald-500">{appStats.approved}</span>
+            </div>
+            <div className="p-5 rounded-2xl bg-red-500/10 border border-red-500/30 shadow-sm">
+              <span className="text-xs font-bold text-red-500 uppercase tracking-wider block mb-1">Rejected</span>
+              <span className="text-2xl font-black text-red-500">{appStats.rejected}</span>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-2 flex-wrap">
+              {(['all', 'pending', 'approved', 'rejected'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setAppFilter(f)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all capitalize ${
+                    appFilter === f
+                      ? 'bg-violet-600 text-white shadow-md'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {f === 'all' ? 'All Applications' : f}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={appSearch}
+                  onChange={e => setAppSearch(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') fetchApplications(); }}
+                  placeholder="Search club, applicant, email..."
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs dark:text-white outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+              <button
+                onClick={fetchApplications}
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
+                title="Refresh list"
+              >
+                <RefreshCw className={`w-4 h-4 ${appLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Applications Table / Cards */}
+          {appLoading ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 text-violet-600 animate-spin mb-3" />
+              <p className="text-sm text-slate-400">Loading partner applications...</p>
+            </div>
+          ) : applications.length === 0 ? (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-12 text-center">
+              <FileText className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">No Applications Found</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                No club applications match the selected filter. Public applications submitted at /partner/apply will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {applications.map(app => (
+                <div
+                  key={app.id}
+                  className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h4 className="font-bold text-slate-900 dark:text-white text-base truncate">
+                        {app.clubName}
+                      </h4>
+                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider border ${
+                        app.status === 'pending'
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                          : app.status === 'approved'
+                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                            : 'bg-red-500/10 text-red-500 border-red-500/30'
+                      }`}>
+                        {app.status}
+                      </span>
+                      {app.sportCategory && (
+                        <span className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md">
+                          {app.sportCategory}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      <div>
+                        <span className="text-slate-400">Contact:</span> <strong className="text-slate-700 dark:text-slate-300">{app.firstName} {app.lastName}</strong>
+                      </div>
+                      <div className="truncate">
+                        <span className="text-slate-400">Email:</span> <span className="font-mono text-slate-700 dark:text-slate-300">{app.email}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Submitted:</span> <span>{new Date(app.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                    <button
+                      onClick={() => setSelectedApplication(app)}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-white text-xs font-bold transition-colors flex items-center gap-1.5"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Review Details
+                    </button>
+
+                    {app.status === 'pending' && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setApprovingApp(app);
+                            setApprovePlatformFee(20);
+                            setApproveClubShare(80);
+                            setApproveNotes('');
+                            setApproveSendEmail(true);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRejectingApp(app);
+                            setRejectReason('Incomplete broadcast verification or unverified organizational identity.');
+                            setRejectNotes('');
+                            setRejectSendEmail(true);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-md shadow-red-600/20 flex items-center gap-1.5"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Reject
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: DYNAMIC ONBOARDING FIELDS BUILDER */}
+      {mainTab === 'fields' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" /> Dynamic Onboarding Requirements
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
+                Add, customize, or disable requirements asked during the multi-step public onboarding wizard. Fields are automatically integrated without rebuilding the registration codebase.
+              </p>
+            </div>
+            <button
+              onClick={() => openFieldModal()}
+              className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-lg shadow-violet-600/20 flex items-center gap-2 transition-all shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Add Custom Requirement
+            </button>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 uppercase tracking-wider font-extrabold border-b border-slate-200 dark:border-slate-700">
+                  <tr>
+                    <th className="py-3 px-4">Order</th>
+                    <th className="py-3 px-4">Field Key</th>
+                    <th className="py-3 px-4">Display Label</th>
+                    <th className="py-3 px-4">Type</th>
+                    <th className="py-3 px-4">Step</th>
+                    <th className="py-3 px-4">Required</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 font-medium">
+                  {onboardingFields.map(f => (
+                    <tr key={f.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-750 transition-colors">
+                      <td className="py-3 px-4 font-mono text-slate-400">{f.orderIndex}</td>
+                      <td className="py-3 px-4 font-mono text-violet-600 dark:text-violet-400">{f.fieldKey}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">{f.label}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono text-[10px] uppercase">
+                          {f.fieldType}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-500">Step {f.step || 3}</td>
+                      <td className="py-3 px-4">
+                        {f.required ? (
+                          <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 font-bold text-[10px]">Required</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-400 text-[10px]">Optional</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          f.isActive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-100 text-slate-400'
+                        }`}>
+                          {f.isActive ? 'Active' : 'Disabled'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right space-x-2">
+                        <button
+                          onClick={() => openFieldModal(f)}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+                          title="Edit"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteField(f.id)}
+                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Media Picker Modal */}
       <MediaPickerModal
@@ -908,6 +1518,646 @@ export function AdminClubs() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 1: VIEW & REVIEW PARTNER APPLICATION
+          ========================================================================= */}
+      {selectedApplication && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl my-8 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center font-bold text-xl">
+                  {selectedApplication.clubName.charAt(0)}
+                </div>
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                      {selectedApplication.clubName}
+                    </h2>
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${
+                      selectedApplication.status === 'approved'
+                        ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                        : selectedApplication.status === 'rejected'
+                        ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                        : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                    }`}>
+                      {selectedApplication.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Application ID: #{selectedApplication.id} • Submitted {new Date(selectedApplication.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedApplication(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Applicant & Account Info */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-violet-500" /> Primary Applicant & Account
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Contact Name</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedApplication.firstName} {selectedApplication.lastName}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Contact Email</span>
+                    <a href={`mailto:${selectedApplication.contactEmail || selectedApplication.email}`} className="font-semibold text-violet-500 hover:underline">
+                      {selectedApplication.contactEmail || selectedApplication.email}
+                    </a>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Phone Number</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedApplication.contactPhone || selectedApplication.phone || 'Not specified'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">System Username</span>
+                    <span className="font-mono text-xs bg-slate-200 dark:bg-slate-700/60 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">
+                      @{selectedApplication.username}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">User Account ID</span>
+                    <span className="text-slate-700 dark:text-slate-300">
+                      {selectedApplication.userId ? `User #${selectedApplication.userId}` : 'Pending assignment'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Club & League Specifications */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" /> Club & Organizational Profile
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Club Name</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedApplication.clubName}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Sport Category</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">{selectedApplication.sportCategory || 'General / Multi-Sport'}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">League / Association</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">{selectedApplication.league || 'Independent'}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Venue / Home Stadium</span>
+                    <span className="text-slate-800 dark:text-slate-200">{selectedApplication.venue || 'Not specified'}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Venue Capacity</span>
+                    <span className="text-slate-800 dark:text-slate-200">
+                      {selectedApplication.capacity ? selectedApplication.capacity.toLocaleString() : 'N/A'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Location (City, Country)</span>
+                    <span className="text-slate-800 dark:text-slate-200">
+                      {[selectedApplication.city, selectedApplication.country].filter(Boolean).join(', ') || 'Not specified'}
+                    </span>
+                  </div>
+                </div>
+
+                {selectedApplication.description && (
+                  <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800 text-sm">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Club Overview & Bio</span>
+                    <p className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed whitespace-pre-line bg-white dark:bg-slate-900/60 p-3 rounded-lg border border-slate-200/50 dark:border-slate-800">
+                      {selectedApplication.description}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Digital Presence & Social Links */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-cyan-500" /> Digital Presence & Channels
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Official Website</span>
+                    {(selectedApplication.websiteUrl || selectedApplication.website) ? (
+                      <a href={selectedApplication.websiteUrl || selectedApplication.website} target="_blank" rel="noreferrer" className="text-cyan-500 hover:underline flex items-center gap-1 font-medium text-xs break-all">
+                        {selectedApplication.websiteUrl || selectedApplication.website} <ExternalLink className="w-3 h-3 shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="text-slate-400 text-xs">None provided</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 block">Social Media Links</span>
+                    <span className="text-xs text-slate-700 dark:text-slate-300 break-all">
+                      {typeof selectedApplication.socialLinks === 'object' 
+                        ? JSON.stringify(selectedApplication.socialLinks)
+                        : String(selectedApplication.socialLinks || 'None provided')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Onboarding Requirements */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-amber-500" /> Dynamic Onboarding Responses
+                </h3>
+                {selectedApplication.customFields && Object.keys(selectedApplication.customFields).length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    {Object.entries(selectedApplication.customFields).map(([k, val]: [string, any]) => {
+                      const fieldDef = onboardingFields.find(f => f.fieldKey === k);
+                      const displayLabel = fieldDef ? fieldDef.label : k.replace(/_/g, ' ');
+                      return (
+                        <div key={k} className="bg-white dark:bg-slate-900/60 p-3 rounded-lg border border-slate-200/50 dark:border-slate-800">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 block capitalize font-medium">{displayLabel}</span>
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 break-words mt-0.5 block">
+                            {typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val || 'N/A')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No extra custom fields submitted with this application.</p>
+                )}
+              </div>
+
+              {/* Review History / Notes if already reviewed */}
+              {(selectedApplication.reviewedAt || selectedApplication.adminNotes || selectedApplication.rejectionReason) && (
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800 space-y-2 text-sm">
+                  <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Review Audit Trail</h3>
+                  {selectedApplication.reviewedAt && (
+                    <p className="text-xs text-slate-500">
+                      Reviewed on: <strong className="text-slate-700 dark:text-slate-300">{new Date(selectedApplication.reviewedAt).toLocaleString()}</strong>
+                    </p>
+                  )}
+                  {selectedApplication.rejectionReason && (
+                    <div className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/20">
+                      <strong>Rejection Reason:</strong> {selectedApplication.rejectionReason}
+                    </div>
+                  )}
+                  {selectedApplication.adminNotes && (
+                    <div className="text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                      <strong>Admin Notes:</strong> {selectedApplication.adminNotes}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+              <button
+                onClick={() => setSelectedApplication(null)}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold transition-colors"
+              >
+                Close
+              </button>
+
+              <div className="flex items-center gap-3">
+                {selectedApplication.status === 'pending' && (
+                  <>
+                    <button
+                      onClick={() => setRejectingApp(selectedApplication)}
+                      className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 font-semibold rounded-xl text-sm border border-rose-500/20 transition-colors flex items-center gap-1.5"
+                    >
+                      <XCircle className="w-4 h-4" /> Reject Application
+                    </button>
+                    <button
+                      onClick={() => setApprovingApp(selectedApplication)}
+                      className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-sm shadow-md transition-all flex items-center gap-1.5"
+                    >
+                      <CheckCircle className="w-4 h-4" /> Approve & Activate Partner
+                    </button>
+                  </>
+                )}
+                {selectedApplication.status === 'approved' && (selectedApplication.clubId || selectedApplication.approvedClubId) && (
+                  <button
+                    onClick={() => {
+                      const targetId = selectedApplication.clubId || selectedApplication.approvedClubId;
+                      const club = clubs.find(c => String(c.id) === String(targetId));
+                      setSelectedApplication(null);
+                      setMainTab('clubs');
+                      if (club) setEditingClub(club);
+                    }}
+                    className="px-4 py-2 bg-violet-500/10 hover:bg-violet-500/20 text-violet-500 border border-violet-500/20 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-4 h-4" /> View Partner Club Profile
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 2: APPROVE PARTNER APPLICATION CONFIRMATION & SETUP
+          ========================================================================= */}
+      {approvingApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold">
+                  <CheckCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">Approve Partner Application</h3>
+                  <p className="text-xs text-slate-500">{approvingApp.clubName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setApprovingApp(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-xs text-emerald-600 dark:text-emerald-400 leading-relaxed">
+              Approving this application will automatically create an official Partner Club entity, set up their dedicated revenue policy & balance account, activate their user login credentials as a Partner, and optionally dispatch an approval email with login access details.
+            </div>
+
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Club Share (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={approveClubShare}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setApproveClubShare(v);
+                      setApprovePlatformFee(100 - v);
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Platform Fee (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={approvePlatformFee}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setApprovePlatformFee(v);
+                      setApproveClubShare(100 - v);
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Internal Admin Notes (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={approveNotes}
+                  onChange={(e) => setApproveNotes(e.target.value)}
+                  placeholder="e.g. Verified official federation credentials, premier division partner..."
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={approveSendEmail}
+                  onChange={(e) => setApproveSendEmail(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-xs text-slate-600 dark:text-slate-300">
+                  Send official approval email with Partner Portal login link to <strong>{approvingApp.contactEmail || approvingApp.email}</strong>
+                </span>
+              </label>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setApprovingApp(null)}
+                disabled={actionLoading}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApproveApplication}
+                disabled={actionLoading}
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-sm shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Confirm Approval & Activate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 3: REJECT PARTNER APPLICATION
+          ========================================================================= */}
+      {rejectingApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold">
+                  <XCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">Reject Partner Application</h3>
+                  <p className="text-xs text-slate-500">{rejectingApp.clubName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRejectingApp(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Rejecting this application will mark it as rejected and deactivate the pending applicant account.
+            </p>
+
+            <div className="space-y-4 text-sm">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Reason for Rejection (Included in notification email)
+                </label>
+                <textarea
+                  rows={3}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Explain why the application could not be approved at this time..."
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Internal Admin Notes
+                </label>
+                <input
+                  type="text"
+                  value={rejectNotes}
+                  onChange={(e) => setRejectNotes(e.target.value)}
+                  placeholder="Internal audit remarks..."
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={rejectSendEmail}
+                  onChange={(e) => setRejectSendEmail(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                />
+                <span className="text-xs text-slate-600 dark:text-slate-300">
+                  Send notification email explaining status to <strong>{rejectingApp.contactEmail || rejectingApp.email}</strong>
+                </span>
+              </label>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setRejectingApp(null)}
+                disabled={actionLoading}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectApplication}
+                disabled={actionLoading}
+                className="px-5 py-2 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl text-sm shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 4: CREATE / EDIT ONBOARDING FIELD BUILDER
+          ========================================================================= */}
+      {showFieldModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center font-bold">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                    {editingField ? 'Edit Dynamic Requirement' : 'Add New Onboarding Field'}
+                  </h3>
+                  <p className="text-xs text-slate-500">Configure partner application question</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFieldModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Field Key <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={fieldFormKey}
+                    onChange={(e) => setFieldFormKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    placeholder="e.g. streaming_quality"
+                    disabled={!!editingField}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Unique identifier (snake_case)</p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Input Type
+                  </label>
+                  <select
+                    value={fieldFormType}
+                    onChange={(e) => setFieldFormType(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  >
+                    <option value="text">Text (Single Line)</option>
+                    <option value="textarea">Textarea (Multi-line)</option>
+                    <option value="select">Dropdown Select</option>
+                    <option value="number">Numeric</option>
+                    <option value="checkbox">Checkbox (Yes/No)</option>
+                    <option value="url">URL Link</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Field Label <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={fieldFormLabel}
+                  onChange={(e) => setFieldFormLabel(e.target.value)}
+                  placeholder="e.g. Broadcast Camera Setup & Resolution"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              {fieldFormType === 'select' && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Dropdown Options (One per line)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={fieldFormOptions}
+                    onChange={(e) => setFieldFormOptions(e.target.value)}
+                    placeholder="Option 1&#10;Option 2&#10;Option 3"
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Placeholder / Input Hint
+                </label>
+                <input
+                  type="text"
+                  value={fieldFormPlaceholder}
+                  onChange={(e) => setFieldFormPlaceholder(e.target.value)}
+                  placeholder="e.g. 1080p60 multi-camera setup"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Helper Description
+                </label>
+                <input
+                  type="text"
+                  value={fieldFormDescription}
+                  onChange={(e) => setFieldFormDescription(e.target.value)}
+                  placeholder="Brief explanatory note shown under the field"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Wizard Step
+                  </label>
+                  <select
+                    value={fieldFormStep}
+                    onChange={(e) => setFieldFormStep(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  >
+                    <option value={2}>Step 2: Club & Organization</option>
+                    <option value={3}>Step 3: Broadcast & Digital Operations</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Sort Order
+                  </label>
+                  <input
+                    type="number"
+                    value={fieldFormOrder}
+                    onChange={(e) => setFieldFormOrder(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-6 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fieldFormRequired}
+                    onChange={(e) => setFieldFormRequired(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Mandatory / Required Field</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fieldFormActive}
+                    onChange={(e) => setFieldFormActive(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Active (Visible in Form)</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowFieldModal(false)}
+                disabled={fieldSaving}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveField}
+                disabled={fieldSaving}
+                className="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl text-sm shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {fieldSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {editingField ? 'Save Changes' : 'Create Requirement'}
+              </button>
+            </div>
           </div>
         </div>
       )}

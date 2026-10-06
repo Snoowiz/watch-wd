@@ -23,6 +23,7 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { Profile } from './pages/Profile';
 import { CreatorDashboard } from './pages/creator/CreatorDashboard';
 import { PartnerDashboard } from './pages/partner/PartnerDashboard';
+import { PartnerApplication } from './pages/partner/PartnerApplication';
 import { StudioDashboard } from './pages/creator/StudioDashboard';
 import { StudioManagement } from './pages/admin/StudioManagement';
 import { NotFound } from './pages/NotFound';
@@ -241,6 +242,8 @@ export default function App() {
           <Routes>
             <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="/creator/*" element={<CreatorDashboard />} />
+            <Route path="/partner/apply" element={<Layout><PartnerApplication /></Layout>} />
+            <Route path="/partner-application" element={<Layout><PartnerApplication /></Layout>} />
             <Route path="/partner/*" element={<Layout><PartnerDashboard /></Layout>} />
             <Route path="*" element={
               <Layout>

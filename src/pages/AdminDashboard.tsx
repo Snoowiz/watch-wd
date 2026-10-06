@@ -99,7 +99,10 @@ export function AdminDashboard() {
     { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Match Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/matches' },
     { id: 'settings-site-colors', type: 'settings', title: 'Site Color Configuration', subtitle: 'Brand accents, theme palettes & button text color', icon: Palette, path: '/admin/settings' },
     { id: 'cache-management', type: 'system', title: 'Performance & Multi-Layer Cache', subtitle: 'Purge cache, telemetry, Hit/Miss ratios & warming', icon: Zap, path: '/admin/cache' },
-    { id: 'media-library', type: 'media', title: 'Media Library & Uploads', subtitle: 'Centralized images, thumbnails & assets', icon: ImageIcon, path: '/admin/media' },
+    { id: 'free-audience-gate', type: 'analytics', title: 'Free Match Audience Gate & Analytics', subtitle: 'Unique viewers, watch time, viewing journeys & gate conversion', icon: Eye, path: '#free-audience-analytics' },
+    { id: 'partner-applications', type: 'partner', title: 'Partner Club Applications', subtitle: 'Review, approve, and manage pending partner club applications', icon: Building2, path: '/admin/clubs?tab=applications' },
+    { id: 'partner-onboarding-fields', type: 'partner', title: 'Partner Onboarding Form Fields', subtitle: 'Dynamic questions, requirements, and custom onboarding schema', icon: Sliders, path: '/admin/clubs?tab=fields' },
+    { id: 'media-library', type: 'media', title: 'Media Library & Uploads', subtitle: 'Centralized images, thumbnails & assets', icon: Image, path: '/admin/media' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
 
@@ -368,6 +371,51 @@ function AdminOverview() {
   const blogEnabled = blogSettings?.enabled !== false;
 
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [freeViewingData, setFreeViewingData] = useState<{
+    summary: {
+      totalAttempts: number;
+      totalAuthenticated: number;
+      totalPlays: number;
+      uniqueViewers: number;
+      totalWatchHours: number;
+      avgWatchMinutes: number;
+      conversionRate: number;
+    };
+    matches: Array<{
+      match_id: string;
+      match_title: string;
+      attempts: number;
+      unique_viewers: number;
+      total_plays: number;
+      total_watch_minutes: number;
+      avg_watch_minutes: number;
+    }>;
+    recentSessions: Array<{
+      id: number;
+      session_id: string;
+      match_title: string;
+      user_name?: string;
+      user_email?: string;
+      playback_type: string;
+      status: string;
+      watch_duration_seconds: number;
+      created_at: string;
+    }>;
+  }>({
+    summary: {
+      totalAttempts: 0,
+      totalAuthenticated: 0,
+      totalPlays: 0,
+      uniqueViewers: 0,
+      totalWatchHours: 0,
+      avgWatchMinutes: 0,
+      conversionRate: 0,
+    },
+    matches: [],
+    recentSessions: []
+  });
+
+  const [partnerAppsStats, setPartnerAppsStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
 
   useEffect(() => {
     fetchAdminMatches();
@@ -385,7 +433,41 @@ function AdminOverview() {
         console.error('Failed to fetch admin dashboard overview transactions:', err);
       }
     };
+    const fetchFreeViewing = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/admin/analytics/free-viewing', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFreeViewingData(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch free viewing analytics:', err);
+      }
+    };
+    const fetchPartnerApps = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const res = await fetch('/api/admin/partner-applications', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.stats) {
+              setPartnerAppsStats(data.stats);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch partner applications in overview:', err);
+      }
+    };
     fetchTxns();
+    fetchFreeViewing();
+    fetchPartnerApps();
   }, [fetchAdminMatches]);
 
   const getCurrencySymbol = (curr: string) => {
@@ -457,7 +539,9 @@ function AdminOverview() {
   const activeModules = useMemo(() => [
     { name: 'Users & Roles', count: users.length, label: 'Accounts', icon: Users, path: '/admin/users', status: 'Healthy', color: 'text-yellow-500' },
     { name: 'Match Streamer', count: activeMatchesCount, label: 'Matches', icon: Video, path: '/admin/matches', status: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : 'Active', color: revokedMatchesCount > 0 ? 'text-amber-500' : 'text-green-500' },
+    { name: 'Free Match Gate', count: freeViewingData.summary.uniqueViewers, label: 'Unique Viewers', icon: Eye, path: '#free-audience-analytics', status: `${freeViewingData.summary.conversionRate}% Conv`, color: 'text-yellow-500' },
     ...(revokedMatchesCount > 0 ? [{ name: 'Revoked Matches', count: revokedMatchesCount, label: 'Under Review', icon: Shield, path: '/admin/matches', status: 'Retention Active', color: 'text-amber-500' }] : []),
+    { name: 'Partner Applications', count: partnerAppsStats.pending, label: 'Pending Review', icon: Building2, path: '/admin/clubs?tab=applications', status: partnerAppsStats.pending > 0 ? `${partnerAppsStats.pending} Pending` : 'All Reviewed', color: partnerAppsStats.pending > 0 ? 'text-amber-500' : 'text-emerald-500' },
     { name: 'Partner Clubs', count: 1, label: 'Portals & Split', icon: Building2, path: '/admin/clubs', status: 'Active', color: 'text-amber-500' },
     { name: 'SEO Engine', count: perPageSeo.length, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
     ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
@@ -465,7 +549,7 @@ function AdminOverview() {
     { name: 'Payout Engine', count: 1, label: 'Threshold Engine', icon: DollarSign, path: '/admin/finance', status: 'Active', color: 'text-emerald-500' },
     { name: 'User Feedback', count: 1, label: 'CSAT & Reviews', icon: MessageSquare, path: '/admin/feedback', status: 'Active', color: 'text-yellow-500' },
     { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
-  ], [users, effectiveMatches, activeMatchesCount, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount]);
+  ], [users, effectiveMatches, activeMatchesCount, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount, freeViewingData, partnerAppsStats]);
 
   // Top Performing Content Calculators
   const mostWatchedMatch = useMemo(() => {
@@ -673,6 +757,13 @@ function AdminOverview() {
                     <span className="font-bold text-amber-600 dark:text-amber-400">Monitoring & Ledger Safe</span>
                   </div>
                 </div>
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.6)] animate-pulse shrink-0"></div>
+                  <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
+                    <span className="font-mono text-slate-400 uppercase tracking-wider">Free Audience Gate</span>
+                    <span className="font-bold text-yellow-600 dark:text-yellow-400">{freeViewingData.summary.uniqueViewers} Unique Viewers ({freeViewingData.summary.conversionRate}% Conv)</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -787,13 +878,195 @@ function AdminOverview() {
         </div>
       </div>
 
+      {/* Free Match Audience & Viewing Engagement Analytics Section */}
+      <div id="free-audience-analytics" className="border-t border-slate-200 dark:border-slate-800 pt-8 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border border-yellow-500/40 mb-2">
+              <Eye className="w-3.5 h-3.5" />
+              <span>Mandatory Free Gate Telemetry</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              Free Match Audience & Engagement Analytics
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+              Live funnel performance tracking users from free match gate access to authentication, play start, and watch engagement.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live Deduplication Active
+            </span>
+          </div>
+        </div>
+
+        {/* Funnel Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+            <div className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Gate Attempts</div>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {freeViewingData.summary.totalAttempts.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Visitors hit gate</div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+            <div className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Authenticated</div>
+            <div className="text-xl sm:text-2xl font-black text-yellow-600 dark:text-yellow-400 mt-1">
+              {freeViewingData.summary.totalAuthenticated.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Logins / Signups</div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+            <div className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Plays Started</div>
+            <div className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">
+              {freeViewingData.summary.totalPlays.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Playback triggered</div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+            <div className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Unique Viewers</div>
+            <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+              {freeViewingData.summary.uniqueViewers.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Deduplicated users</div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+            <div className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Watch Hours</div>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {freeViewingData.summary.totalWatchHours}h
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Avg {freeViewingData.summary.avgWatchMinutes}m / session</div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
+            <div className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Gate Conversion</div>
+            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">
+              {freeViewingData.summary.conversionRate}%
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Gate to play rate</div>
+          </div>
+        </div>
+
+        {/* Detailed Breakdown Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Free Matches */}
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 flex items-center justify-between">
+              <span>Top Performing Free Matches</span>
+              <span className="text-xs font-mono text-slate-400 font-normal">Audience Leaderboard</span>
+            </h3>
+
+            {freeViewingData.matches.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-700/60 text-slate-400 uppercase font-bold text-[10px]">
+                      <th className="pb-3">Match Title</th>
+                      <th className="pb-3 text-center">Attempts</th>
+                      <th className="pb-3 text-center">Unique Viewers</th>
+                      <th className="pb-3 text-center">Total Plays</th>
+                      <th className="pb-3 text-right">Avg Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                    {freeViewingData.matches.map((m) => (
+                      <tr key={m.match_id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20">
+                        <td className="py-2.5 font-bold text-slate-900 dark:text-white truncate max-w-[180px]">
+                          {m.match_title}
+                        </td>
+                        <td className="py-2.5 text-center text-slate-500 dark:text-slate-400 font-mono">
+                          {m.attempts}
+                        </td>
+                        <td className="py-2.5 text-center font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                          {m.unique_viewers}
+                        </td>
+                        <td className="py-2.5 text-center font-bold text-indigo-600 dark:text-indigo-400 font-mono">
+                          {m.total_plays}
+                        </td>
+                        <td className="py-2.5 text-right font-mono text-slate-500 dark:text-slate-400">
+                          {m.avg_watch_minutes}m
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 font-mono py-6 text-center">
+                No free match viewing journeys recorded yet. Telemetry will appear as users view free matches.
+              </p>
+            )}
+          </div>
+
+          {/* Recent Viewing Journeys */}
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 flex items-center justify-between">
+              <span>Recent Viewing Journeys</span>
+              <span className="text-xs font-mono text-slate-400 font-normal">Live Activity Stream</span>
+            </h3>
+
+            {freeViewingData.recentSessions.length > 0 ? (
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                {freeViewingData.recentSessions.slice(0, 8).map((sess) => (
+                  <div key={sess.session_id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-3 text-xs">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-slate-900 dark:text-white truncate flex items-center gap-2">
+                        <span>{sess.user_name || 'Guest User'}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                          sess.status === 'watching' ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                          sess.status === 'authenticated' ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400' :
+                          sess.status === 'completed' ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' :
+                          'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}>
+                          {sess.status}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono lowercase">
+                          ({sess.playback_type})
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {sess.match_title} {sess.user_email ? `• ${sess.user_email}` : ''}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                        {Math.floor(sess.watch_duration_seconds / 60)}m {sess.watch_duration_seconds % 60}s
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {new Date(sess.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 font-mono py-6 text-center">
+                No recent viewer journeys logged. When users log in and watch, real-time sessions appear here.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Admin Tools Grid */}
       <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
           <Settings className="w-4 h-4 text-yellow-500" />
           Interactive Operator Terminals
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <a href="#free-audience-analytics" className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-[2px] group block">
+            <div className="w-12 h-12 rounded-xl bg-yellow-50 dark:bg-yellow-500/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+              <Eye className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
+            </div>
+            <h3 className="font-bold text-slate-900 dark:text-white mb-1">Free Audience Analytics</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Review unique viewers, conversion rate, and watch journey milestones.</p>
+          </a>
           <Link to="/admin/users" className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-[2px] group block">
             <div className="w-12 h-12 rounded-xl bg-yellow-50 dark:bg-yellow-500/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
               <Shield className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />

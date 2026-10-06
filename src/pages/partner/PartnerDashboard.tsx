@@ -175,6 +175,58 @@ export function PartnerDashboard() {
     );
   }
 
+  // Pending application state
+  const isPendingPartner = (user as any)?.status === 'pending' || ((user as any)?.role === 'partner' && !(user as any)?.clubId && !(user as any)?.club_id && user?.role !== 'admin');
+  if (isPendingPartner) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12 shadow-2xl relative overflow-hidden">
+          <div className="w-20 h-20 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-6">
+            <Clock className="w-10 h-10 animate-pulse" />
+          </div>
+          <span className="inline-block px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 font-extrabold text-xs uppercase tracking-wider mb-4">
+            Application Pending Review
+          </span>
+          <h1 className="text-2xl md:text-3xl font-black text-white mb-3">Partner Club Onboarding Under Review</h1>
+          <p className="text-slate-300 text-sm md:text-base max-w-xl mx-auto mb-6 leading-relaxed">
+            Thank you for applying to partner with WatchWDS. Your club application has been securely submitted and is currently awaiting administrator review and verification.
+          </p>
+          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-6 max-w-md mx-auto text-left mb-8 space-y-3 text-xs md:text-sm">
+            <div className="flex justify-between items-center text-slate-300 pb-2 border-b border-slate-800/80">
+              <span className="text-slate-500 font-medium">Applicant:</span>
+              <span className="font-semibold text-white">{user?.name || user?.email}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-300 pb-2 border-b border-slate-800/80">
+              <span className="text-slate-500 font-medium">Registered Email:</span>
+              <span className="font-semibold text-white">{user?.email}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-300">
+              <span className="text-slate-500 font-medium">Review SLA:</span>
+              <span className="font-bold text-amber-400">24–48 Business Hours</span>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 mb-8 max-w-md mx-auto leading-normal">
+            You will receive an official approval email once your club has been activated. After approval, you can access this portal to link your Stripe account and broadcast live matches.
+          </p>
+          <div className="flex items-center justify-center gap-4">
+            <Link to="/" className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors">
+              Return to Homepage
+            </Link>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                window.location.href = '/login';
+              }}
+              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs transition-colors shadow-lg shadow-amber-500/20"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const isStripeConnected = Boolean(club?.stripeAccountId && Number(club?.stripeOnboardingComplete));
   const clubShare = policy?.club_share_percent ?? policy?.clubSharePercent ?? 80;
   const platformFee = policy?.platform_fee_percent ?? policy?.platformFeePercent ?? 20;

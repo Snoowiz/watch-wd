@@ -2154,13 +2154,153 @@ async function ensureIncrementalColumns() {
     "ALTER TABLE `matches` ADD COLUMN `original_status` VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE `purchases` ADD COLUMN `access_starts_at` DATETIME DEFAULT NULL",
     "ALTER TABLE `purchases` ADD COLUMN `access_expires_at` DATETIME DEFAULT NULL",
-    "ALTER TABLE `purchases` ADD COLUMN `access_status` VARCHAR(50) DEFAULT 'active'"
+    "ALTER TABLE `purchases` ADD COLUMN `access_status` VARCHAR(50) DEFAULT 'active'",
+    "ALTER TABLE `matches` ADD COLUMN `views` INT DEFAULT 0",
+    `CREATE TABLE IF NOT EXISTS \`match_view_sessions\` (
+      \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+      \`session_id\` VARCHAR(100) NOT NULL UNIQUE,
+      \`user_id\` INT DEFAULT NULL,
+      \`match_id\` VARCHAR(100) NOT NULL,
+      \`match_title\` VARCHAR(255) DEFAULT NULL,
+      \`access_type\` VARCHAR(32) DEFAULT 'free',
+      \`playback_type\` VARCHAR(32) DEFAULT 'live',
+      \`attempted_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+      \`authenticated_at\` DATETIME DEFAULT NULL,
+      \`play_started_at\` DATETIME DEFAULT NULL,
+      \`last_heartbeat_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+      \`watch_duration_seconds\` INT DEFAULT 0,
+      \`status\` VARCHAR(32) DEFAULT 'attempted',
+      \`device_type\` VARCHAR(64) DEFAULT NULL,
+      \`ip_address\` VARCHAR(64) DEFAULT NULL,
+      \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX \`idx_mvs_match\` (\`match_id\`),
+      INDEX \`idx_mvs_user\` (\`user_id\`),
+      INDEX \`idx_mvs_status\` (\`status\`),
+      INDEX \`idx_mvs_created\` (\`created_at\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    "ALTER TABLE `users` MODIFY COLUMN `status` VARCHAR(50) DEFAULT 'active'",
+    "ALTER TABLE `users` ADD COLUMN `username` VARCHAR(100) DEFAULT NULL",
+    `CREATE TABLE IF NOT EXISTS \`partner_applications\` (
+      \`id\` VARCHAR(100) PRIMARY KEY,
+      \`user_id\` VARCHAR(100) DEFAULT NULL,
+      \`first_name\` VARCHAR(100) NOT NULL,
+      \`last_name\` VARCHAR(100) NOT NULL,
+      \`email\` VARCHAR(255) NOT NULL,
+      \`phone\` VARCHAR(100) DEFAULT NULL,
+      \`club_name\` VARCHAR(255) NOT NULL,
+      \`club_slug\` VARCHAR(255) DEFAULT NULL,
+      \`sport_category\` VARCHAR(100) DEFAULT NULL,
+      \`league_division\` VARCHAR(100) DEFAULT NULL,
+      \`founded_year\` VARCHAR(10) DEFAULT NULL,
+      \`stadium_venue\` VARCHAR(255) DEFAULT NULL,
+      \`stadium_capacity\` VARCHAR(50) DEFAULT NULL,
+      \`website\` VARCHAR(255) DEFAULT NULL,
+      \`social_links\` JSON DEFAULT NULL,
+      \`expected_monthly_matches\` VARCHAR(50) DEFAULT NULL,
+      \`description\` TEXT DEFAULT NULL,
+      \`custom_fields\` JSON DEFAULT NULL,
+      \`status\` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+      \`admin_notes\` TEXT DEFAULT NULL,
+      \`rejection_reason\` TEXT DEFAULT NULL,
+      \`reviewed_by\` VARCHAR(100) DEFAULT NULL,
+      \`reviewed_at\` DATETIME DEFAULT NULL,
+      \`approved_club_id\` VARCHAR(100) DEFAULT NULL,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX \`idx_pa_status\` (\`status\`),
+      INDEX \`idx_pa_email\` (\`email\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    `CREATE TABLE IF NOT EXISTS \`partner_onboarding_fields\` (
+      \`id\` VARCHAR(100) PRIMARY KEY,
+      \`field_key\` VARCHAR(100) NOT NULL UNIQUE,
+      \`label\` VARCHAR(255) NOT NULL,
+      \`field_type\` VARCHAR(50) NOT NULL DEFAULT 'text',
+      \`placeholder\` VARCHAR(255) DEFAULT NULL,
+      \`description\` TEXT DEFAULT NULL,
+      \`options\` JSON DEFAULT NULL,
+      \`required\` TINYINT(1) DEFAULT 0,
+      \`step\` INT DEFAULT 3,
+      \`order_index\` INT DEFAULT 0,
+      \`is_active\` TINYINT(1) DEFAULT 1,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX \`idx_pof_order\` (\`order_index\`),
+      INDEX \`idx_pof_active\` (\`is_active\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   ];
   for (const sql of migrations) {
     try {
       await execute(sql);
     } catch (_) {
     }
+  }
+  try {
+    const existing = await query("SELECT COUNT(*) as cnt FROM `partner_onboarding_fields`");
+    if (existing && existing[0] && Number(existing[0].cnt) === 0) {
+      const defaultFields = [
+        {
+          id: "field_bcast_exp",
+          field_key: "broadcast_experience",
+          label: "Broadcast & Streaming Experience",
+          field_type: "select",
+          placeholder: "Select your level of experience",
+          description: "Help us calibrate onboarding technical assistance for your club.",
+          options: JSON.stringify(["First-Time Broadcaster / Getting Started", "Basic Web / Single-Camera Streaming", "Multi-Camera HD Production", "Regional / National TV Broadcast Experience"]),
+          required: 1,
+          step: 3,
+          order_index: 1,
+          is_active: 1
+        },
+        {
+          id: "field_stream_gear",
+          field_key: "primary_streaming_source",
+          label: "Primary Streaming Equipment / Encoder",
+          field_type: "text",
+          placeholder: "e.g. OBS Studio, vMix, Blackmagic ATEM, Tricaster, Teradek, Mobile",
+          description: "What hardware or software encoder will your production team use?",
+          options: null,
+          required: 0,
+          step: 3,
+          order_index: 2,
+          is_active: 1
+        },
+        {
+          id: "field_viewer_base",
+          field_key: "estimated_viewer_base",
+          label: "Estimated Live Audience / Fanbase Size",
+          field_type: "text",
+          placeholder: "e.g. 500 - 3,000 live supporters per match",
+          description: "Approximate peak concurrent viewers expected for home games.",
+          options: null,
+          required: 0,
+          step: 3,
+          order_index: 3,
+          is_active: 1
+        },
+        {
+          id: "field_vat_tax",
+          field_key: "vat_tax_number",
+          label: "VAT / Tax Registration Number (Optional)",
+          field_type: "text",
+          placeholder: "e.g. GB123456789 or EIN / Business Tax ID",
+          description: "Official club business registration number for invoicing & revenue settlements.",
+          options: null,
+          required: 0,
+          step: 3,
+          order_index: 4,
+          is_active: 1
+        }
+      ];
+      for (const f of defaultFields) {
+        await execute(
+          "INSERT INTO `partner_onboarding_fields` (`id`, `field_key`, `label`, `field_type`, `placeholder`, `description`, `options`, `required`, `step`, `order_index`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [f.id, f.field_key, f.label, f.field_type, f.placeholder, f.description, f.options, f.required, f.step, f.order_index, f.is_active]
+        );
+      }
+    }
+  } catch (seedErr) {
+    console.error("Partner onboarding fields seed error:", seedErr);
   }
 }
 function apiFragmentCache(ttlSeconds) {
@@ -2453,6 +2593,13 @@ async function startServer() {
       if (!import_bcryptjs.default.compareSync(password, user.password)) {
         await recordLoginAttempt(email, ip, ua, false, "Invalid password");
         return res.status(401).json({ error: "Invalid credentials", remainingAttempts: rateCheck.remainingAttempts - 1 });
+      }
+      if (user.status === "pending") {
+        await recordLoginAttempt(email, ip, ua, false, "Partner application pending review");
+        return res.status(403).json({
+          error: "Your Partner Club application has been received and is currently pending administrator review. You will receive an email once your application has been approved.",
+          status: "pending"
+        });
       }
       if (user.status !== "active") {
         await recordLoginAttempt(email, ip, ua, false, "Account suspended");
@@ -3356,6 +3503,14 @@ async function startServer() {
       let hasAccess = false;
       let matchingPurchase = null;
       if (match.access === "free") {
+        if (!userId) {
+          return res.status(401).json({
+            error: "auth_required",
+            message: "Account required to watch this match.",
+            authRequired: true,
+            hasAccess: false
+          });
+        }
         hasAccess = true;
       } else if (userRole === "admin" || userRole === "operator") {
         hasAccess = true;
@@ -3418,6 +3573,169 @@ async function startServer() {
       });
     } catch (e) {
       res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/matches/:id/view-session", optionalAuthenticate, async (req, res) => {
+    try {
+      const matchId = req.params.id;
+      const {
+        sessionId,
+        action = "attempt",
+        playbackType = "live",
+        matchTitle = "",
+        watchDuration = 0
+      } = req.body || {};
+      if (!sessionId) {
+        return res.status(400).json({ error: "Missing sessionId" });
+      }
+      const userId = req.user?.id ? Number(req.user.id) : null;
+      const clientIp = getClientIp(req);
+      const userAgent = String(req.headers["user-agent"] || "").slice(0, 64);
+      if (action === "attempt") {
+        await execute(
+          `INSERT INTO match_view_sessions 
+            (session_id, user_id, match_id, match_title, access_type, playback_type, attempted_at, status, ip_address, device_type)
+           VALUES (?, ?, ?, ?, 'free', ?, NOW(), 'attempted', ?, ?)
+           ON DUPLICATE KEY UPDATE 
+            user_id = COALESCE(?, user_id),
+            updated_at = NOW()`,
+          [sessionId, userId, matchId, matchTitle, playbackType, clientIp, userAgent, userId]
+        );
+      } else if (action === "authenticated") {
+        await execute(
+          `INSERT INTO match_view_sessions 
+            (session_id, user_id, match_id, match_title, access_type, playback_type, attempted_at, authenticated_at, status, ip_address, device_type)
+           VALUES (?, ?, ?, ?, 'free', ?, NOW(), NOW(), 'authenticated', ?, ?)
+           ON DUPLICATE KEY UPDATE 
+            user_id = COALESCE(?, user_id),
+            authenticated_at = COALESCE(authenticated_at, NOW()),
+            status = CASE WHEN status = 'watching' THEN 'watching' ELSE 'authenticated' END,
+            updated_at = NOW()`,
+          [sessionId, userId, matchId, matchTitle, playbackType, clientIp, userAgent, userId]
+        );
+      } else if (action === "play_start") {
+        const existing = await query(
+          `SELECT play_started_at FROM match_view_sessions WHERE session_id = ?`,
+          [sessionId]
+        ).catch(() => []);
+        const alreadyPlayed = existing && existing.length > 0 && existing[0].play_started_at;
+        await execute(
+          `INSERT INTO match_view_sessions 
+            (session_id, user_id, match_id, match_title, access_type, playback_type, attempted_at, authenticated_at, play_started_at, status, ip_address, device_type)
+           VALUES (?, ?, ?, ?, 'free', ?, NOW(), NOW(), NOW(), 'watching', ?, ?)
+           ON DUPLICATE KEY UPDATE 
+            user_id = COALESCE(?, user_id),
+            play_started_at = COALESCE(play_started_at, NOW()),
+            status = 'watching',
+            updated_at = NOW()`,
+          [sessionId, userId, matchId, matchTitle, playbackType, clientIp, userAgent, userId]
+        );
+        if (!alreadyPlayed) {
+          await execute(
+            `UPDATE matches SET views = COALESCE(views, 0) + 1 WHERE id = ?`,
+            [matchId]
+          ).catch(() => {
+          });
+          cacheEngine.invalidateCollection("matches");
+        }
+      } else if (action === "heartbeat") {
+        const delta = Math.min(Math.max(Number(watchDuration) || 0, 0), 120);
+        await execute(
+          `UPDATE match_view_sessions 
+           SET watch_duration_seconds = watch_duration_seconds + ?,
+               last_heartbeat_at = NOW(),
+               updated_at = NOW()
+           WHERE session_id = ?`,
+          [delta, sessionId]
+        );
+      } else if (action === "end") {
+        await execute(
+          `UPDATE match_view_sessions 
+           SET status = 'completed',
+               last_heartbeat_at = NOW(),
+               updated_at = NOW()
+           WHERE session_id = ?`,
+          [sessionId]
+        );
+      }
+      res.json({ success: true, sessionId });
+    } catch (err) {
+      console.error("[ViewSession Error]:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.get("/api/admin/analytics/free-viewing", authenticate, requireRole(["admin", "operator"]), async (_req, res) => {
+    try {
+      const summaryRows = await query(`
+        SELECT 
+          COUNT(*) as total_attempts,
+          COUNT(authenticated_at) as total_authenticated,
+          COUNT(play_started_at) as total_plays,
+          COUNT(DISTINCT CASE WHEN play_started_at IS NOT NULL AND user_id IS NOT NULL THEN user_id END) as unique_viewers,
+          ROUND(COALESCE(SUM(watch_duration_seconds), 0) / 3600, 1) as total_watch_hours,
+          ROUND(COALESCE(AVG(CASE WHEN play_started_at IS NOT NULL THEN watch_duration_seconds END), 0) / 60, 1) as avg_watch_minutes
+        FROM match_view_sessions
+        WHERE access_type = 'free'
+      `).catch(() => [{}]);
+      const summary = summaryRows?.[0] || {};
+      const totalAttempts = Number(summary.total_attempts || 0);
+      const totalPlays = Number(summary.total_plays || 0);
+      const conversionRate = totalAttempts > 0 ? Math.round(totalPlays / totalAttempts * 100) : 0;
+      const matchRows = await query(`
+        SELECT 
+          mvs.match_id,
+          COALESCE(MAX(mvs.match_title), MAX(m.title), 'Unknown Match') as match_title,
+          COUNT(*) as attempts,
+          COUNT(DISTINCT CASE WHEN mvs.play_started_at IS NOT NULL AND mvs.user_id IS NOT NULL THEN mvs.user_id END) as unique_viewers,
+          COUNT(mvs.play_started_at) as total_plays,
+          ROUND(COALESCE(SUM(mvs.watch_duration_seconds), 0) / 60, 1) as total_watch_minutes,
+          ROUND(COALESCE(AVG(CASE WHEN mvs.play_started_at IS NOT NULL THEN mvs.watch_duration_seconds END), 0) / 60, 1) as avg_watch_minutes
+        FROM match_view_sessions mvs
+        LEFT JOIN matches m ON m.id = mvs.match_id
+        WHERE mvs.access_type = 'free'
+        GROUP BY mvs.match_id
+        ORDER BY unique_viewers DESC, total_plays DESC
+        LIMIT 10
+      `).catch(() => []);
+      const recentRows = await query(`
+        SELECT 
+          mvs.id,
+          mvs.session_id,
+          mvs.match_id,
+          COALESCE(mvs.match_title, m.title, 'Match') as match_title,
+          mvs.user_id,
+          u.name as user_name,
+          u.email as user_email,
+          mvs.playback_type,
+          mvs.status,
+          mvs.watch_duration_seconds,
+          mvs.attempted_at,
+          mvs.authenticated_at,
+          mvs.play_started_at,
+          mvs.created_at
+        FROM match_view_sessions mvs
+        LEFT JOIN users u ON u.id = mvs.user_id
+        LEFT JOIN matches m ON m.id = mvs.match_id
+        WHERE mvs.access_type = 'free'
+        ORDER BY mvs.updated_at DESC
+        LIMIT 20
+      `).catch(() => []);
+      res.json({
+        summary: {
+          totalAttempts,
+          totalAuthenticated: Number(summary.total_authenticated || 0),
+          totalPlays,
+          uniqueViewers: Number(summary.unique_viewers || 0),
+          totalWatchHours: Number(summary.total_watch_hours || 0),
+          avgWatchMinutes: Number(summary.avg_watch_minutes || 0),
+          conversionRate
+        },
+        matches: matchRows || [],
+        recentSessions: recentRows || []
+      });
+    } catch (err) {
+      console.error("[FreeViewingAnalytics Error]:", err.message);
+      res.status(500).json({ error: err.message });
     }
   });
   app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
@@ -6962,6 +7280,659 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         console.error("Failed to send reset email:", err);
       });
       res.json({ success: true, message: `Temporary password generated and sent to ${clubEmail}`, tempPassword });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/partner/onboarding-fields", async (req, res) => {
+    try {
+      await ensureIncrementalColumns().catch(() => {
+      });
+      const rows = await query(
+        "SELECT * FROM `partner_onboarding_fields` WHERE `is_active` = 1 ORDER BY `order_index` ASC"
+      );
+      const fields = (rows || []).map((f) => {
+        let options = f.options;
+        if (typeof options === "string") {
+          try {
+            options = JSON.parse(options);
+          } catch (_) {
+            options = [];
+          }
+        }
+        return {
+          id: f.id,
+          fieldKey: f.field_key,
+          label: f.label,
+          fieldType: f.field_type,
+          placeholder: f.placeholder,
+          description: f.description,
+          options,
+          required: Boolean(f.required),
+          step: f.step || 3,
+          orderIndex: f.order_index
+        };
+      });
+      res.json({ fields });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/partner/apply", async (req, res) => {
+    try {
+      await ensureIncrementalColumns().catch(() => {
+      });
+      const {
+        firstName,
+        lastName,
+        email,
+        password,
+        phone,
+        clubName,
+        sportCategory,
+        leagueDivision,
+        foundedYear,
+        stadiumVenue,
+        stadiumCapacity,
+        website,
+        socialLinks,
+        expectedMonthlyMatches,
+        description,
+        customFields
+      } = req.body;
+      if (!firstName || !String(firstName).trim() || !lastName || !String(lastName).trim()) {
+        return res.status(400).json({ error: "First and last name are required." });
+      }
+      if (!email || !String(email).includes("@")) {
+        return res.status(400).json({ error: "A valid email address is required." });
+      }
+      if (!password || String(password).length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters long." });
+      }
+      if (!clubName || !String(clubName).trim()) {
+        return res.status(400).json({ error: "Club or organization name is required." });
+      }
+      const normalizedEmail = String(email).toLowerCase().trim();
+      const existingUser = await query("SELECT `id`, `email`, `role`, `status` FROM `users` WHERE LOWER(`email`) = ?", [normalizedEmail]);
+      if (existingUser && existingUser.length > 0) {
+        return res.status(400).json({
+          error: "An account with this email address already exists. Please log in or apply using a different organizational email."
+        });
+      }
+      const existingApp = await query("SELECT `id`, `status` FROM `partner_applications` WHERE LOWER(`email`) = ? AND `status` = 'pending'", [normalizedEmail]);
+      if (existingApp && existingApp.length > 0) {
+        return res.status(400).json({
+          error: "A Partner Club application with this email address is already pending administrator review."
+        });
+      }
+      const cleanClub = String(clubName).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) || "partner";
+      const randomSuffix = Math.floor(1e3 + Math.random() * 9e3);
+      const autoUsername = `${cleanClub}_${randomSuffix}`;
+      const hashedPassword = await import_bcryptjs.default.hash(password, 10);
+      const userId = Date.now().toString() + Math.random().toString(36).substring(2, 6);
+      await db.collection("users").doc(userId).set({
+        id: userId,
+        email: normalizedEmail,
+        name: `${String(firstName).trim()} ${String(lastName).trim()}`,
+        username: autoUsername,
+        password: hashedPassword,
+        role: "partner",
+        club_id: null,
+        balance: 0,
+        status: "pending",
+        onboarding_completed: 0,
+        phone: phone ? String(phone).trim() : null,
+        created_at: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      cacheEngine.invalidateCollection("users");
+      const appId = "app_" + Date.now().toString() + Math.random().toString(36).substring(2, 5);
+      const slug = String(clubName).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const formattedSocial = typeof socialLinks === "string" ? socialLinks : JSON.stringify(socialLinks || {});
+      const formattedCustom = typeof customFields === "string" ? customFields : JSON.stringify(customFields || {});
+      await execute(
+        `INSERT INTO \`partner_applications\` 
+        (\`id\`, \`user_id\`, \`first_name\`, \`last_name\`, \`email\`, \`phone\`, \`club_name\`, \`club_slug\`, \`sport_category\`, \`league_division\`, \`founded_year\`, \`stadium_venue\`, \`stadium_capacity\`, \`website\`, \`social_links\`, \`expected_monthly_matches\`, \`description\`, \`custom_fields\`, \`status\`, \`created_at\`, \`updated_at\`) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())`,
+        [
+          appId,
+          userId,
+          String(firstName).trim(),
+          String(lastName).trim(),
+          normalizedEmail,
+          phone ? String(phone).trim() : null,
+          String(clubName).trim(),
+          slug || appId,
+          sportCategory || null,
+          leagueDivision || null,
+          foundedYear || null,
+          stadiumVenue || null,
+          stadiumCapacity || null,
+          website || null,
+          formattedSocial,
+          expectedMonthlyMatches || null,
+          description || null,
+          formattedCustom
+        ]
+      );
+      const baseUrl = getRequestBaseUrl(req);
+      const confirmationEmailHtml = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 32px 24px; background: #0f172a; color: #f8fafc; border-radius: 16px; border: 1px solid #1e293b;">
+          <div style="text-align: center; margin-bottom: 28px;">
+            <div style="display: inline-block; background: linear-gradient(135deg, #eab308, #ca8a04); padding: 10px 20px; border-radius: 10px; font-weight: 900; font-size: 20px; color: #000; letter-spacing: 1px;">
+              WATCHWDS
+            </div>
+            <h1 style="color: #ffffff; font-size: 24px; font-weight: 800; margin: 20px 0 8px 0;">Partner Application Received</h1>
+            <p style="color: #94a3b8; font-size: 14px; margin: 0;">We have received your club onboarding application</p>
+          </div>
+
+          <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+            <p style="margin: 0 0 12px 0; font-size: 16px; color: #f1f5f9;">Hello <strong>${firstName} ${lastName}</strong>,</p>
+            <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
+              Thank you for applying to partner with WatchWDS on behalf of <strong>${clubName}</strong>. Your onboarding application has been submitted successfully and is currently under review by our administration team.
+            </p>
+            
+            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;">
+              <p style="margin: 0 0 8px 0; font-size: 13px; color: #94a3b8;">Application Reference:</p>
+              <p style="margin: 0 0 6px 0; font-size: 14px;"><strong>Application ID:</strong> <code style="color: #eab308; font-weight: bold;">${appId}</code></p>
+              <p style="margin: 0 0 6px 0; font-size: 14px;"><strong>Club Name:</strong> <span style="color: #f8fafc; font-weight: 600;">${clubName}</span></p>
+              <p style="margin: 0 0 6px 0; font-size: 14px;"><strong>System Username:</strong> <code style="color: #38bdf8;">${autoUsername}</code></p>
+              <p style="margin: 0; font-size: 14px;"><strong>Status:</strong> <span style="background: #ca8a04; color: #000; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 800; text-transform: uppercase;">Pending Review</span></p>
+            </div>
+          </div>
+
+          <div style="background: #182234; border-left: 4px solid #eab308; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+            <h3 style="color: #f8fafc; font-size: 14px; margin: 0 0 6px 0; font-weight: 700;">What to Expect Next</h3>
+            <p style="color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 0;">
+              Our partner operations team verifies broadcasting capability, venue credentials, and account details. Reviews typically take <strong>24 to 48 business hours</strong>. You will receive an official approval email with direct Partner Portal dashboard access as soon as your club is verified.
+            </p>
+          </div>
+
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${baseUrl}" style="background: #eab308; color: #000000; padding: 12px 28px; border-radius: 10px; font-weight: 800; text-decoration: none; display: inline-block; font-size: 14px;">Explore WatchWDS</a>
+          </div>
+
+          <hr style="border: none; border-top: 1px solid #1e293b; margin: 24px 0;" />
+          <p style="color: #64748b; font-size: 12px; text-align: center; margin: 0;">
+            Questions or need urgent assistance? Contact us at <a href="mailto:support@watchwds.com" style="color: #eab308; text-decoration: none;">support@watchwds.com</a>.
+          </p>
+        </div>
+      `;
+      dispatchEmail(normalizedEmail, `Partner Club Application Received - ${clubName}`, confirmationEmailHtml).catch((err) => {
+        console.error("Failed to send partner confirmation email:", err);
+      });
+      notifyAdmins(
+        "New Partner Club Application",
+        `${clubName} (${firstName} ${lastName}) applied to join as a Partner Club.`,
+        "system",
+        "/clubs?tab=applications"
+      );
+      res.json({
+        success: true,
+        message: "Your application has been submitted successfully and is pending administrator review.",
+        applicationId: appId,
+        clubName: String(clubName).trim(),
+        username: autoUsername
+      });
+    } catch (e) {
+      console.error("Partner application error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/admin/partner-applications", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      await ensureIncrementalColumns().catch(() => {
+      });
+      const { status = "all", search = "" } = req.query;
+      let sql = "SELECT * FROM `partner_applications` WHERE 1=1";
+      const params = [];
+      if (status && status !== "all") {
+        sql += " AND `status` = ?";
+        params.push(status);
+      }
+      if (search && String(search).trim()) {
+        const term = `%${String(search).trim().toLowerCase()}%`;
+        sql += " AND (LOWER(`club_name`) LIKE ? OR LOWER(`email`) LIKE ? OR LOWER(`first_name`) LIKE ? OR LOWER(`last_name`) LIKE ?)";
+        params.push(term, term, term, term);
+      }
+      sql += " ORDER BY `created_at` DESC";
+      const rows = await query(sql, params);
+      const applications = (rows || []).map((app2) => {
+        let social = app2.social_links;
+        if (typeof social === "string") {
+          try {
+            social = JSON.parse(social);
+          } catch (_) {
+            social = {};
+          }
+        }
+        let custom = app2.custom_fields;
+        if (typeof custom === "string") {
+          try {
+            custom = JSON.parse(custom);
+          } catch (_) {
+            custom = {};
+          }
+        }
+        return {
+          id: app2.id,
+          userId: app2.user_id,
+          firstName: app2.first_name,
+          lastName: app2.last_name,
+          email: app2.email,
+          phone: app2.phone,
+          clubName: app2.club_name,
+          clubSlug: app2.club_slug,
+          sportCategory: app2.sport_category,
+          leagueDivision: app2.league_division,
+          foundedYear: app2.founded_year,
+          stadiumVenue: app2.stadium_venue,
+          stadiumCapacity: app2.stadium_capacity,
+          website: app2.website,
+          socialLinks: social,
+          expectedMonthlyMatches: app2.expected_monthly_matches,
+          description: app2.description,
+          customFields: custom,
+          status: app2.status,
+          adminNotes: app2.admin_notes,
+          rejectionReason: app2.rejection_reason,
+          reviewedBy: app2.reviewed_by,
+          reviewedAt: app2.reviewed_at,
+          approvedClubId: app2.approved_club_id,
+          createdAt: app2.created_at,
+          updatedAt: app2.updated_at
+        };
+      });
+      const statsRows = await query(`
+        SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+          SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+          SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+        FROM \`partner_applications\`
+      `);
+      const stats = statsRows && statsRows[0] ? {
+        total: Number(statsRows[0].total || 0),
+        pending: Number(statsRows[0].pending || 0),
+        approved: Number(statsRows[0].approved || 0),
+        rejected: Number(statsRows[0].rejected || 0)
+      } : { total: 0, pending: 0, approved: 0, rejected: 0 };
+      res.json({ applications, stats });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/admin/partner-applications/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rows = await query("SELECT * FROM `partner_applications` WHERE `id` = ?", [id]);
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      const app2 = rows[0];
+      let social = app2.social_links;
+      if (typeof social === "string") {
+        try {
+          social = JSON.parse(social);
+        } catch (_) {
+          social = {};
+        }
+      }
+      let custom = app2.custom_fields;
+      if (typeof custom === "string") {
+        try {
+          custom = JSON.parse(custom);
+        } catch (_) {
+          custom = {};
+        }
+      }
+      let userAccount = null;
+      if (app2.email) {
+        const uSnap = await db.collection("users").where("email", "==", app2.email).get();
+        if (uSnap.docs && uSnap.docs.length > 0) {
+          const u = uSnap.docs[0].data();
+          userAccount = {
+            id: uSnap.docs[0].id,
+            email: u.email,
+            role: u.role,
+            status: u.status,
+            username: u.username || u.name,
+            club_id: u.club_id
+          };
+        }
+      }
+      let clubAccount = null;
+      if (app2.approved_club_id) {
+        const cDoc = await db.collection("clubs").doc(String(app2.approved_club_id)).get();
+        if (cDoc.exists) clubAccount = { id: cDoc.id, ...cDoc.data() };
+      }
+      res.json({
+        id: app2.id,
+        userId: app2.user_id,
+        firstName: app2.first_name,
+        lastName: app2.last_name,
+        email: app2.email,
+        phone: app2.phone,
+        clubName: app2.club_name,
+        clubSlug: app2.club_slug,
+        sportCategory: app2.sport_category,
+        leagueDivision: app2.league_division,
+        foundedYear: app2.founded_year,
+        stadiumVenue: app2.stadium_venue,
+        stadiumCapacity: app2.stadium_capacity,
+        website: app2.website,
+        socialLinks: social,
+        expectedMonthlyMatches: app2.expected_monthly_matches,
+        description: app2.description,
+        customFields: custom,
+        status: app2.status,
+        adminNotes: app2.admin_notes,
+        rejectionReason: app2.rejection_reason,
+        reviewedBy: app2.reviewed_by,
+        reviewedAt: app2.reviewed_at,
+        approvedClubId: app2.approved_club_id,
+        createdAt: app2.created_at,
+        updatedAt: app2.updated_at,
+        userAccount,
+        clubAccount
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/partner-applications/:id/approve", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        platformFeePercent = 20,
+        clubSharePercent = 80,
+        adminNotes = "",
+        sendEmail = true
+      } = req.body;
+      const rows = await query("SELECT * FROM `partner_applications` WHERE `id` = ?", [id]);
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      const app2 = rows[0];
+      if (app2.status === "approved" && app2.approved_club_id) {
+        return res.status(400).json({ error: "Application is already approved and club is active." });
+      }
+      const clubId = Date.now().toString();
+      const clubSlug = app2.club_slug || app2.club_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || clubId;
+      const clubData = {
+        id: clubId,
+        name: app2.club_name,
+        slug: clubSlug,
+        logo: null,
+        contactEmail: app2.email,
+        stripeAccountId: null,
+        stripeOnboardingComplete: 0,
+        isActive: 1,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await db.collection("clubs").doc(clubId).set(clubData);
+      cacheEngine.invalidateCollection("clubs");
+      const policyId = (Date.now() + 1).toString();
+      const pFee = Number(platformFeePercent) || 20;
+      const cShare = Number(clubSharePercent) || 100 - pFee;
+      const policyData = {
+        id: policyId,
+        clubId: String(clubId),
+        club_id: String(clubId),
+        platformFeePercent: pFee,
+        platform_fee_percent: pFee,
+        clubSharePercent: cShare,
+        club_share_percent: cShare,
+        isActive: 1,
+        is_active: 1,
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await db.collection("revenue_policies").doc(policyId).set(policyData);
+      cacheEngine.invalidateCollection("revenue_policies");
+      await db.collection("club_balances").doc(String(clubId)).set({
+        club_id: String(clubId),
+        available_balance: 0,
+        pending_balance: 0,
+        total_earned: 0,
+        total_paid_out: 0,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      const userSnap = await db.collection("users").where("email", "==", app2.email).get();
+      if (userSnap.docs && userSnap.docs.length > 0) {
+        await userSnap.docs[0].ref.update({
+          status: "active",
+          role: "partner",
+          club_id: String(clubId),
+          onboarding_completed: 1
+        });
+      } else {
+        const fallbackUserId = app2.user_id || (Date.now() + 2).toString();
+        const tempPass = "WDS-" + Math.random().toString(36).substring(2, 8).toUpperCase() + "!";
+        const hashed = await import_bcryptjs.default.hash(tempPass, 10);
+        await db.collection("users").doc(fallbackUserId).set({
+          id: fallbackUserId,
+          email: app2.email,
+          name: `${app2.first_name} ${app2.last_name}`,
+          password: hashed,
+          role: "partner",
+          club_id: String(clubId),
+          balance: 0,
+          status: "active",
+          onboarding_completed: 1,
+          created_at: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      cacheEngine.invalidateCollection("users");
+      await execute(
+        "UPDATE `partner_applications` SET `status` = 'approved', `approved_club_id` = ?, `reviewed_by` = ?, `reviewed_at` = NOW(), `admin_notes` = ? WHERE `id` = ?",
+        [String(clubId), req.user?.email || req.user?.id || "admin", adminNotes || app2.admin_notes || "", id]
+      );
+      if (sendEmail) {
+        const baseUrl = getRequestBaseUrl(req);
+        const approvalEmailHtml = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 32px 24px; background: #0f172a; color: #f8fafc; border-radius: 16px; border: 1px solid #1e293b;">
+            <div style="text-align: center; margin-bottom: 28px;">
+              <div style="display: inline-block; background: linear-gradient(135deg, #10b981, #059669); padding: 10px 20px; border-radius: 10px; font-weight: 900; font-size: 20px; color: #ffffff; letter-spacing: 1px;">
+                WATCHWDS PARTNER
+              </div>
+              <h1 style="color: #ffffff; font-size: 24px; font-weight: 800; margin: 20px 0 8px 0;">Congratulations! You Are Approved</h1>
+              <p style="color: #94a3b8; font-size: 14px; margin: 0;">Your Partner Club account is officially active</p>
+            </div>
+
+            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+              <p style="margin: 0 0 12px 0; font-size: 16px; color: #f1f5f9;">Hello <strong>${app2.first_name} ${app2.last_name}</strong>,</p>
+              <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
+                We are thrilled to welcome <strong>${app2.club_name}</strong> as an official streaming Partner on WatchWDS! Your club account has been approved and your dedicated Partner Dashboard is now accessible.
+              </p>
+
+              <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <p style="margin: 0 0 8px 0; font-size: 13px; color: #94a3b8;">Partner Account Details:</p>
+                <p style="margin: 0 0 6px 0; font-size: 14px;"><strong>Partner Club:</strong> <span style="color: #f8fafc; font-weight: 600;">${app2.club_name}</span></p>
+                <p style="margin: 0 0 6px 0; font-size: 14px;"><strong>Login Email:</strong> <code style="color: #eab308; font-size: 14px;">${app2.email}</code></p>
+                <p style="margin: 0; font-size: 14px;"><strong>Password:</strong> <span style="color: #94a3b8;">(The password you created when applying)</span></p>
+              </div>
+
+              <h4 style="color: #f8fafc; font-size: 14px; margin: 16px 0 8px 0;">Next Steps to Launch Your Broadcasts:</h4>
+              <ol style="color: #cbd5e1; font-size: 13px; line-height: 1.6; padding-left: 20px; margin: 0;">
+                <li style="margin-bottom: 6px;">Sign in at <a href="${baseUrl}/login" style="color: #eab308; text-decoration: none; font-weight: bold;">${baseUrl}/login</a>.</li>
+                <li style="margin-bottom: 6px;">Open your <strong>Partner Dashboard</strong> to complete your Stripe Connect payout onboarding.</li>
+                <li style="margin-bottom: 6px;">Schedule your upcoming home matches and set PPV ticket prices.</li>
+                <li>Access your secure RTMP stream keys on matchday to broadcast directly to your supporters!</li>
+              </ol>
+            </div>
+
+            <div style="text-align: center; margin: 28px 0;">
+              <a href="${baseUrl}/login" style="background: #10b981; color: #ffffff; padding: 14px 32px; border-radius: 10px; font-weight: 800; text-decoration: none; display: inline-block; font-size: 15px;">Log In to Partner Dashboard</a>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid #1e293b; margin: 24px 0;" />
+            <p style="color: #64748b; font-size: 12px; text-align: center; margin: 0;">
+              Welcome to the family! Need onboarding assistance? Reach our team at <a href="mailto:support@watchwds.com" style="color: #10b981; text-decoration: none;">support@watchwds.com</a>.
+            </p>
+          </div>
+        `;
+        dispatchEmail(app2.email, `Partner Club Approved - Welcome ${app2.club_name} to WatchWDS!`, approvalEmailHtml).catch((err) => {
+          console.error("Failed to send partner approval email:", err);
+        });
+      }
+      res.json({
+        success: true,
+        message: `Partner application approved! Club ${app2.club_name} is now active.`,
+        clubId,
+        club: clubData,
+        policy: policyData
+      });
+    } catch (e) {
+      console.error("Partner approval error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/partner-applications/:id/reject", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { reason = "", adminNotes = "", sendEmail = true } = req.body;
+      const rows = await query("SELECT * FROM `partner_applications` WHERE `id` = ?", [id]);
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      const app2 = rows[0];
+      await execute(
+        "UPDATE `partner_applications` SET `status` = 'rejected', `rejection_reason` = ?, `admin_notes` = ?, `reviewed_by` = ?, `reviewed_at` = NOW() WHERE `id` = ?",
+        [reason, adminNotes, req.user?.email || req.user?.id || "admin", id]
+      );
+      const userSnap = await db.collection("users").where("email", "==", app2.email).get();
+      if (userSnap.docs && userSnap.docs.length > 0) {
+        const u = userSnap.docs[0].data();
+        if (u.status === "pending") {
+          await userSnap.docs[0].ref.update({ status: "suspended" });
+        }
+      }
+      cacheEngine.invalidateCollection("users");
+      if (sendEmail) {
+        const rejectionHtml = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 32px 24px; background: #0f172a; color: #f8fafc; border-radius: 16px; border: 1px solid #1e293b;">
+            <div style="text-align: center; margin-bottom: 28px;">
+              <div style="display: inline-block; background: linear-gradient(135deg, #ef4444, #b91c1c); padding: 10px 20px; border-radius: 10px; font-weight: 900; font-size: 20px; color: #ffffff; letter-spacing: 1px;">
+                WATCHWDS
+              </div>
+              <h1 style="color: #ffffff; font-size: 22px; font-weight: 800; margin: 20px 0 8px 0;">Partner Application Status Update</h1>
+              <p style="color: #94a3b8; font-size: 14px; margin: 0;">Regarding your application for ${app2.club_name}</p>
+            </div>
+
+            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+              <p style="margin: 0 0 12px 0; font-size: 16px; color: #f1f5f9;">Hello <strong>${app2.first_name} ${app2.last_name}</strong>,</p>
+              <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
+                Thank you for your interest in partnering with WatchWDS. After reviewing your application for <strong>${app2.club_name}</strong>, our operations team was unable to approve your application at this time.
+              </p>
+              ${reason ? `
+                <div style="background: #0f172a; border-left: 4px solid #ef4444; border-radius: 0 8px 8px 0; padding: 14px 16px; margin: 16px 0;">
+                  <p style="margin: 0 0 4px 0; font-size: 12px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Review Feedback:</p>
+                  <p style="margin: 0; font-size: 14px; color: #f87171;">${reason}</p>
+                </div>
+              ` : ""}
+              <p style="margin: 16px 0 0 0; font-size: 13px; line-height: 1.5; color: #94a3b8;">
+                If you believe this decision was made in error or if your club's broadcasting circumstances change, you are welcome to reach out to our team or reapply with updated details.
+              </p>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid #1e293b; margin: 24px 0;" />
+            <p style="color: #64748b; font-size: 12px; text-align: center; margin: 0;">
+              Contact support at <a href="mailto:support@watchwds.com" style="color: #eab308; text-decoration: none;">support@watchwds.com</a>.
+            </p>
+          </div>
+        `;
+        dispatchEmail(app2.email, `Partner Application Status - ${app2.club_name}`, rejectionHtml).catch((err) => {
+          console.error("Failed to send partner rejection email:", err);
+        });
+      }
+      res.json({ success: true, message: "Partner application has been rejected." });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/admin/partner-onboarding-fields", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      await ensureIncrementalColumns().catch(() => {
+      });
+      const rows = await query("SELECT * FROM `partner_onboarding_fields` ORDER BY `order_index` ASC");
+      const fields = (rows || []).map((f) => {
+        let options = f.options;
+        if (typeof options === "string") {
+          try {
+            options = JSON.parse(options);
+          } catch (_) {
+            options = [];
+          }
+        }
+        return {
+          id: f.id,
+          fieldKey: f.field_key,
+          label: f.label,
+          fieldType: f.field_type,
+          placeholder: f.placeholder,
+          description: f.description,
+          options,
+          required: Boolean(f.required),
+          step: f.step || 3,
+          orderIndex: f.order_index,
+          isActive: Boolean(f.is_active),
+          createdAt: f.created_at,
+          updatedAt: f.updated_at
+        };
+      });
+      res.json({ fields });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/partner-onboarding-fields", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      await ensureIncrementalColumns().catch(() => {
+      });
+      const {
+        id: fieldId,
+        fieldKey,
+        label,
+        fieldType = "text",
+        placeholder = "",
+        description = "",
+        options = [],
+        required = false,
+        step = 3,
+        orderIndex = 0,
+        isActive = true
+      } = req.body;
+      if (!fieldKey || !label) {
+        return res.status(400).json({ error: "Field key and label are required." });
+      }
+      const formattedKey = String(fieldKey).toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+      const formattedOptions = Array.isArray(options) ? JSON.stringify(options) : typeof options === "string" ? options : null;
+      if (fieldId) {
+        await execute(
+          `UPDATE \`partner_onboarding_fields\` 
+          SET \`label\` = ?, \`field_type\` = ?, \`placeholder\` = ?, \`description\` = ?, \`options\` = ?, \`required\` = ?, \`step\` = ?, \`order_index\` = ?, \`is_active\` = ? 
+          WHERE \`id\` = ?`,
+          [label, fieldType, placeholder || null, description || null, formattedOptions, required ? 1 : 0, Number(step) || 3, Number(orderIndex) || 0, isActive ? 1 : 0, fieldId]
+        );
+        res.json({ success: true, message: "Onboarding field updated successfully." });
+      } else {
+        const newId = "field_" + Date.now().toString() + Math.random().toString(36).substring(2, 5);
+        await execute(
+          `INSERT INTO \`partner_onboarding_fields\` 
+          (\`id\`, \`field_key\`, \`label\`, \`field_type\`, \`placeholder\`, \`description\`, \`options\`, \`required\`, \`step\`, \`order_index\`, \`is_active\`) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [newId, formattedKey, label, fieldType, placeholder || null, description || null, formattedOptions, required ? 1 : 0, Number(step) || 3, Number(orderIndex) || 0, isActive ? 1 : 0]
+        );
+        res.json({ success: true, message: "Onboarding field created successfully.", id: newId });
+      }
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.delete("/api/admin/partner-onboarding-fields/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await execute("DELETE FROM `partner_onboarding_fields` WHERE `id` = ?", [id]);
+      res.json({ success: true, message: "Onboarding field deleted successfully." });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

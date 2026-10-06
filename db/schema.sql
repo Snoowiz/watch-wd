@@ -556,3 +556,81 @@ CREATE TABLE IF NOT EXISTS `feedback_responses` (
   INDEX `idx_resp_feedback` (`feedback_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- MATCH VIEW SESSIONS & AUDIENCE ENGAGEMENT
+CREATE TABLE IF NOT EXISTS `match_view_sessions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `session_id` VARCHAR(100) NOT NULL UNIQUE,
+  `user_id` INT DEFAULT NULL,
+  `match_id` VARCHAR(100) NOT NULL,
+  `match_title` VARCHAR(255) DEFAULT NULL,
+  `access_type` VARCHAR(32) DEFAULT 'free',
+  `playback_type` VARCHAR(32) DEFAULT 'live',
+  `attempted_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `authenticated_at` DATETIME DEFAULT NULL,
+  `play_started_at` DATETIME DEFAULT NULL,
+  `last_heartbeat_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `watch_duration_seconds` INT DEFAULT 0,
+  `status` VARCHAR(32) DEFAULT 'attempted',
+  `device_type` VARCHAR(64) DEFAULT NULL,
+  `ip_address` VARCHAR(64) DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_mvs_match` (`match_id`),
+  INDEX `idx_mvs_user` (`user_id`),
+  INDEX `idx_mvs_status` (`status`),
+  INDEX `idx_mvs_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- PARTNER APPLICATIONS & ONBOARDING
+-- ============================================
+CREATE TABLE IF NOT EXISTS `partner_applications` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `user_id` VARCHAR(100) DEFAULT NULL,
+  `first_name` VARCHAR(100) NOT NULL,
+  `last_name` VARCHAR(100) NOT NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `phone` VARCHAR(100) DEFAULT NULL,
+  `club_name` VARCHAR(255) NOT NULL,
+  `club_slug` VARCHAR(255) DEFAULT NULL,
+  `sport_category` VARCHAR(100) DEFAULT NULL,
+  `league_division` VARCHAR(100) DEFAULT NULL,
+  `founded_year` VARCHAR(10) DEFAULT NULL,
+  `stadium_venue` VARCHAR(255) DEFAULT NULL,
+  `stadium_capacity` VARCHAR(50) DEFAULT NULL,
+  `website` VARCHAR(255) DEFAULT NULL,
+  `social_links` JSON DEFAULT NULL,
+  `expected_monthly_matches` VARCHAR(50) DEFAULT NULL,
+  `description` TEXT DEFAULT NULL,
+  `custom_fields` JSON DEFAULT NULL,
+  `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  `admin_notes` TEXT DEFAULT NULL,
+  `rejection_reason` TEXT DEFAULT NULL,
+  `reviewed_by` VARCHAR(100) DEFAULT NULL,
+  `reviewed_at` DATETIME DEFAULT NULL,
+  `approved_club_id` VARCHAR(100) DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_pa_status` (`status`),
+  INDEX `idx_pa_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `partner_onboarding_fields` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `field_key` VARCHAR(100) NOT NULL UNIQUE,
+  `label` VARCHAR(255) NOT NULL,
+  `field_type` VARCHAR(50) NOT NULL DEFAULT 'text',
+  `placeholder` VARCHAR(255) DEFAULT NULL,
+  `description` TEXT DEFAULT NULL,
+  `options` JSON DEFAULT NULL,
+  `required` TINYINT(1) DEFAULT 0,
+  `step` INT DEFAULT 3,
+  `order_index` INT DEFAULT 0,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_pof_order` (`order_index`),
+  INDEX `idx_pof_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
