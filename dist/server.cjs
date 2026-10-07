@@ -30,7 +30,10 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var server_exports = {};
 __export(server_exports, {
   ensureIncrementalColumns: () => ensureIncrementalColumns,
-  getStripeClient: () => getStripeClient
+  executeStripeWithFallback: () => executeStripeWithFallback,
+  getStripeClient: () => getStripeClient,
+  sanitizeStripeKey: () => sanitizeStripeKey,
+  stripeHttpsAgent: () => stripeHttpsAgent
 });
 module.exports = __toCommonJS(server_exports);
 var import_express2 = __toESM(require("express"), 1);
@@ -2107,14 +2110,35 @@ var stripeHttpsAgent = new import_https.default.Agent({
   family: 4,
   timeout: 3e4
 });
-function getStripeClient(secretKey) {
-  const trimmed = (secretKey || "").trim();
-  return new import_stripe.default(trimmed, {
+function sanitizeStripeKey(key) {
+  if (!key) return "";
+  return key.replace(/[^\x21-\x7E]/g, "").replace(/^["']|["']$/g, "").trim();
+}
+function getStripeClient(secretKey, preferNodeClient = false) {
+  const sanitizedKey = sanitizeStripeKey(secretKey);
+  const httpClient = !preferNodeClient && typeof globalThis.fetch === "function" ? import_stripe.default.createFetchHttpClient() : import_stripe.default.createNodeHttpClient(stripeHttpsAgent);
+  return new import_stripe.default(sanitizedKey, {
     apiVersion: "2023-10-16",
+    httpClient,
     httpAgent: stripeHttpsAgent,
     timeout: 3e4,
     maxNetworkRetries: 2
   });
+}
+async function executeStripeWithFallback(secretKey, operation) {
+  const sanitizedKey = sanitizeStripeKey(secretKey);
+  try {
+    const primaryClient = getStripeClient(sanitizedKey, false);
+    return await operation(primaryClient);
+  } catch (err) {
+    const isConnErr = err?.name === "StripeConnectionError" || err?.message?.includes("connection to Stripe") || err?.code === "ERR_INVALID_CHAR";
+    if (isConnErr) {
+      console.warn("[Stripe] Primary fetch client encountered connection error, attempting fallback with IPv4 Node client:", err.message);
+      const fallbackClient = getStripeClient(sanitizedKey, true);
+      return await operation(fallbackClient);
+    }
+    throw err;
+  }
 }
 import_dotenv2.default.config();
 function sanitizeMatchForPublic(match) {
@@ -5299,7 +5323,7 @@ async function startServer() {
       const metadata = req.body.metadata ? { ...req.body.metadata } : {};
       let amount = Number(req.body.amount);
       const userId = req.user.id.toString();
-      const origin = req.headers.origin || "https://watchwds.com";
+      const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || "https"}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, "");
       let connectedAccountId = null;
       let platformFeePercent = 20;
       if (type === "watch" && metadata?.matchId) {
@@ -5369,8 +5393,7 @@ async function startServer() {
         const targetCurrency = settings.stripe.merchantCurrency || currency;
         const totalAmountCents = Math.round(Number(amount) * 100);
         const applicationFeeAmount = Math.round(totalAmountCents * (platformFeePercent / 100));
-        const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
-        const stripe = getStripeClient(stripeSecretKey);
+        const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
         const sessionParams = {
           payment_method_types: ["card"],
           line_items: [
@@ -5401,7 +5424,10 @@ async function startServer() {
           metadata.applicationFeeCents = applicationFeeAmount;
           if (connectedAccountId) {
             try {
-              const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+              const connectedAccount = await executeStripeWithFallback(
+                stripeSecretKey,
+                (client) => client.accounts.retrieve(connectedAccountId)
+              );
               if (connectedAccount.capabilities?.transfers === "active") {
                 sessionParams.payment_intent_data = {
                   application_fee_amount: applicationFeeAmount,
@@ -5425,7 +5451,10 @@ async function startServer() {
             }
           }
         }
-        const session = await stripe.checkout.sessions.create(sessionParams);
+        const session = await executeStripeWithFallback(
+          stripeSecretKey,
+          (client) => client.checkout.sessions.create(sessionParams)
+        );
         return res.json({ checkoutUrl: session.url });
       }
       if (gateway === "paypal") {
@@ -5503,10 +5532,22 @@ async function startServer() {
         if (!d.status) throw new Error(d.message);
         return res.json({ checkoutUrl: d.data.authorization_url });
       }
-      throw new Error("Unsupported gateway");
     } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      console.error("[Initialize] Checkout error:", {
+        name: e?.name,
+        code: e?.code,
+        type: e?.type,
+        message: e?.message,
+        detail: e?.detail?.message || e?.detail,
+        cause: e?.cause?.message || e?.cause
+      });
+      let errMsg = e?.message || "Payment initialization failed. Please try again.";
+      if (e?.name === "StripeConnectionError" || e?.message?.includes("connection to Stripe")) {
+        errMsg = "Unable to connect to Stripe payment services. Please check your internet connection or verify Stripe credentials in Admin Settings.";
+      } else if (e?.name === "StripeAuthenticationError") {
+        errMsg = "Stripe authentication failed. Please check your Stripe Secret Key in Admin > Settings > Payment Settings.";
+      }
+      res.status(500).json({ error: errMsg });
     }
   });
   app.post("/api/checkout/gateway/verify", authenticate, async (req, res) => {
@@ -5543,9 +5584,11 @@ async function startServer() {
         if (!settings?.stripe?.secretKey && !process.env.STRIPE_SECRET_KEY) {
           isVerified = true;
         } else {
-          const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
-          const stripe = getStripeClient(stripeSecretKey);
-          stripeSession = await stripe.checkout.sessions.retrieve(session_id);
+          const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
+          stripeSession = await executeStripeWithFallback(
+            stripeSecretKey,
+            (client) => client.checkout.sessions.retrieve(session_id)
+          );
           if (stripeSession.payment_status === "paid") isVerified = true;
         }
       }
@@ -7108,23 +7151,25 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const club = clubDoc.data();
       const paySettingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const paySettings = paySettingsDoc.exists ? paySettingsDoc.data() : {};
-      const stripeSecretKey = (paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      const stripeSecretKey = sanitizeStripeKey(paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY || "");
       if (!stripeSecretKey) return res.status(500).json({ error: "Stripe is not configured" });
-      const stripe = getStripeClient(stripeSecretKey);
       let connectedAccountId = club.stripe_account_id || club.stripeAccountId;
       if (!connectedAccountId) {
-        const account = await stripe.accounts.create({
-          type: "express",
-          country: "GB",
-          email: club.contact_email || club.contactEmail || void 0,
-          capabilities: {
-            transfers: { requested: true },
-            card_payments: { requested: true }
-          },
-          business_profile: {
-            name: club.name
-          }
-        });
+        const account = await executeStripeWithFallback(
+          stripeSecretKey,
+          (client) => client.accounts.create({
+            type: "express",
+            country: "GB",
+            email: club.contact_email || club.contactEmail || void 0,
+            capabilities: {
+              transfers: { requested: true },
+              card_payments: { requested: true }
+            },
+            business_profile: {
+              name: club.name
+            }
+          })
+        );
         connectedAccountId = account.id;
         await db.collection("clubs").doc(String(id)).update({
           stripeAccountId: connectedAccountId,
@@ -7132,13 +7177,16 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         });
         cacheEngine.invalidateCollection("clubs");
       }
-      const origin = req.headers.origin || "https://watchwds.com";
-      const accountLink = await stripe.accountLinks.create({
-        account: connectedAccountId,
-        refresh_url: `${origin}/admin/clubs?onboarding=refresh&clubId=${id}`,
-        return_url: `${origin}/admin/clubs?onboarding=success&clubId=${id}`,
-        type: "account_onboarding"
-      });
+      const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || "https"}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, "");
+      const accountLink = await executeStripeWithFallback(
+        stripeSecretKey,
+        (client) => client.accountLinks.create({
+          account: connectedAccountId,
+          refresh_url: `${origin}/admin/clubs?onboarding=refresh&clubId=${id}`,
+          return_url: `${origin}/admin/clubs?onboarding=success&clubId=${id}`,
+          type: "account_onboarding"
+        })
+      );
       res.json({ success: true, url: accountLink.url, accountId: connectedAccountId });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -8291,26 +8339,31 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!onboarded) return { success: false, error: "Club Stripe onboarding not complete" };
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
       if (!stripeSecretKey) return { success: false, error: "Stripe not configured" };
-      const stripe = getStripeClient(stripeSecretKey);
       const payoutCurrency = (config.currency || "GBP").toLowerCase();
       const amountCents = Math.round(availableBalance * 100);
       try {
-        const connectedAccount = await stripe.accounts.retrieve(stripeAccountId);
+        const connectedAccount = await executeStripeWithFallback(
+          stripeSecretKey,
+          (client) => client.accounts.retrieve(stripeAccountId)
+        );
         if (connectedAccount.capabilities?.transfers !== "active") {
           return { success: false, error: "Partner account transfers capability is not active. Onboarding may be incomplete." };
         }
       } catch (acctErr) {
         return { success: false, error: `Could not verify partner Stripe account: ${acctErr.message}` };
       }
-      const transfer = await stripe.transfers.create({
-        amount: amountCents,
-        currency: payoutCurrency,
-        destination: stripeAccountId,
-        description: `Payout to ${club.name || clubId} \u2014 ${forceOverrideThreshold ? "manual force" : config.instantSplit ? "instant split" : "threshold auto"}`,
-        metadata: { clubId, method: forceOverrideThreshold ? "manual" : config.instantSplit ? "instant" : "auto" }
-      });
+      const transfer = await executeStripeWithFallback(
+        stripeSecretKey,
+        (client) => client.transfers.create({
+          amount: amountCents,
+          currency: payoutCurrency,
+          destination: stripeAccountId,
+          description: `Payout to ${club.name || clubId} \u2014 ${forceOverrideThreshold ? "manual force" : config.instantSplit ? "instant split" : "threshold auto"}`,
+          metadata: { clubId, method: forceOverrideThreshold ? "manual" : config.instantSplit ? "instant" : "auto" }
+        })
+      );
       const payoutId = `po_${Date.now()}_${clubId}`;
       await db.collection("payouts").doc(payoutId).set({
         id: payoutId,
@@ -8403,7 +8456,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     try {
       const { matchId, gateway = "stripe", currency = "GBP" } = req.body;
       const userId = req.user.id.toString();
-      const origin = req.headers.origin || "https://watchwds.com";
+      const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || "https"}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, "");
       const matchDoc = await db.collection("matches").doc(String(matchId)).get();
       if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
       const match = matchDoc.data();
@@ -8457,7 +8510,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       });
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
       if (gateway === "stripe") {
         if (!settings?.stripe?.enabled || !stripeSecretKey) {
           const returnUrl = `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_connect_session&gateway=stripe`;
@@ -8468,7 +8521,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             error: "Invalid Stripe Secret Key: An API Key Identifier (starts with 'mk_') was entered. Please enter your actual Stripe Secret Key (starts with 'sk_test_', 'sk_live_', or 'rk_') in Admin > Settings > Payment Settings."
           });
         }
-        const stripe = getStripeClient(stripeSecretKey);
         const targetCurrency = (settings.stripe?.merchantCurrency || currency || "GBP").toLowerCase();
         const sessionParams = {
           payment_method_types: ["card"],
@@ -8503,7 +8555,10 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             return res.status(409).json({ error: "Partner club has no Stripe connected account. Cannot process split payment." });
           }
           try {
-            const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+            const connectedAccount = await executeStripeWithFallback(
+              stripeSecretKey,
+              (client) => client.accounts.retrieve(connectedAccountId)
+            );
             const transfersCapability = connectedAccount.capabilities?.transfers;
             if (transfersCapability !== "active") {
               return res.status(409).json({ error: "Partner account is not yet eligible to receive transfers. Onboarding may be incomplete." });
@@ -8527,13 +8582,28 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             }
           };
         }
-        const session = await stripe.checkout.sessions.create(sessionParams);
+        const session = await executeStripeWithFallback(
+          stripeSecretKey,
+          (client) => client.checkout.sessions.create(sessionParams)
+        );
         return res.json({ checkoutUrl: session.url });
       }
       return res.status(400).json({ error: "Only Stripe is supported for PPV Connect payments" });
     } catch (e) {
-      console.error("Connect PPV checkout error:", e);
-      const errMsg = e?.message || "An error occurred with our connection to Stripe. Please try again.";
+      console.error("Connect PPV checkout error:", {
+        name: e?.name,
+        code: e?.code,
+        type: e?.type,
+        message: e?.message,
+        detail: e?.detail?.message || e?.detail,
+        cause: e?.cause?.message || e?.cause
+      });
+      let errMsg = e?.message || "An error occurred with our connection to Stripe. Please try again.";
+      if (e?.name === "StripeConnectionError" || e?.message?.includes("connection to Stripe")) {
+        errMsg = "Unable to connect to Stripe payment services. Please check your internet connection or verify Stripe credentials in Admin Settings.";
+      } else if (e?.name === "StripeAuthenticationError") {
+        errMsg = "Stripe authentication failed. Please check your Stripe Secret Key in Admin > Settings > Payment Settings.";
+      }
       res.status(500).json({ error: errMsg });
     }
   });
@@ -9761,6 +9831,9 @@ startServer().catch((err) => {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   ensureIncrementalColumns,
-  getStripeClient
+  executeStripeWithFallback,
+  getStripeClient,
+  sanitizeStripeKey,
+  stripeHttpsAgent
 });
 //# sourceMappingURL=server.cjs.map

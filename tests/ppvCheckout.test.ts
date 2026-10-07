@@ -1,13 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
-import { getStripeClient } from '../server.js';
+import { getStripeClient, sanitizeStripeKey, executeStripeWithFallback } from '../server.js';
 import https from 'https';
 
 describe('PPV Stripe Checkout & Revenue Modes Suite', () => {
 
-  describe('1. Resilient IPv4 Stripe Client Configuration', () => {
-    it('should initialize Stripe client with IPv4 HTTPS Agent and correct timeout', () => {
+  describe('1. Resilient Dual-Engine Stripe Client Configuration & Fallback', () => {
+    it('should initialize primary Stripe client with FetchHttpClient for modern TLS 1.3 / cipher compatibility', () => {
       const dummyKey = 'sk_test_mockKeyForTesting12345';
-      const stripe = getStripeClient(dummyKey);
+      const stripe = getStripeClient(dummyKey, false);
+
+      expect(stripe).toBeDefined();
+      const internalApi = (stripe as any)._api;
+      expect(internalApi).toBeDefined();
+      expect(internalApi.timeout).toBe(30000);
+      expect(internalApi.maxNetworkRetries).toBe(2);
+      expect(internalApi.httpClient.getClientName()).toBe('fetch');
+    });
+
+    it('should initialize fallback Stripe client with IPv4 HTTPS Agent and correct family: 4 option', () => {
+      const dummyKey = 'sk_test_mockKeyForTesting12345';
+      const stripe = getStripeClient(dummyKey, true);
 
       expect(stripe).toBeDefined();
       const internalApi = (stripe as any)._api;
@@ -22,10 +34,30 @@ describe('PPV Stripe Checkout & Revenue Modes Suite', () => {
       expect((agent as any).options?.keepAlive).toBe(true);
     });
 
-    it('should cleanly trim whitespace and newlines from Stripe secret key', () => {
-      const paddedKey = '  sk_test_paddedKey123 \n ';
-      const stripe = getStripeClient(paddedKey);
+    it('should sanitize non-printable characters, newlines, tabs, and quotes from Stripe keys', () => {
+      const dirtyKey = ' " sk_test_paddedKey123\r\n\t " ';
+      const sanitized = sanitizeStripeKey(dirtyKey);
+      expect(sanitized).toBe('sk_test_paddedKey123');
+
+      const stripe = getStripeClient(dirtyKey);
       expect((stripe as any)._authenticator).toBeDefined();
+    });
+
+    it('should execute operation using executeStripeWithFallback and automatically fallback if connection error occurs', async () => {
+      let callCount = 0;
+      const res = await executeStripeWithFallback('sk_test_mockKey', async (client) => {
+        callCount++;
+        if (callCount === 1) {
+          const connErr = new Error('An error occurred with our connection to Stripe. Request was retried 2 times.');
+          connErr.name = 'StripeConnectionError';
+          throw connErr;
+        }
+        return { success: true, clientName: (client as any)._api.httpClient.getClientName() };
+      });
+
+      expect(callCount).toBe(2);
+      expect(res.success).toBe(true);
+      expect(res.clientName).toBe('node');
     });
   });
 

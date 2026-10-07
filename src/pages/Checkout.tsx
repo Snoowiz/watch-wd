@@ -77,10 +77,6 @@ export function Checkout() {
       console.error(err);
       setStatus('failed');
       setErrorMessage(err.message || 'Payment initialization failed');
-      setTimeout(() => {
-        setStatus('idle');
-        setErrorMessage('');
-      }, 5000);
     }
   };
 
@@ -195,6 +191,21 @@ export function Checkout() {
               <p className="text-slate-500 dark:text-slate-400">
                 {errorMessage || 'There was a problem initializing the payment.'}
               </p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={processPayment}
+                className="w-full py-3.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 transition-all flex items-center justify-center gap-2"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={handleCancel}
+                className="w-full py-3 rounded-xl font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+              >
+                Go Back
+              </button>
             </div>
           </div>
         ) : (

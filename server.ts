@@ -18,20 +18,51 @@ if (dns.setDefaultResultOrder) {
 }
 
 // Resilient IPv4 HTTPS Agent for Stripe to prevent IPv6 connectivity timeouts/retries on Hostinger VPS
-const stripeHttpsAgent = new https.Agent({
+export const stripeHttpsAgent = new https.Agent({
   keepAlive: true,
   family: 4,
   timeout: 30000,
 });
 
-export function getStripeClient(secretKey: string): Stripe {
-  const trimmed = (secretKey || "").trim();
-  return new Stripe(trimmed, {
+export function sanitizeStripeKey(key: string): string {
+  if (!key) return "";
+  return key.replace(/[^\x21-\x7E]/g, "").replace(/^["']|["']$/g, "").trim();
+}
+
+export function getStripeClient(secretKey: string, preferNodeClient: boolean = false): Stripe {
+  const sanitizedKey = sanitizeStripeKey(secretKey);
+  const httpClient = (!preferNodeClient && typeof globalThis.fetch === "function")
+    ? Stripe.createFetchHttpClient()
+    : Stripe.createNodeHttpClient(stripeHttpsAgent);
+
+  return new Stripe(sanitizedKey, {
     apiVersion: "2023-10-16" as any,
+    httpClient,
     httpAgent: stripeHttpsAgent,
     timeout: 30000,
     maxNetworkRetries: 2,
   });
+}
+
+export async function executeStripeWithFallback<T>(
+  secretKey: string,
+  operation: (stripe: Stripe) => Promise<T>
+): Promise<T> {
+  const sanitizedKey = sanitizeStripeKey(secretKey);
+  try {
+    const primaryClient = getStripeClient(sanitizedKey, false);
+    return await operation(primaryClient);
+  } catch (err: any) {
+    const isConnErr = err?.name === "StripeConnectionError" ||
+                      err?.message?.includes("connection to Stripe") ||
+                      err?.code === "ERR_INVALID_CHAR";
+    if (isConnErr) {
+      console.warn("[Stripe] Primary fetch client encountered connection error, attempting fallback with IPv4 Node client:", err.message);
+      const fallbackClient = getStripeClient(sanitizedKey, true);
+      return await operation(fallbackClient);
+    }
+    throw err;
+  }
 }
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
@@ -3764,7 +3795,7 @@ async function startServer() {
       const metadata = req.body.metadata ? { ...req.body.metadata } : {};
       let amount = Number(req.body.amount);
       const userId = req.user.id.toString();
-      const origin = req.headers.origin || "https://watchwds.com";
+      const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || 'https'}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, '');
 
       // Enforce Server-Authoritative Pricing and Partner Club Connect Resolution
       let connectedAccountId: string | null = null;
@@ -3853,8 +3884,7 @@ async function startServer() {
         const totalAmountCents = Math.round(Number(amount) * 100);
         const applicationFeeAmount = Math.round(totalAmountCents * (platformFeePercent / 100));
 
-        const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
-        const stripe = getStripeClient(stripeSecretKey);
+        const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
         const sessionParams: any = {
           payment_method_types: ["card"],
           line_items: [
@@ -3887,7 +3917,9 @@ async function startServer() {
           // Add Stripe Connect destination charge routing for PPV payments with a connected partner account
           if (connectedAccountId) {
             try {
-              const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+              const connectedAccount = await executeStripeWithFallback(stripeSecretKey, (client) =>
+                client.accounts.retrieve(connectedAccountId!)
+              );
               if (connectedAccount.capabilities?.transfers === 'active') {
                 sessionParams.payment_intent_data = {
                   application_fee_amount: applicationFeeAmount,
@@ -3915,7 +3947,9 @@ async function startServer() {
           }
         }
 
-        const session = await stripe.checkout.sessions.create(sessionParams);
+        const session = await executeStripeWithFallback(stripeSecretKey, (client) =>
+          client.checkout.sessions.create(sessionParams)
+        );
         
         return res.json({ checkoutUrl: session.url });
       }
@@ -4005,10 +4039,22 @@ async function startServer() {
         return res.json({ checkoutUrl: d.data.authorization_url });
       }
 
-      throw new Error("Unsupported gateway");
     } catch (e: any) {
-      console.error(e);
-      res.status(500).json({ error: e.message });
+      console.error("[Initialize] Checkout error:", {
+        name: e?.name,
+        code: e?.code,
+        type: e?.type,
+        message: e?.message,
+        detail: e?.detail?.message || e?.detail,
+        cause: e?.cause?.message || e?.cause,
+      });
+      let errMsg = e?.message || "Payment initialization failed. Please try again.";
+      if (e?.name === "StripeConnectionError" || e?.message?.includes("connection to Stripe")) {
+        errMsg = "Unable to connect to Stripe payment services. Please check your internet connection or verify Stripe credentials in Admin Settings.";
+      } else if (e?.name === "StripeAuthenticationError") {
+        errMsg = "Stripe authentication failed. Please check your Stripe Secret Key in Admin > Settings > Payment Settings.";
+      }
+      res.status(500).json({ error: errMsg });
     }
   });
 
@@ -4050,9 +4096,10 @@ async function startServer() {
         if (!settings?.stripe?.secretKey && !process.env.STRIPE_SECRET_KEY) {
           isVerified = true;
         } else {
-          const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
-          const stripe = getStripeClient(stripeSecretKey);
-          stripeSession = await stripe.checkout.sessions.retrieve(session_id);
+          const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
+          stripeSession = await executeStripeWithFallback(stripeSecretKey, (client) =>
+            client.checkout.sessions.retrieve(session_id)
+          );
           if (stripeSession.payment_status === "paid") isVerified = true;
         }
       }
@@ -5810,27 +5857,27 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
       const paySettingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const paySettings = paySettingsDoc.exists ? paySettingsDoc.data() : {};
-      const stripeSecretKey = (paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      const stripeSecretKey = sanitizeStripeKey(paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY || "");
       if (!stripeSecretKey) return res.status(500).json({ error: "Stripe is not configured" });
-
-      const stripe = getStripeClient(stripeSecretKey);
 
       let connectedAccountId = club.stripe_account_id || club.stripeAccountId;
       
       // If club does not have a Stripe Express account, create one
       if (!connectedAccountId) {
-        const account = await stripe.accounts.create({
-          type: 'express',
-          country: 'GB',
-          email: club.contact_email || club.contactEmail || undefined,
-          capabilities: {
-            transfers: { requested: true },
-            card_payments: { requested: true },
-          },
-          business_profile: {
-            name: club.name,
-          }
-        });
+        const account = await executeStripeWithFallback(stripeSecretKey, (client) =>
+          client.accounts.create({
+            type: 'express',
+            country: 'GB',
+            email: club.contact_email || club.contactEmail || undefined,
+            capabilities: {
+              transfers: { requested: true },
+              card_payments: { requested: true },
+            },
+            business_profile: {
+              name: club.name,
+            }
+          })
+        );
         connectedAccountId = account.id;
         await db.collection("clubs").doc(String(id)).update({
           stripeAccountId: connectedAccountId,
@@ -5839,13 +5886,15 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         cacheEngine.invalidateCollection("clubs");
       }
 
-      const origin = req.headers.origin || "https://watchwds.com";
-      const accountLink = await stripe.accountLinks.create({
-        account: connectedAccountId,
-        refresh_url: `${origin}/admin/clubs?onboarding=refresh&clubId=${id}`,
-        return_url: `${origin}/admin/clubs?onboarding=success&clubId=${id}`,
-        type: 'account_onboarding',
-      });
+      const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || 'https'}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, '');
+      const accountLink = await executeStripeWithFallback(stripeSecretKey, (client) =>
+        client.accountLinks.create({
+          account: connectedAccountId,
+          refresh_url: `${origin}/admin/clubs?onboarding=refresh&clubId=${id}`,
+          return_url: `${origin}/admin/clubs?onboarding=success&clubId=${id}`,
+          type: 'account_onboarding',
+        })
+      );
 
       res.json({ success: true, url: accountLink.url, accountId: connectedAccountId });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -7137,16 +7186,17 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       // Load platform Stripe key
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
       if (!stripeSecretKey) return { success: false, error: "Stripe not configured" };
 
-      const stripe = getStripeClient(stripeSecretKey);
       const payoutCurrency = (config.currency || "GBP").toLowerCase();
       const amountCents = Math.round(availableBalance * 100);
 
       // Verify connected account can receive transfers before attempting
       try {
-        const connectedAccount = await stripe.accounts.retrieve(stripeAccountId);
+        const connectedAccount = await executeStripeWithFallback(stripeSecretKey, (client) =>
+          client.accounts.retrieve(stripeAccountId)
+        );
         if (connectedAccount.capabilities?.transfers !== 'active') {
           return { success: false, error: "Partner account transfers capability is not active. Onboarding may be incomplete." };
         }
@@ -7155,13 +7205,15 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       }
 
       // Create a transfer from the platform balance to the connected account
-      const transfer = await stripe.transfers.create({
-        amount: amountCents,
-        currency: payoutCurrency,
-        destination: stripeAccountId,
-        description: `Payout to ${club.name || clubId} — ${forceOverrideThreshold ? 'manual force' : config.instantSplit ? 'instant split' : 'threshold auto'}`,
-        metadata: { clubId, method: forceOverrideThreshold ? "manual" : (config.instantSplit ? "instant" : "auto") }
-      });
+      const transfer = await executeStripeWithFallback(stripeSecretKey, (client) =>
+        client.transfers.create({
+          amount: amountCents,
+          currency: payoutCurrency,
+          destination: stripeAccountId,
+          description: `Payout to ${club.name || clubId} — ${forceOverrideThreshold ? 'manual force' : config.instantSplit ? 'instant split' : 'threshold auto'}`,
+          metadata: { clubId, method: forceOverrideThreshold ? "manual" : (config.instantSplit ? "instant" : "auto") }
+        })
+      );
 
       // Record payout in DB
       const payoutId = `po_${Date.now()}_${clubId}`;
@@ -7268,7 +7320,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     try {
       const { matchId, gateway = "stripe", currency = "GBP" } = req.body;
       const userId = req.user.id.toString();
-      const origin = req.headers.origin || "https://watchwds.com";
+      const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || 'https'}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, '');
 
       // 1. Load match to get club_id and ppv_price
       const matchDoc = await db.collection("matches").doc(String(matchId)).get();
@@ -7349,7 +7401,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       // 6. Initialize Stripe Checkout
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
 
       if (gateway === "stripe") {
         if (!settings?.stripe?.enabled || !stripeSecretKey) {
@@ -7363,7 +7415,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           });
         }
 
-        const stripe = getStripeClient(stripeSecretKey);
         const targetCurrency = (settings.stripe?.merchantCurrency || currency || "GBP").toLowerCase();
 
         const sessionParams: any = {
@@ -7406,7 +7457,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           }
 
           try {
-            const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
+            const connectedAccount = await executeStripeWithFallback(stripeSecretKey, (client) =>
+              client.accounts.retrieve(connectedAccountId!)
+            );
             const transfersCapability = connectedAccount.capabilities?.transfers;
             if (transfersCapability !== 'active') {
               return res.status(409).json({ error: "Partner account is not yet eligible to receive transfers. Onboarding may be incomplete." });
@@ -7435,15 +7488,29 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         // No payment_intent_data transfer_data is attached.
         // The customer pays the platform directly, retaining 100% of revenue.
 
-        const session = await stripe.checkout.sessions.create(sessionParams);
+        const session = await executeStripeWithFallback(stripeSecretKey, (client) =>
+          client.checkout.sessions.create(sessionParams)
+        );
         return res.json({ checkoutUrl: session.url });
       }
 
       // Fallback for other gateways — use standard checkout flow
       return res.status(400).json({ error: "Only Stripe is supported for PPV Connect payments" });
     } catch (e: any) {
-      console.error("Connect PPV checkout error:", e);
-      const errMsg = e?.message || "An error occurred with our connection to Stripe. Please try again.";
+      console.error("Connect PPV checkout error:", {
+        name: e?.name,
+        code: e?.code,
+        type: e?.type,
+        message: e?.message,
+        detail: e?.detail?.message || e?.detail,
+        cause: e?.cause?.message || e?.cause,
+      });
+      let errMsg = e?.message || "An error occurred with our connection to Stripe. Please try again.";
+      if (e?.name === "StripeConnectionError" || e?.message?.includes("connection to Stripe")) {
+        errMsg = "Unable to connect to Stripe payment services. Please check your internet connection or verify Stripe credentials in Admin Settings.";
+      } else if (e?.name === "StripeAuthenticationError") {
+        errMsg = "Stripe authentication failed. Please check your Stripe Secret Key in Admin > Settings > Payment Settings.";
+      }
       res.status(500).json({ error: errMsg });
     }
   });
