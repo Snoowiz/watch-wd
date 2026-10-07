@@ -29,7 +29,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // server.ts
 var server_exports = {};
 __export(server_exports, {
-  ensureIncrementalColumns: () => ensureIncrementalColumns
+  ensureIncrementalColumns: () => ensureIncrementalColumns,
+  getStripeClient: () => getStripeClient
 });
 module.exports = __toCommonJS(server_exports);
 var import_express2 = __toESM(require("express"), 1);
@@ -45,6 +46,7 @@ var import_crypto3 = __toESM(require("crypto"), 1);
 var import_dotenv2 = __toESM(require("dotenv"), 1);
 var import_helmet = __toESM(require("helmet"), 1);
 var import_dns = __toESM(require("dns"), 1);
+var import_https = __toESM(require("https"), 1);
 
 // seedTemplates.ts
 var defaultBranding = {
@@ -2099,6 +2101,20 @@ async function isIpWhitelistedForAdmin(ip) {
 var import_meta = {};
 if (import_dns.default.setDefaultResultOrder) {
   import_dns.default.setDefaultResultOrder("ipv4first");
+}
+var stripeHttpsAgent = new import_https.default.Agent({
+  keepAlive: true,
+  family: 4,
+  timeout: 3e4
+});
+function getStripeClient(secretKey) {
+  const trimmed = (secretKey || "").trim();
+  return new import_stripe.default(trimmed, {
+    apiVersion: "2023-10-16",
+    httpAgent: stripeHttpsAgent,
+    timeout: 3e4,
+    maxNetworkRetries: 2
+  });
 }
 import_dotenv2.default.config();
 function sanitizeMatchForPublic(match) {
@@ -5185,9 +5201,9 @@ async function startServer() {
           try {
             const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
             const gatewaySettings = settingsDoc.exists ? settingsDoc.data() : {};
-            const stripeSecret = gatewaySettings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY;
+            const stripeSecret = (gatewaySettings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
             if (stripeSecret) {
-              const stripeClient = new import_stripe.default(stripeSecret, { apiVersion: "2023-10-16" });
+              const stripeClient = getStripeClient(stripeSecret);
               const transfer = await stripeClient.transfers.create({
                 amount: Math.round(clubNetAmount * 100),
                 currency: payoutCurrency.toLowerCase(),
@@ -5353,7 +5369,8 @@ async function startServer() {
         const targetCurrency = settings.stripe.merchantCurrency || currency;
         const totalAmountCents = Math.round(Number(amount) * 100);
         const applicationFeeAmount = Math.round(totalAmountCents * (platformFeePercent / 100));
-        const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
+        const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+        const stripe = getStripeClient(stripeSecretKey);
         const sessionParams = {
           payment_method_types: ["card"],
           line_items: [
@@ -5523,10 +5540,11 @@ async function startServer() {
       let isVerified = false;
       let stripeSession = null;
       if (gateway === "stripe") {
-        if (!settings?.stripe?.secretKey) {
+        if (!settings?.stripe?.secretKey && !process.env.STRIPE_SECRET_KEY) {
           isVerified = true;
         } else {
-          const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
+          const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+          const stripe = getStripeClient(stripeSecretKey);
           stripeSession = await stripe.checkout.sessions.retrieve(session_id);
           if (stripeSession.payment_status === "paid") isVerified = true;
         }
@@ -7090,9 +7108,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const club = clubDoc.data();
       const paySettingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const paySettings = paySettingsDoc.exists ? paySettingsDoc.data() : {};
-      const stripeSecretKey = paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY;
+      const stripeSecretKey = (paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY || "").trim();
       if (!stripeSecretKey) return res.status(500).json({ error: "Stripe is not configured" });
-      const stripe = new import_stripe.default(stripeSecretKey, { apiVersion: "2023-10-16" });
+      const stripe = getStripeClient(stripeSecretKey);
       let connectedAccountId = club.stripe_account_id || club.stripeAccountId;
       if (!connectedAccountId) {
         const account = await stripe.accounts.create({
@@ -8273,9 +8291,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!onboarded) return { success: false, error: "Club Stripe onboarding not complete" };
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const stripeSecretKey = settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY;
+      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
       if (!stripeSecretKey) return { success: false, error: "Stripe not configured" };
-      const stripe = new import_stripe.default(stripeSecretKey, { apiVersion: "2023-10-16" });
+      const stripe = getStripeClient(stripeSecretKey);
       const payoutCurrency = (config.currency || "GBP").toLowerCase();
       const amountCents = Math.round(availableBalance * 100);
       try {
@@ -8392,19 +8410,21 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (match.access === "free" || match.access_type !== "ppv") {
         return res.status(400).json({ error: "This match is not a PPV event" });
       }
-      const clubId = match.club_id || match.clubId || null;
+      const rawClubId = match.club_id || match.clubId || null;
+      const clubId = rawClubId && String(rawClubId).trim() !== "" ? String(rawClubId).trim() : null;
       const ppvPrice = Number(match.ppv_price || match.ppvPrice || match.price);
       if (!ppvPrice || ppvPrice <= 0) return res.status(400).json({ error: "Invalid PPV price" });
       let club = null;
       let connectedAccountId = null;
       let platformFeePercent = 100;
       if (clubId) {
-        const clubDoc = await db.collection("clubs").doc(String(clubId)).get();
-        if (clubDoc.exists) {
-          club = clubDoc.data();
-          connectedAccountId = club.stripe_account_id || club.stripeAccountId || null;
+        const clubDoc = await db.collection("clubs").doc(clubId).get();
+        if (!clubDoc.exists) {
+          return res.status(404).json({ error: "Assigned partner club not found. Cannot process split payment." });
         }
-        const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", String(clubId)).where("is_active", "==", 1).limit(1).get();
+        club = clubDoc.data();
+        connectedAccountId = club.stripe_account_id || club.stripeAccountId || null;
+        const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", clubId).where("is_active", "==", 1).limit(1).get();
         platformFeePercent = 20;
         if (!policiesSnap.empty) {
           const policy = policiesSnap.docs[0].data();
@@ -8413,7 +8433,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       }
       const totalAmountCents = Math.round(ppvPrice * 100);
       const applicationFeeCents = clubId ? Math.round(totalAmountCents * (platformFeePercent / 100)) : 0;
-      const isSplitPayment = !!(clubId && connectedAccountId);
+      const isSplitPayment = !!clubId;
       const transactionId = `txn_${Date.now()}_${userId}`;
       const metadata = {
         matchId: String(matchId),
@@ -8422,7 +8442,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         fromMatchSlug: match.slug || null,
         platformFeePercent: isSplitPayment ? platformFeePercent : 100,
         applicationFeeCents: isSplitPayment ? applicationFeeCents : 0,
-        connectedAccountId: connectedAccountId || null,
+        connectedAccountId: isSplitPayment ? connectedAccountId || null : null,
         isDestinationCharge: isSplitPayment,
         settlement_model: isSplitPayment ? "STRIPE_DESTINATION_ROUTED" : "PLATFORM_DIRECT"
       };
@@ -8437,24 +8457,25 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       });
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
+      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
       if (gateway === "stripe") {
-        if (!settings?.stripe?.enabled || !settings?.stripe?.secretKey) {
+        if (!settings?.stripe?.enabled || !stripeSecretKey) {
           const returnUrl = `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_connect_session&gateway=stripe`;
           return res.json({ checkoutUrl: returnUrl });
         }
-        if (settings.stripe.secretKey.trim().startsWith("mk_")) {
+        if (stripeSecretKey.startsWith("mk_")) {
           return res.status(400).json({
             error: "Invalid Stripe Secret Key: An API Key Identifier (starts with 'mk_') was entered. Please enter your actual Stripe Secret Key (starts with 'sk_test_', 'sk_live_', or 'rk_') in Admin > Settings > Payment Settings."
           });
         }
-        const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
-        const targetCurrency = settings.stripe.merchantCurrency || currency;
+        const stripe = getStripeClient(stripeSecretKey);
+        const targetCurrency = (settings.stripe?.merchantCurrency || currency || "GBP").toLowerCase();
         const sessionParams = {
           payment_method_types: ["card"],
           line_items: [
             {
               price_data: {
-                currency: targetCurrency.toLowerCase(),
+                currency: targetCurrency,
                 product_data: {
                   name: match.title || "Match Access",
                   description: isSplitPayment ? `PPV access \u2014 ${club?.name || "Partner Club"}` : `PPV access \u2014 ${match.title || "Match"}`
@@ -8478,30 +8499,33 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           }
         };
         if (isSplitPayment) {
+          if (!connectedAccountId) {
+            return res.status(409).json({ error: "Partner club has no Stripe connected account. Cannot process split payment." });
+          }
           try {
             const connectedAccount = await stripe.accounts.retrieve(connectedAccountId);
             const transfersCapability = connectedAccount.capabilities?.transfers;
             if (transfersCapability !== "active") {
-              console.warn(`[ConnectPPV] Partner account ${connectedAccountId} transfers not active \u2014 falling back to platform-direct payment.`);
-            } else {
-              sessionParams.payment_intent_data = {
-                application_fee_amount: applicationFeeCents,
-                transfer_data: {
-                  destination: connectedAccountId
-                },
-                metadata: {
-                  txn_id: transactionId,
-                  match_id: String(matchId),
-                  club_id: String(clubId),
-                  user_id: userId,
-                  payment_type: "ppv_watch",
-                  settlement_model: "STRIPE_DESTINATION_ROUTED"
-                }
-              };
+              return res.status(409).json({ error: "Partner account is not yet eligible to receive transfers. Onboarding may be incomplete." });
             }
           } catch (acctErr) {
-            console.warn(`[ConnectPPV] Failed to verify connected account ${connectedAccountId}: ${acctErr.message} \u2014 falling back to platform-direct payment.`);
+            console.error(`[ConnectPPV] Failed to verify connected account ${connectedAccountId}:`, acctErr.message);
+            return res.status(409).json({ error: `Could not verify partner Stripe account: ${acctErr.message}` });
           }
+          sessionParams.payment_intent_data = {
+            application_fee_amount: applicationFeeCents,
+            transfer_data: {
+              destination: connectedAccountId
+            },
+            metadata: {
+              txn_id: transactionId,
+              match_id: String(matchId),
+              club_id: String(clubId),
+              user_id: userId,
+              payment_type: "ppv_watch",
+              settlement_model: "STRIPE_DESTINATION_ROUTED"
+            }
+          };
         }
         const session = await stripe.checkout.sessions.create(sessionParams);
         return res.json({ checkoutUrl: session.url });
@@ -8509,17 +8533,19 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       return res.status(400).json({ error: "Only Stripe is supported for PPV Connect payments" });
     } catch (e) {
       console.error("Connect PPV checkout error:", e);
-      res.status(500).json({ error: e.message });
+      const errMsg = e?.message || "An error occurred with our connection to Stripe. Please try again.";
+      res.status(500).json({ error: errMsg });
     }
   });
   app.post("/api/webhooks/stripe", async (req, res) => {
     try {
       const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      if (!settings?.stripe?.secretKey) {
+      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      if (!stripeSecretKey) {
         return res.json({ received: true });
       }
-      const stripe = new import_stripe.default(settings.stripe.secretKey, { apiVersion: "2023-10-16" });
+      const stripe = getStripeClient(stripeSecretKey);
       const webhookSecret = settings?.stripe?.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
       let event = req.body;
       if (webhookSecret) {
@@ -9734,6 +9760,7 @@ startServer().catch((err) => {
 });
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  ensureIncrementalColumns
+  ensureIncrementalColumns,
+  getStripeClient
 });
 //# sourceMappingURL=server.cjs.map
