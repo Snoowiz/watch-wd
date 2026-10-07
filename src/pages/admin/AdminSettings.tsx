@@ -62,7 +62,7 @@ export function AdminSettings() {
   const handlePaymentSave = async () => {
     setIsPaymentSaved(true);
     try {
-      await fetch('/api/admin/payment/settings', {
+      const res = await fetch('/api/admin/payment/settings', {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -70,7 +70,16 @@ export function AdminSettings() {
         },
         body: JSON.stringify(localPaymentSettings)
       });
-      setPaymentSettings(localPaymentSettings);
+      if (res.ok) {
+        const refreshRes = await fetch('/api/admin/payment/settings', {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (refreshRes.ok) {
+          const freshData = await refreshRes.json();
+          setLocalPaymentSettings(freshData);
+          setPaymentSettings(freshData);
+        }
+      }
     } catch (e) {
       console.error(e);
     }
@@ -292,9 +301,16 @@ export function AdminSettings() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Secret Key
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Secret Key
+                        </label>
+                        {(localPaymentSettings.stripe.secretKey?.includes('••••') || (localPaymentSettings.stripe as any).hasSecretKey) && (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            ✓ Key Saved & Active
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="password"
                         value={localPaymentSettings.stripe.secretKey}
@@ -312,6 +328,11 @@ export function AdminSettings() {
                         }`}
                         placeholder="sk_test_... or sk_live_..."
                       />
+                      {localPaymentSettings.stripe.secretKey?.includes('••••') && (
+                        <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          Your active key is securely stored in database and server-side storage. Enter a new key to update, or leave unchanged.
+                        </p>
+                      )}
                       {localPaymentSettings.stripe.secretKey?.trim().startsWith('mk_') && (
                         <p className="mt-2 text-xs font-semibold text-red-500">
                           ⚠️ Invalid Key: You pasted an API Key Identifier (starts with &apos;mk_&apos;). Please copy the actual Secret Key that starts with &apos;sk_test_&apos;, &apos;sk_live_&apos;, or &apos;rk_&apos; from the Stripe Dashboard.
@@ -411,11 +432,11 @@ export function AdminSettings() {
                       </label>
                       <input
                         type="password"
-                        value={localPaymentSettings.paypal.secret}
+                        value={localPaymentSettings.paypal.secret || (localPaymentSettings.paypal as any).secretKey || ''}
                         onChange={(e) => {
                           setLocalPaymentSettings(prev => ({
                             ...prev,
-                            paypal: { ...prev.paypal, secret: e.target.value }
+                            paypal: { ...prev.paypal, secret: e.target.value, secretKey: e.target.value }
                           }));
                           setIsPaymentSaved(false);
                         }}

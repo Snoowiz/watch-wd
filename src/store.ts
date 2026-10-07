@@ -407,6 +407,7 @@ interface PaymentSettings {
   paypal: {
     clientId: string;
     secret: string;
+    secretKey?: string;
     isTestMode: boolean;
     enabled: boolean;
     merchantCurrency?: string;
@@ -656,14 +657,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   setPaymentSettings: (settings) => {
     set({ paymentSettings: settings });
-    fetch('/api/admin/payment/settings', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify(settings)
-    }).catch(console.error);
   },
   fetchPaymentSettings: async () => {
     try {

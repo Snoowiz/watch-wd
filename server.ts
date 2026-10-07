@@ -68,6 +68,14 @@ import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
 import { testConnection, query, execute } from "./db/connection.js";
+import {
+  getPaymentGatewaySettings,
+  savePaymentGatewaySettings,
+  getAdminPaymentSettings,
+  getPublicPaymentSettings,
+  getSecureDocument,
+  saveSecureDocument,
+} from "./db/persistentConfig.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
 import {
   getClientIp,
@@ -2414,15 +2422,15 @@ async function startServer() {
   // === EMAIL DISPATCH & BRANDING SYSTEM ===
   async function seedEmailSystem() {
     try {
-      const brandingDoc = await db.collection("email_branding").doc("settings").get();
-      if (!brandingDoc.exists) {
-        await db.collection("email_branding").doc("settings").set(defaultBranding);
+      const existingBranding = await getSecureDocument("email_branding", "settings");
+      if (!existingBranding) {
+        await saveSecureDocument("email_branding", "settings", defaultBranding);
         console.log("[EMAIL SEEDER] Seeded default email branding configurations.");
       }
 
-      const smtpDoc = await db.collection("email_settings").doc("smtp").get();
-      if (!smtpDoc.exists) {
-        await db.collection("email_settings").doc("smtp").set({
+      const existingSmtp = await getSecureDocument("email_settings", "smtp");
+      if (!existingSmtp) {
+        await saveSecureDocument("email_settings", "smtp", {
           host: "smtp.example.com",
           port: 465,
           auth_user: "user@example.com",
@@ -2436,9 +2444,9 @@ async function startServer() {
         });
         console.log("[EMAIL SEEDER] Seeded default SMTP configuration (active).");
       } else {
-        const smtpData = smtpDoc.data();
-        if (smtpData && (smtpData.is_active === false || smtpData.is_active === 0 || smtpData.is_active === "false")) {
-          await db.collection("email_settings").doc("smtp").update({ is_active: true });
+        if (existingSmtp && (existingSmtp.is_active === false || existingSmtp.is_active === 0 || existingSmtp.is_active === "false")) {
+          existingSmtp.is_active = true;
+          await saveSecureDocument("email_settings", "smtp", existingSmtp);
           console.log("[EMAIL SEEDER] Auto-activated existing SMTP configuration.");
         }
       }
@@ -2833,11 +2841,8 @@ async function startServer() {
   // GET EMAIL SETTINGS
   app.get("/api/admin/email/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const smtpDoc = await db.collection("email_settings").doc("smtp").get();
-      const brandingDoc = await db.collection("email_branding").doc("settings").get();
-      
-      const smtp = smtpDoc.exists ? smtpDoc.data() : {};
-      const branding = brandingDoc.exists ? brandingDoc.data() : defaultBranding;
+      const smtp = await getSecureDocument("email_settings", "smtp") || {};
+      const branding = await getSecureDocument("email_branding", "settings") || defaultBranding;
       
       res.json({ ...smtp, branding });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -2849,7 +2854,7 @@ async function startServer() {
       const { branding, ...smtp } = req.body;
       
       if (smtp) {
-        await db.collection("email_settings").doc("smtp").set({
+        await saveSecureDocument("email_settings", "smtp", {
           ...smtp,
           secure: smtp.secure === true || smtp.secure === 1,
           is_active: smtp.is_active === true || smtp.is_active === 1
@@ -2857,7 +2862,7 @@ async function startServer() {
       }
       
       if (branding) {
-        await db.collection("email_branding").doc("settings").set(branding);
+        await saveSecureDocument("email_branding", "settings", branding);
       }
 
       res.json({ success: true, message: "Settings saved successfully" });
@@ -3332,47 +3337,20 @@ async function startServer() {
   // === PAYMENT SETTINGS ENDPOINTS ===
   app.get("/api/payment/methods", async (req, res) => {
     try {
-      const doc = await db.collection("payment_settings").doc("gateway").get();
-      const settings: any = doc.exists ? doc.data() : {};
-      
+      const settings = await getPaymentGatewaySettings();
       res.json({
-        stripe: { enabled: settings.stripe?.enabled || false },
-        paypal: { enabled: settings.paypal?.enabled || false },
-        paystack: { enabled: settings.paystack?.enabled || false }
+        stripe: { enabled: Boolean(settings.stripe.enabled) },
+        paypal: { enabled: Boolean(settings.paypal.enabled) },
+        paystack: { enabled: Boolean(settings.paystack.enabled) }
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  // Helper functions for masking sensitive secrets in the admin configuration panel
-  function maskSecret(val: string): string {
-    if (!val) return "";
-    if (val.length <= 10) return "••••••••";
-    return val.substring(0, 8) + "••••••••" + val.substring(val.length - 4);
-  }
-
-  function isMasked(val: string): boolean {
-    return typeof val === "string" && val.includes("••••");
-  }
-
   app.get("/api/admin/payment/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const doc = await db.collection("payment_settings").doc("gateway").get();
-      if (!doc.exists) return res.json({});
-      const data = doc.data() as any;
-      
-      const maskedData = { ...data };
-      if (maskedData.stripe && maskedData.stripe.secretKey) {
-        maskedData.stripe.secretKey = maskSecret(maskedData.stripe.secretKey);
-      }
-      if (maskedData.paypal && maskedData.paypal.secretKey) {
-        maskedData.paypal.secretKey = maskSecret(maskedData.paypal.secretKey);
-      }
-      if (maskedData.paystack && maskedData.paystack.secretKey) {
-        maskedData.paystack.secretKey = maskSecret(maskedData.paystack.secretKey);
-      }
-      
+      const maskedData = await getAdminPaymentSettings();
       res.json(maskedData);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -3381,60 +3359,16 @@ async function startServer() {
 
   app.put("/api/admin/payment/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const incoming = req.body;
-      const docRef = db.collection("payment_settings").doc("gateway");
-      const existingDoc = await docRef.get();
-      const existing = existingDoc.exists ? existingDoc.data() : {};
-      
-      const merged = { ...incoming };
-      
-      const mergeSecret = (provider: string) => {
-        if (merged[provider] && existing[provider]) {
-          if (isMasked(merged[provider].secretKey)) {
-            merged[provider].secretKey = existing[provider].secretKey;
-          }
-        }
-      };
-      
-      mergeSecret("stripe");
-      mergeSecret("paypal");
-      mergeSecret("paystack");
-      
-      await docRef.set(merged);
-      res.json({ success: true });
+      await savePaymentGatewaySettings(req.body);
+      res.json({ success: true, settings: await getAdminPaymentSettings() });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(400).json({ error: e.message });
     }
   });
 
   app.get("/api/payment/settings", async (req, res) => {
     try {
-      const doc = await db.collection("payment_settings").doc("gateway").get();
-      if (!doc.exists) {
-        return res.json({
-          stripe: { publicKey: "", isTestMode: true, enabled: false },
-          paypal: { clientId: "", isTestMode: true, enabled: false },
-          paystack: { publicKey: "", isTestMode: true, enabled: false }
-        });
-      }
-      const data = doc.data() as any;
-      const publicData = {
-        stripe: {
-          enabled: !!data.stripe?.enabled,
-          publicKey: data.stripe?.publicKey || "",
-          isTestMode: data.stripe?.isTestMode !== false
-        },
-        paypal: {
-          enabled: !!data.paypal?.enabled,
-          clientId: data.paypal?.clientId || "",
-          isTestMode: data.paypal?.isTestMode !== false
-        },
-        paystack: {
-          enabled: !!data.paystack?.enabled,
-          publicKey: data.paystack?.publicKey || "",
-          isTestMode: data.paystack?.isTestMode !== false
-        }
-      };
+      const publicData = await getPublicPaymentSettings();
       res.json(publicData);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -3443,15 +3377,11 @@ async function startServer() {
 
   app.get("/api/admin/google-auth/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const doc = await db.collection("settings").doc("google_auth").get();
-      if (!doc.exists) return res.json({});
-      const data = doc.data() as any;
-      
+      const data = (await getSecureDocument("settings", "google_auth")) || {};
       const maskedData = { ...data };
       if (maskedData.clientSecret) {
         maskedData.clientSecret = maskSecret(maskedData.clientSecret);
       }
-      
       res.json(maskedData);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -3461,16 +3391,12 @@ async function startServer() {
   app.put("/api/admin/google-auth/settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const incoming = req.body;
-      const docRef = db.collection("settings").doc("google_auth");
-      const existingDoc = await docRef.get();
-      const existing = existingDoc.exists ? existingDoc.data() : {};
-      
+      const existing = (await getSecureDocument("settings", "google_auth")) || {};
       const merged = { ...incoming };
-      if (isMasked(merged.clientSecret) && existing.clientSecret) {
+      if ((!merged.clientSecret || isMaskedSecret(merged.clientSecret)) && existing.clientSecret) {
         merged.clientSecret = existing.clientSecret;
       }
-      
-      await docRef.set(merged);
+      await saveSecureDocument("settings", "google_auth", merged);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -3479,9 +3405,7 @@ async function startServer() {
 
   app.get("/api/auth/google/config", async (req, res) => {
     try {
-      const doc = await db.collection("settings").doc("google_auth").get();
-      if (!doc.exists) return res.json({ enabled: false, clientId: "" });
-      const data = doc.data() as any;
+      const data = (await getSecureDocument("settings", "google_auth")) || {};
       res.json({
         enabled: data.enabled || false,
         clientId: data.clientId || ""
@@ -3660,8 +3584,7 @@ async function startServer() {
       });
 
       // 7. Check Payout Configuration for Instant Split vs Threshold mode
-      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
-      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
+      const config = (await getSecureDocument("payment_settings", "payout_config")) || { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
       const isInstantSplit = !!config.instantSplit;
       const payoutCurrency = (config.currency || "GBP").toUpperCase();
 
@@ -3684,24 +3607,23 @@ async function startServer() {
         } else if (stripeAccountId) {
           // Direct Stripe transfer to connected account
           try {
-            const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
-            const gatewaySettings = settingsDoc.exists ? settingsDoc.data() : {};
-            const stripeSecret = (gatewaySettings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+            const gatewaySettings = await getPaymentGatewaySettings();
+            const stripeSecret = gatewaySettings.stripe.secretKey;
             if (stripeSecret) {
-              const stripeClient = getStripeClient(stripeSecret);
-              const transfer = await stripeClient.transfers.create({
-                amount: Math.round(clubNetAmount * 100),
-                currency: payoutCurrency.toLowerCase(),
-                destination: stripeAccountId,
-                description: `Instant PPV split - Match #${matchId} (${club.name || clubId})`,
-                metadata: { matchId: String(matchId), clubId: String(clubId), transactionId: String(transactionId) }
-              });
+              const transfer = await executeStripeWithFallback(stripeSecret, (client) =>
+                client.transfers.create({
+                  amount: Math.round(clubNetAmount * 100),
+                  currency: payoutCurrency.toLowerCase(),
+                  destination: stripeAccountId,
+                  description: `Instant PPV split - Match #${matchId} (${club.name || clubId})`,
+                  metadata: { matchId: String(matchId), clubId: String(clubId), transactionId: String(transactionId) }
+                })
+              );
               stripeRef = transfer.id;
               instantSuccess = true;
             } else {
-              // Simulated instant split for development/mock mode
-              stripeRef = `mock_tr_${Date.now()}`;
-              instantSuccess = true;
+              console.error(`[RevenueSplit] Stripe secret key unconfigured; cannot transfer to club ${clubId}`);
+              instantSuccess = false;
             }
           } catch (trErr: any) {
             console.error(`[RevenueSplit] Stripe transfer error for club ${clubId}:`, trErr.message);
@@ -3852,8 +3774,8 @@ async function startServer() {
       // If no connected account, this is a platform-direct payment (no split)
       // The checkout session will be created without destination charge routing
 
-      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
-      const settings = settingsDoc.exists ? settingsDoc.data() : {};
+      const gatewaySettings = await getPaymentGatewaySettings();
+      const settings = gatewaySettings;
 
       const transactionId = `txn_${Date.now()}_${userId}`;
       const returnUrl = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}&txn_id=${transactionId}&gateway=${gateway}`;
@@ -3872,19 +3794,20 @@ async function startServer() {
       await db.collection("transactions").doc(transactionId).set(pendingData);
 
       if (gateway === "stripe") {
-        if (!settings?.stripe?.enabled || !settings?.stripe?.secretKey) {
-          return res.json({ checkoutUrl: `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_session&gateway=stripe` });
+        const stripeSecretKey = gatewaySettings.stripe.secretKey;
+        if (!gatewaySettings.stripe.enabled || !stripeSecretKey) {
+          return res.status(400).json({
+            error: "Stripe payment gateway is not configured or is currently disabled. Please configure your live/test Stripe credentials in Admin > Settings > Payment Settings."
+          });
         }
-        if (settings.stripe.secretKey.trim().startsWith("mk_")) {
+        if (stripeSecretKey.startsWith("mk_")) {
           return res.status(400).json({
             error: "Invalid Stripe Secret Key: An API Key Identifier (starts with 'mk_') was entered. Please enter your actual Stripe Secret Key (starts with 'sk_test_', 'sk_live_', or 'rk_') in Admin > Settings > Payment Settings."
           });
         }
-        const targetCurrency = settings.stripe.merchantCurrency || currency;
+        const targetCurrency = gatewaySettings.stripe.merchantCurrency || currency;
         const totalAmountCents = Math.round(Number(amount) * 100);
         const applicationFeeAmount = Math.round(totalAmountCents * (platformFeePercent / 100));
-
-        const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
         const sessionParams: any = {
           payment_method_types: ["card"],
           line_items: [
@@ -4086,22 +4009,21 @@ async function startServer() {
         }); // Deduplication
       }
       
-      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
-      const settings = settingsDoc.exists ? settingsDoc.data() : {};
+      const gatewaySettings = await getPaymentGatewaySettings();
+      const settings = gatewaySettings;
 
       let isVerified = false;
       let stripeSession: any = null;
 
       if (gateway === "stripe") {
-        if (!settings?.stripe?.secretKey && !process.env.STRIPE_SECRET_KEY) {
-          isVerified = true;
-        } else {
-          const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
-          stripeSession = await executeStripeWithFallback(stripeSecretKey, (client) =>
-            client.checkout.sessions.retrieve(session_id)
-          );
-          if (stripeSession.payment_status === "paid") isVerified = true;
+        const stripeSecretKey = gatewaySettings.stripe.secretKey;
+        if (!stripeSecretKey) {
+          return res.status(400).json({ error: "Stripe Secret Key is not configured. Cannot verify payment." });
         }
+        stripeSession = await executeStripeWithFallback(stripeSecretKey, (client) =>
+          client.checkout.sessions.retrieve(session_id)
+        );
+        if (stripeSession.payment_status === "paid") isVerified = true;
       }
 
       if (gateway === "paypal") {
@@ -5357,11 +5279,8 @@ async function startServer() {
   // === SETTINGS API (Dynamic Config - Public Read, Admin Write) ===
   app.get("/api/settings/:key", async (req, res) => {
     try {
-      const snap = await db.collection("settings").doc(req.params.key).get();
-      if (!snap.exists) {
-        return res.json({});
-      }
-      res.json(snap.data() || {});
+      const data = await getSecureDocument("settings", req.params.key);
+      res.json(data || {});
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -5369,8 +5288,8 @@ async function startServer() {
 
   app.get("/api/admin/settings/:key", async (req, res) => {
     try {
-      const snap = await db.collection("settings").doc(req.params.key).get();
-      res.json(snap.exists ? snap.data() : {});
+      const data = await getSecureDocument("settings", req.params.key);
+      res.json(data || {});
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -5378,8 +5297,7 @@ async function startServer() {
 
   app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      await db.collection("settings").doc(req.params.key).set(req.body);
-      cacheEngine.invalidateCollection("settings");
+      await saveSecureDocument("settings", req.params.key, req.body);
       res.json({ success: true, key: req.params.key, data: req.body });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -5388,8 +5306,7 @@ async function startServer() {
 
   app.post("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      await db.collection("settings").doc(req.params.key).set(req.body);
-      cacheEngine.invalidateCollection("settings");
+      await saveSecureDocument("settings", req.params.key, req.body);
       res.json({ success: true, key: req.params.key, data: req.body });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -5855,10 +5772,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
       const club = clubDoc.data();
 
-      const paySettingsDoc = await db.collection("payment_settings").doc("gateway").get();
-      const paySettings = paySettingsDoc.exists ? paySettingsDoc.data() : {};
-      const stripeSecretKey = sanitizeStripeKey(paySettings?.stripe?.secretKey || paySettings?.stripeSecretKey || process.env.STRIPE_SECRET_KEY || "");
-      if (!stripeSecretKey) return res.status(500).json({ error: "Stripe is not configured" });
+      const gatewaySettings = await getPaymentGatewaySettings();
+      const stripeSecretKey = gatewaySettings.stripe.secretKey;
+      if (!stripeSecretKey) return res.status(500).json({ error: "Stripe is not configured. Please save your Stripe Secret Key in Payment Settings." });
 
       let connectedAccountId = club.stripe_account_id || club.stripeAccountId;
       
@@ -7054,7 +6970,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   // === PAYOUT SETTINGS API ===
   app.get("/api/admin/payout-settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const doc = await db.collection("payment_settings").doc("payout_config").get();
+      const data = await getSecureDocument("payment_settings", "payout_config");
       const defaults = {
         thresholdAmount: 50,
         schedule: "manual",
@@ -7063,39 +6979,34 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         enabled: true,
         instantSplit: false
       };
-      if (!doc.exists) return res.json(defaults);
-      const data = doc.data();
-      res.json({ ...defaults, ...data });
+      res.json({ ...defaults, ...(data || {}) });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   app.put("/api/admin/payout-settings", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const { thresholdAmount, schedule, autoFrequencyHours, currency, enabled, instantSplit } = req.body;
-      const config: any = {};
-      if (thresholdAmount !== undefined) config.thresholdAmount = Number(thresholdAmount);
-      if (schedule !== undefined) config.schedule = schedule;
-      if (autoFrequencyHours !== undefined) config.autoFrequencyHours = Number(autoFrequencyHours);
-      if (currency !== undefined) config.currency = currency;
-      if (enabled !== undefined) config.enabled = !!enabled;
-      if (instantSplit !== undefined) config.instantSplit = !!instantSplit;
+      const existing = (await getSecureDocument("payment_settings", "payout_config")) || {
+        thresholdAmount: 50,
+        schedule: "manual",
+        autoFrequencyHours: 24,
+        currency: "GBP",
+        enabled: true,
+        instantSplit: false
+      };
 
-      const docRef = db.collection("payment_settings").doc("payout_config");
-      const existing = await docRef.get();
-      if (existing.exists) {
-        await docRef.update(config);
-      } else {
-        await docRef.set({
-          thresholdAmount: 50,
-          schedule: "manual",
-          autoFrequencyHours: 24,
-          currency: "GBP",
-          enabled: true,
-          instantSplit: false,
-          ...config
-        });
-      }
-      res.json({ success: true });
+      const updated = {
+        ...existing,
+        ...(thresholdAmount !== undefined ? { thresholdAmount: Number(thresholdAmount) } : {}),
+        ...(schedule !== undefined ? { schedule } : {}),
+        ...(autoFrequencyHours !== undefined ? { autoFrequencyHours: Number(autoFrequencyHours) } : {}),
+        ...(currency !== undefined ? { currency } : {}),
+        ...(enabled !== undefined ? { enabled: Boolean(enabled) } : {}),
+        ...(instantSplit !== undefined ? { instantSplit: Boolean(instantSplit) } : {})
+      };
+
+      await saveSecureDocument("payment_settings", "payout_config", updated);
+      res.json({ success: true, settings: updated });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -7158,8 +7069,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   async function triggerClubPayout(clubId: string, forceOverrideThreshold = false): Promise<{ success: boolean; error?: string; payoutId?: string }> {
     try {
       // Load payout config
-      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
-      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
+      const config = (await getSecureDocument("payment_settings", "payout_config")) || { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
       if (!config.enabled) return { success: false, error: "Payouts are disabled" };
 
       // Load club balance
@@ -7184,9 +7094,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!onboarded) return { success: false, error: "Club Stripe onboarding not complete" };
 
       // Load platform Stripe key
-      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
-      const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
+      const gatewaySettings = await getPaymentGatewaySettings();
+      const stripeSecretKey = gatewaySettings.stripe.secretKey;
       if (!stripeSecretKey) return { success: false, error: "Stripe not configured" };
 
       const payoutCurrency = (config.currency || "GBP").toLowerCase();
@@ -7264,8 +7173,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
   app.post("/api/admin/payouts/trigger-all", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
-      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
-      const config = configDoc.exists ? configDoc.data() : { thresholdAmount: 50, enabled: true };
+      const config = (await getSecureDocument("payment_settings", "payout_config")) || { thresholdAmount: 50, enabled: true };
       if (!config.enabled) return res.status(400).json({ error: "Payouts are disabled" });
 
       const threshold = Number(config.thresholdAmount) || 50;
@@ -7289,10 +7197,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   // === SCHEDULED PAYOUT ENGINE ===
   async function processScheduledPayouts() {
     try {
-      const configDoc = await db.collection("payment_settings").doc("payout_config").get();
-      if (!configDoc.exists) return;
-      const config = configDoc.data();
-      if (config.schedule !== "auto" || !config.enabled) return;
+      const config = await getSecureDocument("payment_settings", "payout_config");
+      if (!config || config.schedule !== "auto" || !config.enabled) return;
 
       const threshold = Number(config.thresholdAmount) || 50;
       const balancesSnap = await db.collection("club_balances").get();
@@ -7399,15 +7305,15 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       });
 
       // 6. Initialize Stripe Checkout
-      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
-      const settings = settingsDoc.exists ? settingsDoc.data() : {};
-      const stripeSecretKey = sanitizeStripeKey(settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "");
+      const gatewaySettings = await getPaymentGatewaySettings();
+      const settings = gatewaySettings;
+      const stripeSecretKey = gatewaySettings.stripe.secretKey;
 
       if (gateway === "stripe") {
-        if (!settings?.stripe?.enabled || !stripeSecretKey) {
-          // Mock mode — no real Stripe configured
-          const returnUrl = `${origin}/checkout/success?txn_id=${transactionId}&session_id=mock_connect_session&gateway=stripe`;
-          return res.json({ checkoutUrl: returnUrl });
+        if (!gatewaySettings?.stripe?.enabled || !stripeSecretKey) {
+          return res.status(400).json({
+            error: "Stripe Connect PPV is not configured or is currently disabled. Please ensure your Stripe Secret Key is saved in Admin > Settings > Payment Settings."
+          });
         }
         if (stripeSecretKey.startsWith("mk_")) {
           return res.status(400).json({
@@ -7521,17 +7427,15 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   // before express.json() or use express.raw() for this path specifically.
   app.post("/api/webhooks/stripe", async (req: any, res) => {
     try {
-      const settingsDoc = await db.collection("payment_settings").doc("gateway").get();
-      const settings = settingsDoc.exists ? settingsDoc.data() : {};
-
-      const stripeSecretKey = (settings?.stripe?.secretKey || process.env.STRIPE_SECRET_KEY || "").trim();
+      const gatewaySettings = await getPaymentGatewaySettings();
+      const stripeSecretKey = gatewaySettings.stripe.secretKey;
       if (!stripeSecretKey) {
         // No Stripe configured — acknowledge webhook anyway
         return res.json({ received: true });
       }
 
       const stripe = getStripeClient(stripeSecretKey);
-      const webhookSecret = settings?.stripe?.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
+      const webhookSecret = gatewaySettings.stripe.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
 
       let event = req.body;
       if (webhookSecret) {

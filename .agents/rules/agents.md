@@ -138,3 +138,60 @@ The API converts external fields to the internal schema:
 
 - **Rule**: Whenever a new feature, module, or system service is created, modified, or removed, automatically evaluate whether the Admin Dashboard (`AdminDashboard.tsx`) should represent it. If so, update the relevant stats, navigation links, quick actions, health status metrics, search items, and activity indicators.
 
+---
+
+## 7. Payment Gateway Architecture & Execution Flow
+
+The platform supports dual-mode Stripe checkouts with robust network resilience and strict validation.
+
+### 1. Dual-Mode Checkout Routing:
+- **Club PPV with Stripe Connect Destination Charges (`/api/checkout/gateway/connect-ppv`)**:
+  - When a match belongs to a club with an onboarded, active Stripe Express/Custom account (`club.stripe_account_id` with `payouts_enabled === true`):
+  - The Stripe Checkout session is created with:
+    ```typescript
+    payment_intent_data: {
+      transfer_data: { destination: club.stripe_account_id },
+      application_fee_amount: platformFeeInCents
+    }
+  ```
+  - Platform fee is derived from the club's configured revenue split (e.g. 20% platform fee, 80% club share).
+  - Stripe handles instant payouts directly to the club's connected account while depositing the application fee into the platform balance.
+  - Verification calls `processClubRevenueSplit()` to record the transaction, update the ledger, and grant the user match watch rights.
+- **Platform Direct Revenue (`/api/checkout/gateway/initialize`)**:
+  - Used for subscriptions (Plans) and PPV matches not linked to a connected club account.
+  - 100% of the funds route directly to the platform's main Stripe account.
+
+### 2. Resilient Dual-Engine Stripe Execution (`executeStripeWithFallback`):
+- Modern Node environments often encounter IPv6 / TLS handshake hangs with external payment APIs.
+- To guarantee 100% reliability, all Stripe API calls route through `executeStripeWithFallback()`:
+  - **Primary Engine**: Uses `Stripe.createFetchHttpClient()` which utilizes the native Node `undici` fetch engine.
+  - **Fallback Engine**: On network failure, retries instantly with a custom `https.Agent({ keepAlive: true, family: 4 })` that forces IPv4 DNS resolution.
+
+### 3. Fail-Closed Security Policy:
+- If Stripe keys are unconfigured, invalid, or missing, endpoints (`/api/checkout/gateway/initialize`, `/api/checkout/gateway/connect-ppv`, `/api/checkout/gateway/verify`) **strictly fail closed** with HTTP 400 Bad Request.
+- **Never** fall back to mock sessions (`mock_session`, `mock_connect_session`), fake test tokens, or automated verification bypasses for live checkout requests.
+
+---
+
+## 8. Persistent Configuration & Credentials Protection Engine
+
+All critical system settings (including Stripe API keys, PayPal credentials, SMTP configs, and platform settings) are protected by `db/persistentConfig.ts`.
+
+### 1. Dual-Layer Storage & Self-Healing:
+- Settings are stored in the MySQL database (as key-value or document rows) AND mirrored securely to a server-side storage file (`data/secure_settings/<key>.json`).
+- If MySQL is truncated, cleared during cache flushes, reset during migration, or re-initialized, any retrieval automatically re-hydrates the configuration from the server-side file mirror back into the database.
+- Normal cache-clearing, cookie flushes, or application restarts will **never** wipe or overwrite admin-configured credentials.
+
+### 2. Masked Secret Protection (Anti-Overwrite Loop):
+- When an administrator views settings in the UI, sensitive secrets are masked (e.g., `sk_test_••••••••1234`).
+- When saving settings:
+  - If the incoming secret is masked (`••••••••`), empty, unchanged, or a dummy token (`mk_`), `db/persistentConfig.ts` **retains the current unmasked secret** from storage.
+  - Secrets are sanitized (trimmed, stripped of invisible unicode spaces).
+  - This eliminates the bug where round-tripping masked secrets resulted in an "Invalid secret key" Stripe error.
+
+### 3. Public vs. Admin Isolation:
+- Public endpoints (`/api/payment/settings`, `/api/payment/methods`) only ever receive sanitized public keys (`publishableKey`, currency, enabled status). Secret keys are completely stripped.
+- Admin endpoints (`/api/admin/payment/settings`) deliver masked secret keys for verification and auditing.
+- Multi-layer cache invalidation (`cacheEngine.invalidateCollection('payment_settings')`) explicitly purges `/api/payment/*` and `/api/admin/payment/*` to ensure instant consistency across database, fragment, and CDN layers.
+
+

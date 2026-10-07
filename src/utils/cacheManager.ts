@@ -167,6 +167,27 @@ class CacheManager {
     this.invalidatePattern('fragment', `/api/${collectionPath}`);
     // Also invalidate CDN cache
     this.invalidatePattern('cdn', `/api/${collectionPath}`);
+
+    // Map special collections to their actual REST route prefixes
+    if (collectionPath === 'payment_settings') {
+      this.invalidatePattern('database', 'payment_settings');
+      this.invalidatePattern('fragment', '/api/payment');
+      this.invalidatePattern('fragment', '/api/admin/payment');
+      this.invalidatePattern('cdn', '/api/payment');
+      this.invalidatePattern('cdn', '/api/admin/payment');
+    }
+    if (collectionPath === 'settings') {
+      this.invalidatePattern('database', 'settings');
+      this.invalidatePattern('fragment', '/api/settings');
+      this.invalidatePattern('fragment', '/api/admin/settings');
+      this.invalidatePattern('cdn', '/api/settings');
+      this.invalidatePattern('cdn', '/api/admin/settings');
+    }
+    if (collectionPath === 'email_settings' || collectionPath === 'email_branding') {
+      this.invalidatePattern('database', collectionPath);
+      this.invalidatePattern('fragment', '/api/admin/email');
+      this.invalidatePattern('cdn', '/api/admin/email');
+    }
   }
 
   // --- MEMORY AND MONITORING METRICS ---

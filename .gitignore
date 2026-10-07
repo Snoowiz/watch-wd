@@ -1,4 +1,3 @@
-```
 # Build artifacts
 dist/
 build/
@@ -17,10 +16,12 @@ __pycache__/
 *.tmp
 *.swp
 
-# Environment
+# Environment and sensitive storage
 .env
 .env.local
 *.env.*
+data/
+data/secure_settings/
 
 # Editors
 .vscode/
@@ -29,4 +30,3 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
-```
