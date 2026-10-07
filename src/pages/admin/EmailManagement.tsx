@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuthStore } from '../../store';
+import { useAuthStore, useSettingsStore } from '../../store';
 import { 
   Mail, Settings, FileText, Check, AlertCircle, Save, Send, 
   RefreshCw, Lock as LockIcon, User as UserIcon, Globe, Info,
@@ -9,6 +9,7 @@ import {
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { MediaPickerModal } from '../../components/MediaPickerModal';
+import { BrandLogo } from '../../components/BrandLogo';
 
 interface EmailBranding {
   logo_url: string;
@@ -113,8 +114,11 @@ export function EmailManagement() {
     reply_to: 'support@watchwds.com'
   });
 
+  const { logoUrl: platformLogoUrl, logoLightUrl: platformLogoLight, logoDarkUrl: platformLogoDark } = useSettingsStore();
+  const currentPlatformLogo = platformLogoDark || platformLogoUrl || platformLogoLight || '/logo.png';
+
   const [branding, setBranding] = useState<EmailBranding>({
-    logo_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop',
+    logo_url: '/logo.png',
     primary_color: '#fbbf24',
     secondary_color: '#0f172a',
     button_style: 'rounded-lg',
@@ -1065,23 +1069,34 @@ export function EmailManagement() {
                       This logo appears at the top of all outgoing emails sent to users.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowLogoMediaPicker(true)}
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-950 text-xs font-bold rounded-xl shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <ImageIcon className="w-4 h-4" />
-                    <span>Choose from Media Library</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBranding({ ...branding, logo_url: currentPlatformLogo })}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl shadow-sm transition-all duration-200"
+                      title="Use the platform's active logo"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      <span>Use Platform Logo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogoMediaPicker(true)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-950 text-xs font-bold rounded-xl shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      <span>Choose from Media Library</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Logo Preview & Input controls */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-1">
                   <div 
-                    className="w-32 h-16 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center p-2 overflow-hidden shadow-inner flex-shrink-0 relative group"
+                    className="w-36 h-16 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center p-2 overflow-hidden shadow-inner flex-shrink-0 relative group"
                     style={{ backgroundColor: branding.secondary_color || '#0f172a' }}
                   >
-                    {branding.logo_url ? (
+                    {branding.logo_url && !branding.logo_url.includes('images.unsplash.com') ? (
                       <img 
                         src={branding.logo_url} 
                         alt="Email Header Logo Preview" 
@@ -1091,7 +1106,7 @@ export function EmailManagement() {
                         }}
                       />
                     ) : (
-                      <span className="text-[10px] text-slate-400 font-semibold">No Logo Set</span>
+                      <BrandLogo variant="light" size="sm" />
                     )}
                   </div>
 

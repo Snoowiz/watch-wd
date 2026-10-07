@@ -89,6 +89,7 @@ export interface BrandingSettings {
   logoDarkUrl?: string;
   favicon: string;
   preloaderEnabled: boolean;
+  preloaderStyle?: 'bouncing-ball' | 'scanning-logo';
 }
 
 const defaultBranding: BrandingSettings = {
@@ -97,7 +98,8 @@ const defaultBranding: BrandingSettings = {
   logoLightUrl: '',
   logoDarkUrl: '',
   favicon: '/favicon.ico',
-  preloaderEnabled: true
+  preloaderEnabled: true,
+  preloaderStyle: 'bouncing-ball'
 };
 
 export const getBrandingSettings = () => fetchSetting<BrandingSettings>('branding', defaultBranding);

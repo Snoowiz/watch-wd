@@ -8,7 +8,7 @@ export interface SeedTemplate {
 }
 
 export const defaultBranding = {
-  logo_url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=60&ixlib=rb-4.0.3",
+  logo_url: "/logo.png",
   primary_color: "#fbbf24",
   secondary_color: "#0f172a",
   button_style: "rounded-lg",

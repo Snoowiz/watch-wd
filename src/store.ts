@@ -612,6 +612,8 @@ interface SettingsState {
   setFavicon: (favicon: string) => void;
   preloaderEnabled: boolean;
   setPreloaderEnabled: (enabled: boolean) => void;
+  preloaderStyle: 'bouncing-ball' | 'scanning-logo';
+  setPreloaderStyle: (style: 'bouncing-ball' | 'scanning-logo') => void;
   googleAuthSettings: GoogleAuthSettings;
   setGoogleAuthSettings: (settings: GoogleAuthSettings) => void;
   blogSettings: BlogSettings;
@@ -721,7 +723,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       logoLightUrl: get().logoLightUrl, 
       logoDarkUrl: get().logoDarkUrl, 
       favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled 
+      preloaderEnabled: get().preloaderEnabled,
+      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
     });
   },
   logoUrl: '',
@@ -733,7 +736,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       logoLightUrl: get().logoLightUrl, 
       logoDarkUrl: get().logoDarkUrl, 
       favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled 
+      preloaderEnabled: get().preloaderEnabled,
+      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
     });
   },
   logoLightUrl: '',
@@ -745,7 +749,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       logoLightUrl, 
       logoDarkUrl: get().logoDarkUrl, 
       favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled 
+      preloaderEnabled: get().preloaderEnabled,
+      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
     });
   },
   logoDarkUrl: '',
@@ -757,7 +762,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       logoLightUrl: get().logoLightUrl, 
       logoDarkUrl, 
       favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled 
+      preloaderEnabled: get().preloaderEnabled,
+      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
     });
   },
   favicon: '/favicon.ico',
@@ -769,7 +775,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       logoLightUrl: get().logoLightUrl, 
       logoDarkUrl: get().logoDarkUrl, 
       favicon, 
-      preloaderEnabled: get().preloaderEnabled 
+      preloaderEnabled: get().preloaderEnabled,
+      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
     });
   },
   preloaderEnabled: true,
@@ -781,7 +788,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       logoLightUrl: get().logoLightUrl, 
       logoDarkUrl: get().logoDarkUrl, 
       favicon: get().favicon, 
-      preloaderEnabled: enabled 
+      preloaderEnabled: enabled,
+      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
+    });
+  },
+  preloaderStyle: 'bouncing-ball',
+  setPreloaderStyle: (style) => {
+    set({ preloaderStyle: style });
+    saveSettingHelper('branding', { 
+      platformName: get().platformName, 
+      logoUrl: get().logoUrl, 
+      logoLightUrl: get().logoLightUrl, 
+      logoDarkUrl: get().logoDarkUrl, 
+      favicon: get().favicon, 
+      preloaderEnabled: get().preloaderEnabled,
+      preloaderStyle: style
     });
   },
   googleAuthSettings: {
@@ -857,7 +878,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           logoLightUrl: data.logoLightUrl || data.logoUrl || '',
           logoDarkUrl: data.logoDarkUrl || data.logoUrl || '',
           favicon: data.favicon || '/favicon.ico',
-          preloaderEnabled: data.preloaderEnabled !== false
+          preloaderEnabled: data.preloaderEnabled !== false,
+          preloaderStyle: data.preloaderStyle || 'bouncing-ball'
         });
       }
       const seoRes = await fetch('/api/settings/seo');

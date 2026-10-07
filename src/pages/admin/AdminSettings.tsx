@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette, Sun, Moon } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette, Sun, Moon, Sparkles, Play, X } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -12,6 +12,7 @@ import { AdminFirebaseSettings } from './AdminFirebaseSettings';
 import { AdminSecuritySettings } from './AdminSecuritySettings';
 import { AdminSiteColorSettings } from './AdminSiteColorSettings';
 import { compressImage } from '../../lib/imageCompressor';
+import { Preloader } from '../../components/Preloader';
 
 export function AdminSettings() {
   const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security' | 'event-access'>('payment');
@@ -835,7 +836,8 @@ function PlatformBrandingSettings() {
     logoLightUrl, setLogoLightUrl,
     logoDarkUrl, setLogoDarkUrl,
     favicon, setFavicon, 
-    preloaderEnabled, setPreloaderEnabled 
+    preloaderEnabled, setPreloaderEnabled,
+    preloaderStyle, setPreloaderStyle
   } = useSettingsStore();
 
   const [localName, setLocalName] = useState(platformName !== undefined ? platformName : 'WatchWDS');
@@ -843,6 +845,8 @@ function PlatformBrandingSettings() {
   const [localLogoDarkUrl, setLocalLogoDarkUrl] = useState(logoDarkUrl || logoUrl || '');
   const [localFavicon, setLocalFavicon] = useState(favicon || '/favicon.ico');
   const [localPreloaderEnabled, setLocalPreloaderEnabled] = useState(preloaderEnabled !== false);
+  const [localPreloaderStyle, setLocalPreloaderStyle] = useState<'bouncing-ball' | 'scanning-logo'>(preloaderStyle || 'bouncing-ball');
+  const [previewStyle, setPreviewStyle] = useState<'bouncing-ball' | 'scanning-logo' | null>(null);
   const [pickerTarget, setPickerTarget] = useState<'favicon' | 'logo-light' | 'logo-dark' | null>(null);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -877,7 +881,8 @@ function PlatformBrandingSettings() {
     setLocalLogoDarkUrl(logoDarkUrl || logoUrl || '');
     setLocalFavicon(favicon || '/favicon.ico');
     setLocalPreloaderEnabled(preloaderEnabled !== false);
-  }, [platformName, logoUrl, logoLightUrl, logoDarkUrl, favicon, preloaderEnabled]);
+    setLocalPreloaderStyle(preloaderStyle || 'bouncing-ball');
+  }, [platformName, logoUrl, logoLightUrl, logoDarkUrl, favicon, preloaderEnabled, preloaderStyle]);
 
   const handleSave = () => {
     setPlatformName(localName);
@@ -886,6 +891,7 @@ function PlatformBrandingSettings() {
     setLogoUrl(localLogoLightUrl || localLogoDarkUrl);
     setFavicon(localFavicon);
     setPreloaderEnabled(localPreloaderEnabled);
+    setPreloaderStyle(localPreloaderStyle);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
@@ -1178,13 +1184,13 @@ function PlatformBrandingSettings() {
           </div>
         </div>
 
-        {/* Preloader Control */}
-        <div className="space-y-2 md:col-span-2 border-t border-slate-100 dark:border-slate-800 pt-5">
-          <label className="flex items-center cursor-pointer justify-between">
+        {/* Preloader Controls */}
+        <div className="space-y-4 md:col-span-2 border-t border-slate-100 dark:border-slate-800 pt-6">
+          <div className="flex items-center justify-between">
             <div>
-              <span className="block text-sm font-bold text-slate-700 dark:text-slate-300">Enable Site Preloader</span>
+              <span className="block text-sm font-bold text-slate-700 dark:text-slate-300">Site Preloader & Loading Animation</span>
               <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Show an animated football bouncing effect when the site loads or performs routing.
+                Displays a responsive animated loading screen while initial platform data and assets initialize.
               </span>
             </div>
             <div className="relative">
@@ -1200,7 +1206,111 @@ function PlatformBrandingSettings() {
               <div className={`block w-10 h-6 rounded-full transition-colors ${localPreloaderEnabled ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
               <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${localPreloaderEnabled ? 'transform translate-x-4' : ''}`}></div>
             </div>
-          </label>
+          </div>
+
+          {localPreloaderEnabled && (
+            <div className="pt-2 space-y-3">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Choose Preloader Animation Style
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. Bouncing Ball Option */}
+                <div
+                  onClick={() => {
+                    setLocalPreloaderStyle('bouncing-ball');
+                    setIsSaved(false);
+                  }}
+                  className={`relative p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                    localPreloaderStyle === 'bouncing-ball'
+                      ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 shadow-md ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 font-bold">
+                        ⚽
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          Bouncing Football
+                          {localPreloaderStyle === 'bouncing-ball' && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-600 text-white">Active</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Energetic bouncing soccer ball with platform logo cleanly positioned below.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-400">Option 1</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewStyle('bouncing-ball');
+                      }}
+                      className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-300 hover:text-indigo-600 text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-sm"
+                    >
+                      <Play className="w-3 h-3 text-indigo-500" />
+                      Preview Live
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Scanning Logo Option */}
+                <div
+                  onClick={() => {
+                    setLocalPreloaderStyle('scanning-logo');
+                    setIsSaved(false);
+                  }}
+                  className={`relative p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                    localPreloaderStyle === 'scanning-logo'
+                      ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 shadow-md ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 font-bold">
+                        <Sparkles className="w-4 h-4 text-blue-500" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          Scanning Logo
+                          {localPreloaderStyle === 'scanning-logo' && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-600 text-white">Active</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Centered platform logo with futuristic horizontal scanning light & laser beam sweep.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-400">Option 2</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewStyle('scanning-logo');
+                      }}
+                      className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-slate-700 dark:text-slate-300 hover:text-indigo-600 text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-sm"
+                    >
+                      <Play className="w-3 h-3 text-indigo-500" />
+                      Preview Live
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1232,6 +1342,20 @@ function PlatformBrandingSettings() {
           }}
           onClose={() => setPickerTarget(null)}
         />
+      )}
+
+      {previewStyle && (
+        <div className="fixed inset-0 z-[100000] flex flex-col items-center justify-center">
+          <Preloader forceStyle={previewStyle} />
+          <button
+            type="button"
+            onClick={() => setPreviewStyle(null)}
+            className="absolute top-6 right-6 z-[100001] px-4 py-2 bg-slate-900/90 hover:bg-slate-900 text-white rounded-full text-xs font-black shadow-2xl backdrop-blur-md flex items-center gap-2 border border-white/20 transition-all hover:scale-105 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+            Close Live Preview
+          </button>
+        </div>
       )}
     </div>
   );

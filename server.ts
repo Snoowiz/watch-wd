@@ -2423,9 +2423,16 @@ async function startServer() {
   async function seedEmailSystem() {
     try {
       const existingBranding = await getSecureDocument("email_branding", "settings");
-      if (!existingBranding) {
-        await saveSecureDocument("email_branding", "settings", defaultBranding);
-        console.log("[EMAIL SEEDER] Seeded default email branding configurations.");
+      const platformBranding = await getSecureDocument("settings", "branding");
+      const realPlatformLogo = platformBranding?.logoDarkUrl || platformBranding?.logoUrl || platformBranding?.logoLightUrl || "/logo.png";
+
+      if (!existingBranding || existingBranding.logo_url?.includes("images.unsplash.com") || !existingBranding.logo_url) {
+        await saveSecureDocument("email_branding", "settings", {
+          ...defaultBranding,
+          ...(existingBranding || {}),
+          logo_url: realPlatformLogo
+        });
+        console.log("[EMAIL SEEDER] Configured email branding with platform logo.");
       }
 
       const existingSmtp = await getSecureDocument("email_settings", "smtp");
@@ -2480,8 +2487,9 @@ async function startServer() {
   }
 
   async function renderEmailTemplate(slug: string, variables: Record<string, string>) {
-    const brandingDoc = await db.collection("email_branding").doc("settings").get();
-    const branding = brandingDoc.exists ? brandingDoc.data() : defaultBranding;
+    const emailBrandingDoc = await getSecureDocument("email_branding", "settings");
+    const emailBranding = emailBrandingDoc || defaultBranding;
+    const platformBranding = (await getSecureDocument("settings", "branding")) || {};
 
     const templateDoc = await db.collection("email_templates").doc(slug).get();
     let template: any = templateDoc.exists ? templateDoc.data() : null;
@@ -2498,6 +2506,8 @@ async function startServer() {
     let body = template.body;
     let subject = template.subject;
 
+    const brandName = platformBranding.platformName || "WatchWDS";
+
     const allVars = {
       first_name: "John",
       last_name: "Doe",
@@ -2513,7 +2523,7 @@ async function startServer() {
       transaction_id: "TXN_78291039",
       invoice_number: "INV-2026-908",
       support_email: "support@watchwds.com",
-      company_name: "WatchWDS",
+      company_name: brandName,
       website_url: globalAppUrl,
       reset_password_link: `${globalAppUrl}/auth/reset?token=abc`,
       verification_link: `${globalAppUrl}/auth/verify?token=xyz`,
@@ -2534,6 +2544,48 @@ async function startServer() {
       if (p1.includes("track-") || p1.includes("mailto:")) return match;
       return `href="${siteUrl}/api/email/track-click?slug=${slug}&url=${encodeURIComponent(p1)}"`;
     });
+
+    // Resolve header logo and build inline CID attachments
+    const attachments: Array<{ filename: string; content: Buffer | string; cid: string; contentType?: string }> = [];
+    let rawLogo = (emailBranding.logo_url || "").trim();
+    if (!rawLogo || rawLogo.includes("images.unsplash.com")) {
+      rawLogo = platformBranding.logoDarkUrl || platformBranding.logoUrl || platformBranding.logoLightUrl || "/logo.png";
+    }
+
+    let headerLogoSrc = rawLogo;
+
+    // 1. Data URI -> inline CID attachment
+    const dataUriMatch = rawLogo.match(/^data:([^;]+);base64,(.+)$/);
+    if (dataUriMatch) {
+      const mime = dataUriMatch[1];
+      const buffer = Buffer.from(dataUriMatch[2], 'base64');
+      const ext = mime.split('/')[1] || 'png';
+      attachments.push({
+        filename: `platform-logo.${ext}`,
+        content: buffer,
+        cid: 'platform-logo',
+        contentType: mime
+      });
+      headerLogoSrc = 'cid:platform-logo';
+    } else if (rawLogo.startsWith('/') || rawLogo.endsWith('.png') || rawLogo.endsWith('.jpg') || rawLogo.endsWith('.svg')) {
+      // 2. Local asset file in public/ -> inline CID attachment
+      const cleanPath = rawLogo.replace(/^\//, '');
+      const localFilePath = path.join(process.cwd(), 'public', cleanPath);
+      if (fs.existsSync(localFilePath)) {
+        const fileContent = fs.readFileSync(localFilePath);
+        const ext = path.extname(cleanPath).replace('.', '') || 'png';
+        const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : 'image/png';
+        attachments.push({
+          filename: `platform-logo.${ext}`,
+          content: fileContent,
+          cid: 'platform-logo',
+          contentType: mime
+        });
+        headerLogoSrc = 'cid:platform-logo';
+      } else {
+        headerLogoSrc = `${siteUrl}${rawLogo.startsWith('/') ? '' : '/'}${rawLogo}`;
+      }
+    }
 
     const masterLayout = `<!DOCTYPE html>
 <html>
@@ -2557,33 +2609,41 @@ async function startServer() {
 </head>
 <body>
   <div class="email-container">
-    <div class="email-header" style="background-color: ${branding.secondary_color || "#0f172a"}; text-align: center;">
-      <img src="${branding.logo_url}" alt="WatchWDS" class="email-logo" style="max-height: 48px;" />
+    <div class="email-header" style="background-color: ${emailBranding.secondary_color || "#0f172a"}; text-align: center; padding: 28px 24px;">
+      <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 0 auto;">
+        <tr>
+          <td align="center" valign="middle">
+            <a href="${siteUrl}" target="_blank" style="text-decoration: none; display: inline-block;">
+              <img src="${headerLogoSrc}" alt="${brandName}" class="email-logo" style="max-height: 48px; max-width: 220px; height: auto; display: block; margin: 0 auto; border: 0; outline: none; text-decoration: none;" />
+            </a>
+          </td>
+        </tr>
+      </table>
     </div>
     <div class="email-body">
       ${body}
     </div>
-    <div class="email-footer" style="background-color: ${branding.secondary_color || "#0f172a"}; text-align: center;">
-      <div style="margin-bottom: 16px; color: #cbd5e1; line-height: 1.4;">${branding.footer_content}</div>
+    <div class="email-footer" style="background-color: ${emailBranding.secondary_color || "#0f172a"}; text-align: center;">
+      <div style="margin-bottom: 16px; color: #cbd5e1; line-height: 1.4;">${emailBranding.footer_content}</div>
       <div style="margin-bottom: 16px;">
-        <a href="${branding.social_twitter || "https://twitter.com"}" style="color: #cbd5e1;">Twitter</a> &bull; 
-        <a href="${branding.social_facebook || "https://facebook.com"}" style="color: #cbd5e1;">Facebook</a> &bull; 
-        <a href="${branding.social_instagram || "https://instagram.com"}" style="color: #cbd5e1;">Instagram</a> &bull; 
-        <a href="${branding.social_youtube || "https://youtube.com"}" style="color: #cbd5e1;">YouTube</a>
+        <a href="${emailBranding.social_twitter || "https://twitter.com"}" style="color: #cbd5e1;">Twitter</a> &bull; 
+        <a href="${emailBranding.social_facebook || "https://facebook.com"}" style="color: #cbd5e1;">Facebook</a> &bull; 
+        <a href="${emailBranding.social_instagram || "https://instagram.com"}" style="color: #cbd5e1;">Instagram</a> &bull; 
+        <a href="${emailBranding.social_youtube || "https://youtube.com"}" style="color: #cbd5e1;">YouTube</a>
       </div>
       <div style="font-size: 11px; color: #94a3b8; line-height: 1.4;">
-        ${branding.contact_info}<br/>
-        ${branding.copyright_text}
+        ${emailBranding.contact_info}<br/>
+        ${emailBranding.copyright_text}
       </div>
     </div>
   </div>
 </body>
 </html>`;
 
-    return { subject, html: masterLayout };
+    return { subject, html: masterLayout, attachments };
   }
 
-  async function dispatchEmail(to: string, subject: string, html: string, text?: string) {
+  async function dispatchEmail(to: string, subject: string, html: string, text?: string, attachments: any[] = []) {
     const settingsDoc = await db.collection("email_settings").doc("smtp").get();
     if (!settingsDoc.exists) throw new Error("No SMTP configuration found.");
     const smtp = settingsDoc.data();
@@ -2618,7 +2678,8 @@ async function startServer() {
           to,
           subject,
           html,
-          text: text || "WatchWDS Email Support"
+          text: text || "WatchWDS Email Support",
+          attachments: attachments && attachments.length > 0 ? attachments : undefined
         });
         console.log(`[SMTP SUCCESS] Sent email to ${to} (Subject: ${subject}) via SMTP. MessageId: ${info.messageId}`);
         return { success: true, provider: "smtp", messageId: info.messageId };
@@ -2634,8 +2695,8 @@ async function startServer() {
 
   async function sendTemplateEmail(to: string, slug: string, variables: Record<string, string>) {
     try {
-      const { subject, html } = await renderEmailTemplate(slug, variables);
-      const result = await dispatchEmail(to, subject, html);
+      const { subject, html, attachments } = await renderEmailTemplate(slug, variables);
+      const result = await dispatchEmail(to, subject, html, undefined, attachments);
       console.log(`[EMAIL DISPATCH] Sent ${slug} to ${to}: ${result.success ? "success" : "failed"}`);
       
       const analyticsDoc = await db.collection("email_template_analytics").doc(slug).get();
@@ -2881,8 +2942,38 @@ async function startServer() {
 <p>Timestamp: <strong>${new Date().toLocaleString()}</strong></p>
 <p>If you received this message, your mail relay configurations are fully operational!</p>`;
 
-      const brandingDoc = await db.collection("email_branding").doc("settings").get();
-      const branding = brandingDoc.exists ? brandingDoc.data() : defaultBranding;
+      const emailBrandingDoc = await getSecureDocument("email_branding", "settings");
+      const emailBranding = emailBrandingDoc || defaultBranding;
+      const platformBranding = (await getSecureDocument("settings", "branding")) || {};
+      const brandName = platformBranding.platformName || "WatchWDS";
+
+      const attachments: Array<{ filename: string; content: Buffer | string; cid: string; contentType?: string }> = [];
+      let rawLogo = (emailBranding.logo_url || "").trim();
+      if (!rawLogo || rawLogo.includes("images.unsplash.com")) {
+        rawLogo = platformBranding.logoDarkUrl || platformBranding.logoUrl || platformBranding.logoLightUrl || "/logo.png";
+      }
+
+      let headerLogoSrc = rawLogo;
+      const dataUriMatch = rawLogo.match(/^data:([^;]+);base64,(.+)$/);
+      if (dataUriMatch) {
+        const mime = dataUriMatch[1];
+        const buffer = Buffer.from(dataUriMatch[2], 'base64');
+        const ext = mime.split('/')[1] || 'png';
+        attachments.push({ filename: `platform-logo.${ext}`, content: buffer, cid: 'platform-logo', contentType: mime });
+        headerLogoSrc = 'cid:platform-logo';
+      } else if (rawLogo.startsWith('/') || rawLogo.endsWith('.png') || rawLogo.endsWith('.jpg') || rawLogo.endsWith('.svg')) {
+        const cleanPath = rawLogo.replace(/^\//, '');
+        const localFilePath = path.join(process.cwd(), 'public', cleanPath);
+        if (fs.existsSync(localFilePath)) {
+          const fileContent = fs.readFileSync(localFilePath);
+          const ext = path.extname(cleanPath).replace('.', '') || 'png';
+          const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : 'image/png';
+          attachments.push({ filename: `platform-logo.${ext}`, content: fileContent, cid: 'platform-logo', contentType: mime });
+          headerLogoSrc = 'cid:platform-logo';
+        } else {
+          headerLogoSrc = `${globalAppUrl}${rawLogo.startsWith('/') ? '' : '/'}${rawLogo}`;
+        }
+      }
 
       const fullLayout = `<!DOCTYPE html>
 <html>
@@ -2890,21 +2981,31 @@ async function startServer() {
   <style>
     body { font-family: sans-serif; background: #f8fafc; padding: 20px; }
     .cont { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
-    .hdr { background: ${branding.secondary_color || "#0f172a"}; padding: 24px; text-align: center; }
+    .hdr { background: ${emailBranding.secondary_color || "#0f172a"}; padding: 24px; text-align: center; }
     .bdy { padding: 32px; color: #1e293b; line-height: 1.5; }
     .ftr { background: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b; }
   </style>
 </head>
 <body>
   <div class="cont">
-    <div class="hdr"><img src="${branding.logo_url}" style="max-height: 36px;" /></div>
+    <div class="hdr">
+      <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 0 auto;">
+        <tr>
+          <td align="center" valign="middle">
+            <a href="${globalAppUrl}" target="_blank" style="text-decoration: none; display: inline-block;">
+              <img src="${headerLogoSrc}" alt="${brandName}" style="max-height: 44px; max-width: 200px; height: auto; display: block; margin: 0 auto; border: 0;" />
+            </a>
+          </td>
+        </tr>
+      </table>
+    </div>
     <div class="bdy">${testHtml}</div>
-    <div class="ftr">${branding.contact_info}</div>
+    <div class="ftr">${emailBranding.contact_info || "WatchWDS Support"}</div>
   </div>
 </body>
 </html>`;
 
-      const result = await dispatchEmail(to, testSubject, fullLayout);
+      const result = await dispatchEmail(to, testSubject, fullLayout, undefined, attachments);
       res.json({ success: true, message: `Test email successfully dispatched to ${to} via ${result.provider}! ID: ${result.messageId}` });
     } catch (e: any) { 
       res.status(500).json({ success: false, message: "Email send failed: " + e.message }); 
