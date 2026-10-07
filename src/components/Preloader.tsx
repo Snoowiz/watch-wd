@@ -256,15 +256,7 @@ export function Preloader({ forceStyle }: PreloaderProps = {}) {
 
           {/* Platform Logo Below Bouncing Ball (Zero 'loading platform' text) */}
           <div className="mt-5 flex items-center justify-center">
-            {activeLogo ? (
-              <img
-                src={activeLogo}
-                alt={platformName || 'WatchWDS'}
-                className="h-10 sm:h-12 max-w-[200px] object-contain drop-shadow-sm"
-              />
-            ) : (
-              <BrandLogo size="lg" />
-            )}
+            <BrandLogo size="lg" variant={isDarkMode ? 'light' : 'dark'} />
           </div>
         </div>
       ) : (
@@ -274,23 +266,7 @@ export function Preloader({ forceStyle }: PreloaderProps = {}) {
 
           {/* Logo Wrapper with Horizontal Scanning Shimmer Beam */}
           <div className="scan-wrapper relative z-10 flex items-center justify-center">
-            {/* The horizontal scanning laser beam */}
-            <div className="preloader-scan-beam" />
-
-            {/* Platform Logo */}
-            {activeLogo ? (
-              <div className="relative">
-                <img
-                  src={activeLogo}
-                  alt={platformName || 'WatchWDS'}
-                  className="h-14 sm:h-16 max-w-[260px] object-contain drop-shadow-lg"
-                />
-              </div>
-            ) : (
-              <div className="relative">
-                <BrandLogo size="xl" />
-              </div>
-            )}
+            <BrandLogo size="xl" scanning={true} variant={isDarkMode ? 'light' : 'dark'} />
           </div>
 
           {/* Futuristic horizontal scanner progress track */}

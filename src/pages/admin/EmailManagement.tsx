@@ -115,10 +115,10 @@ export function EmailManagement() {
   });
 
   const { logoUrl: platformLogoUrl, logoLightUrl: platformLogoLight, logoDarkUrl: platformLogoDark } = useSettingsStore();
-  const currentPlatformLogo = platformLogoDark || platformLogoUrl || platformLogoLight || '/logo.png';
+  const currentPlatformLogo = platformLogoDark || platformLogoUrl || platformLogoLight || '/wds-logo-white.png';
 
   const [branding, setBranding] = useState<EmailBranding>({
-    logo_url: '/logo.png',
+    logo_url: '/wds-logo-white.png',
     primary_color: '#fbbf24',
     secondary_color: '#0f172a',
     button_style: 'rounded-lg',

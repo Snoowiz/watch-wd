@@ -7,6 +7,7 @@ import { UserDropdown } from './UserDropdown';
 import { MobileDock } from './MobileDock';
 import { Footer } from './Footer';
 import { CookieBanner } from './CookieBanner';
+import { BrandLogo } from './BrandLogo';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, setLogoutModalOpen } = useAuthStore();
@@ -67,17 +68,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               <Link to="/" className="flex items-center gap-2.5">
-                {activeLogo ? (
-                  <img
-                    src={activeLogo}
-                    alt={platformName || 'Logo'}
-                    className="h-8 max-w-[160px] object-contain bg-transparent"
-                  />
-                ) : (
-                  <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-white shrink-0">
-                    {platformInitials}
-                  </div>
-                )}
+                <BrandLogo size="md" />
                 {platformName.trim() && (
                   <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">{platformName}</span>
                 )}

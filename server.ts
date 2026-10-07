@@ -2549,7 +2549,7 @@ async function startServer() {
     const attachments: Array<{ filename: string; content: Buffer | string; cid: string; contentType?: string }> = [];
     let rawLogo = (emailBranding.logo_url || "").trim();
     if (!rawLogo || rawLogo.includes("images.unsplash.com")) {
-      rawLogo = platformBranding.logoDarkUrl || platformBranding.logoUrl || platformBranding.logoLightUrl || "/logo.png";
+      rawLogo = platformBranding.logoDarkUrl || platformBranding.logoUrl || platformBranding.logoLightUrl || "/wds-logo-white.png";
     }
 
     let headerLogoSrc = rawLogo;
