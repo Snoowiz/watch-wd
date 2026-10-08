@@ -9387,8 +9387,10 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         enabled: true,
         allow_guest: true,
         trigger_type: "delay",
-        trigger_delay_seconds: 15,
+        trigger_delay_seconds: 120,
         pages_before_prompt: 3,
+        popup_frequency: "once_per_device",
+        target_pages: "match_detail_only",
         cooldown_days_after_submit: 30,
         cooldown_days_after_dismiss: 1,
         cooldown_days_after_later: 7,
@@ -9792,6 +9794,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const { id } = req.params;
       await execute("DELETE FROM `feedback_responses` WHERE `feedback_id` = ?", [id]);
       await execute("DELETE FROM `user_feedback` WHERE `id` = ?", [id]);
+      cacheEngine.invalidateCollection("feedback");
+      cacheEngine.invalidateCollection("user_feedback");
       res.json({ success: true, message: "Feedback and response history deleted successfully" });
     } catch (err) {
       console.error("Error deleting feedback:", err);
@@ -9805,8 +9809,10 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         enabled: true,
         allow_guest: true,
         trigger_type: "delay",
-        trigger_delay_seconds: 15,
+        trigger_delay_seconds: 120,
         pages_before_prompt: 3,
+        popup_frequency: "once_per_device",
+        target_pages: "match_detail_only",
         cooldown_days_after_submit: 30,
         cooldown_days_after_dismiss: 1,
         cooldown_days_after_later: 7,

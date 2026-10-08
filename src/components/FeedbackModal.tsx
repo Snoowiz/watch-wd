@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Star, X, CheckCircle2, MessageSquare, AlertCircle, Loader2, Sparkles, Send, Clock, UserCheck } from 'lucide-react';
 import { useAuthStore } from '../store';
 
@@ -65,6 +65,27 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
       }, 300);
     }
   }, [isOpen]);
+
+  const handleDismiss = useCallback(() => {
+    try {
+      localStorage.setItem('watchwds_fb_dismissed_at', Date.now().toString());
+    } catch (err) {
+      console.warn('Storage unavailable', err);
+    }
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        handleDismiss();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, handleDismiss]);
 
   if (!isOpen) return null;
 
@@ -157,27 +178,6 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
       onClose();
     }
   };
-
-  const handleDismiss = () => {
-    try {
-      localStorage.setItem('watchwds_fb_dismissed_at', Date.now().toString());
-    } catch (err) {
-      console.warn('Storage unavailable', err);
-    }
-    onClose();
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen && !isSubmitting) {
-        handleDismiss();
-      }
-    };
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isSubmitting]);
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 overflow-hidden">
