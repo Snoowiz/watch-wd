@@ -9,6 +9,8 @@ export interface FeedbackSettings {
   trigger_type: 'delay' | 'page_count' | 'manual_only';
   trigger_delay_seconds: number;
   pages_before_prompt: number;
+  popup_frequency?: 'once_per_device' | 'once_per_day' | 'once_per_week';
+  target_pages?: 'match_detail_only' | 'all_except_auth';
   cooldown_days_after_submit: number;
   cooldown_days_after_dismiss: number;
   cooldown_days_after_later: number;
@@ -69,14 +71,37 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsOpen(false);
   }, []);
 
-  // Check if cooldown allows automatic popup
+  // Check if frequency or cooldown prevents automatic popup
   const isCooldownActive = useCallback((): boolean => {
     if (!settings) return true;
     try {
       const now = Date.now();
       const MS_IN_DAY = 24 * 60 * 60 * 1000;
+      const frequency = settings.popup_frequency || 'once_per_device';
 
-      // Check submitted cooldown
+      // 1. Once-per-device rule
+      if (frequency === 'once_per_device') {
+        const deviceShown = localStorage.getItem('watchwds_fb_device_shown');
+        const submitted = localStorage.getItem('watchwds_fb_submitted_at');
+        const dismissed = localStorage.getItem('watchwds_fb_dismissed_at');
+        if (deviceShown || submitted || dismissed) {
+          return true; // Already shown or answered on this device
+        }
+      }
+
+      // 2. Frequency timing rule (once per day / once per week)
+      const lastShownAt = localStorage.getItem('watchwds_fb_last_shown_at');
+      if (lastShownAt) {
+        const diffDays = (now - Number(lastShownAt)) / MS_IN_DAY;
+        if (frequency === 'once_per_day' && diffDays < 1) {
+          return true;
+        }
+        if (frequency === 'once_per_week' && diffDays < 7) {
+          return true;
+        }
+      }
+
+      // 3. Submitted cooldown
       const submittedAt = localStorage.getItem('watchwds_fb_submitted_at');
       if (submittedAt) {
         const diffDays = (now - Number(submittedAt)) / MS_IN_DAY;
@@ -85,7 +110,7 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // Check "Maybe Later" cooldown
+      // 4. "Maybe Later" cooldown
       const laterAt = localStorage.getItem('watchwds_fb_later_at');
       if (laterAt) {
         const diffDays = (now - Number(laterAt)) / MS_IN_DAY;
@@ -94,7 +119,7 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // Check dismissed cooldown
+      // 5. Dismissed cooldown
       const dismissedAt = localStorage.getItem('watchwds_fb_dismissed_at');
       if (dismissedAt) {
         const diffDays = (now - Number(dismissedAt)) / MS_IN_DAY;
@@ -103,7 +128,7 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // Session guard - only show once per active browser session automatically
+      // 6. Active browser session guard (maximum once per active tab session)
       const sessionShown = sessionStorage.getItem('watchwds_fb_session_shown');
       if (sessionShown) {
         return true;
@@ -118,14 +143,30 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Page counter tracking & automatic trigger evaluator
   useEffect(() => {
     if (!settings || !settings.enabled) return;
+    if (settings.trigger_type === 'manual_only') return;
 
-    // Do not trigger automatically on administrative or checkout pages
-    const path = location.pathname;
-    if (path.startsWith('/admin') || path.startsWith('/checkout') || path.startsWith('/auth')) {
+    const path = location.pathname.toLowerCase();
+
+    // 1. STRICT EXCLUSIONS: Never trigger automatically on authentication, admin, creator, or checkout pages
+    const isAuthRoute = path === '/login' || path === '/register' || path === '/forgot-password' || path === '/reset-password' || path.startsWith('/auth');
+    const isAdminRoute = path.startsWith('/admin');
+    const isCreatorRoute = path.startsWith('/creator');
+    const isCheckoutRoute = path.startsWith('/checkout') || path.startsWith('/plans');
+
+    if (isAuthRoute || isAdminRoute || isCreatorRoute || isCheckoutRoute) {
       return;
     }
 
-    // Increment page counter in sessionStorage
+    // 2. TARGET PAGES RULE: Default to match detail page only (/matches/:slug or /matches/:id)
+    const targetPages = settings.target_pages || 'match_detail_only';
+    if (targetPages === 'match_detail_only') {
+      const isMatchDetailPage = path.startsWith('/matches/') && path !== '/matches' && path !== '/matches/';
+      if (!isMatchDetailPage) {
+        return; // Only auto-pop up while viewing an actual match
+      }
+    }
+
+    // 3. Increment page counter in sessionStorage for page_count mode
     let currentPageCount = 1;
     try {
       const countStr = sessionStorage.getItem('watchwds_fb_page_count');
@@ -137,28 +178,48 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (isCooldownActive()) return;
 
-    // Evaluation based on trigger type
-    if (settings.trigger_type === 'page_count') {
-      const targetPages = settings.pages_before_prompt || 3;
-      if (currentPageCount >= targetPages) {
+    // 4. Trigger evaluation
+    const recordShown = () => {
+      try {
         sessionStorage.setItem('watchwds_fb_session_shown', 'true');
-        setIsOpen(true);
+        localStorage.setItem('watchwds_fb_device_shown', 'true');
+        localStorage.setItem('watchwds_fb_last_shown_at', Date.now().toString());
+      } catch (e) {
+        console.warn('Storage write failed', e);
+      }
+      setIsOpen(true);
+    };
+
+    if (settings.trigger_type === 'page_count') {
+      const targetPagesCount = settings.pages_before_prompt || 3;
+      if (currentPageCount >= targetPagesCount) {
+        recordShown();
       }
     } else if (settings.trigger_type === 'delay') {
-      const delayMs = (settings.trigger_delay_seconds || 15) * 1000;
+      // Default wait time is 120 seconds (2 minutes)
+      const delayMs = (settings.trigger_delay_seconds || 120) * 1000;
       const timer = setTimeout(() => {
         if (!isCooldownActive()) {
-          sessionStorage.setItem('watchwds_fb_session_shown', 'true');
-          setIsOpen(true);
+          recordShown();
         }
       }, delayMs);
 
+      // Clean up timer if user navigates away before time elapsed
       return () => clearTimeout(timer);
     }
   }, [location.pathname, settings, isCooldownActive]);
 
-  // Determine if floating launcher should be visible
-  const isExcludedPage = location.pathname.startsWith('/admin') || location.pathname.startsWith('/checkout');
+  // Determine if voluntary floating launcher should be visible
+  const rawPath = location.pathname.toLowerCase();
+  const isExcludedPage = 
+    rawPath === '/login' || 
+    rawPath === '/register' || 
+    rawPath === '/forgot-password' || 
+    rawPath === '/reset-password' || 
+    rawPath.startsWith('/auth') || 
+    rawPath.startsWith('/admin') || 
+    rawPath.startsWith('/checkout');
+    
   const showFloatingLauncher = settings?.enabled !== false && !isExcludedPage && !isOpen;
 
   return (
@@ -169,7 +230,7 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       {showFloatingLauncher && (
         <button
           onClick={() => openFeedback()}
-          className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 group flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-yellow-400 hover:text-yellow-300 border border-yellow-500/30 hover:border-yellow-500/60 shadow-lg shadow-black/60 backdrop-blur-md transition-all duration-300 transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+          className="fixed bottom-24 right-4 sm:bottom-6 sm:right-6 z-40 group flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-900/90 hover:bg-slate-800 text-yellow-400 hover:text-yellow-300 border border-yellow-500/30 hover:border-yellow-500/60 shadow-lg shadow-black/60 backdrop-blur-md transition-all duration-300 transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-yellow-500"
           title="Give Feedback"
           aria-label="Open Feedback Form"
         >

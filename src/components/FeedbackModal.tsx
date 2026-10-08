@@ -167,32 +167,58 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
     onClose();
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        handleDismiss();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 overflow-hidden">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
+        className="fixed inset-0 bg-slate-950/85 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
         onClick={handleDismiss}
       />
 
-      {/* Modal Container */}
-      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800/90 rounded-2xl shadow-2xl shadow-black/80 overflow-hidden z-10 transition-all transform animate-in zoom-in-95 duration-200">
+      {/* Modal Container with internal flex layout and strict max-height */}
+      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800/90 rounded-2xl shadow-2xl shadow-black/90 flex flex-col max-h-[90dvh] sm:max-h-[85vh] overflow-hidden my-auto z-10 transition-all transform animate-in zoom-in-95 duration-200">
         {/* Subtle accent gradient bar */}
-        <div className="h-1.5 w-full bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600" />
+        <div className="h-1.5 w-full bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 shrink-0" />
 
-        {/* Close Button */}
-        <button
-          onClick={handleDismiss}
-          disabled={isSubmitting}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800/80 transition-colors z-20 focus:outline-none focus:ring-2 focus:ring-yellow-500/50"
-          aria-label="Close feedback modal"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Sticky Header with Always-Visible Close Button */}
+        <div className="shrink-0 px-4 sm:px-6 py-3 sm:py-3.5 bg-slate-900/95 border-b border-slate-800/80 flex items-center justify-between z-20">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400">
+              <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </div>
+            <div>
+              <span className="text-xs sm:text-sm font-bold text-white tracking-wide">WatchWDS Feedback</span>
+              <span className="hidden sm:inline-block text-[11px] text-slate-400 ml-2">Share your experience</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleDismiss}
+            disabled={isSubmitting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700/80 transition-all focus:outline-none focus:ring-2 focus:ring-yellow-500 active:scale-95 shadow-sm"
+            aria-label="Close feedback modal"
+          >
+            <X className="w-4 h-4" />
+            <span>Close</span>
+          </button>
+        </div>
 
         {isSuccess ? (
           /* Success Screen */
-          <div className="p-8 sm:p-10 text-center flex flex-col items-center justify-center space-y-4 animate-in fade-in zoom-in-90 duration-300">
+          <div className="p-8 sm:p-10 text-center flex flex-col items-center justify-center space-y-4 animate-in fade-in zoom-in-90 duration-300 my-auto">
             <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 mb-2">
               <CheckCircle2 className="w-10 h-10 animate-bounce" />
             </div>
@@ -206,150 +232,149 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
             </div>
           </div>
         ) : (
-          /* Form Content */
-          <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
-            {/* Header */}
-            <div className="space-y-1.5 text-center sm:text-left pr-6">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs font-semibold mb-1">
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Your Voice Matters</span>
+          /* Scrollable Form Content & Fixed Action Footer */
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden min-h-0">
+            {/* Scrollable Form Body */}
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-5 pb-6">
+              {/* Header Title */}
+              <div className="space-y-1">
+                <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">How was your experience?</h2>
+                <p className="text-slate-400 text-xs sm:text-sm">
+                  Rate your time on WatchWDS and let our team know what we can do better.
+                </p>
               </div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">How was your experience?</h2>
-              <p className="text-slate-400 text-sm">
-                Rate your time on WatchWDS and let our team know what we can do better.
-              </p>
-            </div>
 
-            {/* Error banner */}
-            {errorMessage && (
-              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMessage}</span>
+              {/* Error banner */}
+              {errorMessage && (
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* Star Rating Section */}
+              <div className="flex flex-col items-center justify-center py-2 bg-slate-950/40 border border-slate-800/60 rounded-xl p-3 sm:p-4">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const isFilled = (hoverRating || rating) >= star;
+                    return (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRating(star)}
+                        onMouseEnter={() => setHoverRating(star)}
+                        onMouseLeave={() => setHoverRating(0)}
+                        className="p-1 sm:p-2 transition-transform hover:scale-125 focus:outline-none focus:scale-125 touch-manipulation"
+                        aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                      >
+                        <Star
+                          className={`w-8 h-8 sm:w-9 sm:h-9 transition-colors duration-150 ${
+                            isFilled
+                              ? 'text-yellow-400 fill-yellow-400 filter drop-shadow-[0_0_8px_rgba(250,204,21,0.45)]'
+                              : 'text-slate-600 hover:text-slate-500'
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Dynamic Rating Label */}
+                <div className="h-6 mt-2 flex items-center justify-center">
+                  {ratingDetails ? (
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${ratingDetails.bg} ${ratingDetails.color} ${ratingDetails.border} transition-all`}>
+                      {ratingDetails.label}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-500 italic">Select your rating (1-5 stars)</span>
+                  )}
+                </div>
               </div>
-            )}
 
-            {/* Star Rating Section */}
-            <div className="flex flex-col items-center justify-center py-2 bg-slate-950/40 border border-slate-800/60 rounded-xl p-4">
-              <div className="flex items-center gap-2 sm:gap-3">
-                {[1, 2, 3, 4, 5].map((star) => {
-                  const isFilled = (hoverRating || rating) >= star;
-                  return (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRating(star)}
-                      onMouseEnter={() => setHoverRating(star)}
-                      onMouseLeave={() => setHoverRating(0)}
-                      className="p-1 sm:p-2 transition-transform hover:scale-125 focus:outline-none focus:scale-125"
-                      aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-                    >
-                      <Star
-                        className={`w-8 h-8 sm:w-9 sm:h-9 transition-colors duration-150 ${
-                          isFilled
-                            ? 'text-yellow-400 fill-yellow-400 filter drop-shadow-[0_0_8px_rgba(250,204,21,0.45)]'
-                            : 'text-slate-600 hover:text-slate-500'
+              {/* Category selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
+                  Feedback Topic / Category
+                </label>
+                <div className="flex flex-wrap gap-1.5 max-h-32 sm:max-h-36 overflow-y-auto pr-1">
+                  {categories.map((cat) => {
+                    const isSelected = category === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCategory(cat)}
+                        className={`text-xs font-medium px-2.5 py-1.5 sm:px-3 rounded-lg border transition-all touch-manipulation ${
+                          isSelected
+                            ? 'bg-yellow-500/15 border-yellow-500/50 text-yellow-400 font-semibold shadow-sm shadow-yellow-500/10'
+                            : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                         }`}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Dynamic Rating Label */}
-              <div className="h-6 mt-2 flex items-center justify-center">
-                {ratingDetails ? (
-                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${ratingDetails.bg} ${ratingDetails.color} ${ratingDetails.border} transition-all`}>
-                    {ratingDetails.label}
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-500 italic">Select your rating (1-5 stars)</span>
-                )}
-              </div>
-            </div>
-
-            {/* Category selection */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
-                Feedback Topic / Category
-              </label>
-              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
-                {categories.map((cat) => {
-                  const isSelected = category === cat;
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setCategory(cat)}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                        isSelected
-                          ? 'bg-yellow-500/15 border-yellow-500/50 text-yellow-400 font-semibold shadow-sm shadow-yellow-500/10'
-                          : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Detailed Feedback Textarea */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label htmlFor="feedback-text" className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Detailed Feedback
-                </label>
-                <span className={`text-xs ${feedbackText.length > 1900 ? 'text-rose-400' : 'text-slate-500'}`}>
-                  {feedbackText.length} / 2,000
-                </span>
-              </div>
-              <textarea
-                id="feedback-text"
-                value={feedbackText}
-                onChange={(e) => setFeedbackText(e.target.value.slice(0, 2000))}
-                rows={4}
-                placeholder="Tell us what you enjoyed, issues you faced with streaming, payments, or features you'd like to see..."
-                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors resize-none"
-              />
-            </div>
-
-            {/* Account / Guest details banner */}
-            {user ? (
-              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 text-xs text-slate-300">
-                <div className="w-7 h-7 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 shrink-0">
-                  <UserCheck className="w-3.5 h-3.5" />
-                </div>
-                <div className="truncate">
-                  <span className="font-semibold text-white">{user.name || user.email}</span>
-                  <span className="text-slate-400 ml-1.5">({user.email})</span>
-                  <p className="text-slate-400 text-[11px] truncate">
-                    Feedback will be linked to your WatchWDS account for priority support.
-                  </p>
+                      >
+                        {cat}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
+
+              {/* Detailed Feedback Textarea */}
               <div className="space-y-1.5">
-                <label htmlFor="guest-email" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                  <span>Contact Email (Optional)</span>
-                  <span className="text-[11px] text-slate-500 font-normal">For direct support replies</span>
-                </label>
-                <input
-                  id="guest-email"
-                  type="email"
-                  value={guestEmail}
-                  onChange={(e) => setGuestEmail(e.target.value)}
-                  placeholder="your.email@example.com"
-                  className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors"
+                <div className="flex items-center justify-between">
+                  <label htmlFor="feedback-text" className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Detailed Feedback
+                  </label>
+                  <span className={`text-xs ${feedbackText.length > 1900 ? 'text-rose-400' : 'text-slate-500'}`}>
+                    {feedbackText.length} / 2,000
+                  </span>
+                </div>
+                <textarea
+                  id="feedback-text"
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value.slice(0, 2000))}
+                  rows={3}
+                  placeholder="Tell us what you enjoyed, issues you faced with streaming, payments, or features you'd like to see..."
+                  className="w-full bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors resize-none"
                 />
               </div>
-            )}
 
-            {/* Action buttons */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
+              {/* Account / Guest details banner */}
+              {user ? (
+                <div className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/40 border border-slate-800/80 text-xs text-slate-300">
+                  <div className="w-7 h-7 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 shrink-0">
+                    <UserCheck className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="truncate">
+                    <span className="font-semibold text-white">{user.name || user.email}</span>
+                    <span className="text-slate-400 ml-1.5">({user.email})</span>
+                    <p className="text-slate-400 text-[11px] truncate">
+                      Feedback will be linked to your WatchWDS account for priority support.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label htmlFor="guest-email" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                    <span>Contact Email (Optional)</span>
+                    <span className="text-[11px] text-slate-500 font-normal">For direct support replies</span>
+                  </label>
+                  <input
+                    id="guest-email"
+                    type="email"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    placeholder="your.email@example.com"
+                    className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 transition-colors"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Sticky Action Footer */}
+            <div className="shrink-0 p-3.5 sm:p-5 bg-slate-900/95 border-t border-slate-800/80 backdrop-blur-md flex flex-col sm:flex-row items-center gap-2.5">
               <button
                 type="submit"
                 disabled={isSubmitting || !rating || !feedbackText.trim()}
-                className="w-full sm:flex-1 py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 shadow-lg shadow-yellow-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 shadow-lg shadow-yellow-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-yellow-500 touch-manipulation active:scale-[0.98]"
               >
                 {isSubmitting ? (
                   <>
@@ -368,7 +393,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({
                 type="button"
                 onClick={handleMaybeLater}
                 disabled={isSubmitting}
-                className="w-full sm:w-auto py-3 px-4 rounded-xl font-medium text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800/60 transition-colors flex items-center justify-center gap-1.5"
+                className="w-full sm:w-auto py-2.5 sm:py-3 px-4 rounded-xl font-medium text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800/60 transition-colors flex items-center justify-center gap-1.5 touch-manipulation active:scale-[0.98]"
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>Maybe Later</span>

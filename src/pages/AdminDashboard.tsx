@@ -416,6 +416,10 @@ function AdminOverview() {
   });
 
   const [partnerAppsStats, setPartnerAppsStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [feedbackStats, setFeedbackStats] = useState<{ totalCount: number; statusCounts: { new: number } }>({
+    totalCount: 0,
+    statusCounts: { new: 0 }
+  });
 
   useEffect(() => {
     fetchAdminMatches();
@@ -465,9 +469,31 @@ function AdminOverview() {
         console.error('Failed to fetch partner applications in overview:', err);
       }
     };
+    const fetchFeedbackStats = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const res = await fetch('/api/admin/feedback/stats', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.stats) {
+              setFeedbackStats({
+                totalCount: data.stats.totalCount || 0,
+                statusCounts: data.stats.statusCounts || { new: 0 }
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch feedback stats in overview:', err);
+      }
+    };
     fetchTxns();
     fetchFreeViewing();
     fetchPartnerApps();
+    fetchFeedbackStats();
   }, [fetchAdminMatches]);
 
   const getCurrencySymbol = (curr: string) => {
@@ -547,9 +573,21 @@ function AdminOverview() {
     ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
     { name: 'Creator Hub', count: users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },
     { name: 'Payout Engine', count: 1, label: 'Threshold Engine', icon: DollarSign, path: '/admin/finance', status: 'Active', color: 'text-emerald-500' },
-    { name: 'User Feedback', count: 1, label: 'CSAT & Reviews', icon: MessageSquare, path: '/admin/feedback', status: 'Active', color: 'text-yellow-500' },
+    { 
+      name: 'User Feedback', 
+      count: feedbackStats.totalCount, 
+      label: feedbackStats.totalCount === 1 ? 'Review' : 'CSAT & Reviews', 
+      icon: MessageSquare, 
+      path: '/admin/feedback', 
+      status: feedbackStats.statusCounts?.new > 0 
+        ? `${feedbackStats.statusCounts.new} New` 
+        : feedbackStats.totalCount > 0 
+          ? 'Active' 
+          : 'All Clear', 
+      color: feedbackStats.statusCounts?.new > 0 ? 'text-amber-500' : 'text-yellow-500' 
+    },
     { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
-  ], [users, effectiveMatches, activeMatchesCount, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount, freeViewingData, partnerAppsStats]);
+  ], [users, effectiveMatches, activeMatchesCount, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount, freeViewingData, partnerAppsStats, feedbackStats]);
 
   // Top Performing Content Calculators
   const mostWatchedMatch = useMemo(() => {
@@ -1135,10 +1173,10 @@ function AdminOverview() {
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <MessageSquare className="w-5 h-5 text-slate-400 dark:text-slate-505" />
-                  <span className="font-medium text-sm text-slate-700 dark:text-slate-300">Unapproved Feedback</span>
+                  <MessageSquare className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+                  <span className="font-medium text-sm text-slate-700 dark:text-slate-300">Pending Feedback</span>
                 </div>
-                <span className="font-bold text-slate-900 dark:text-white text-xs font-mono">0 Queue</span>
+                <span className="font-bold text-slate-900 dark:text-white text-xs font-mono">{feedbackStats.statusCounts?.new || 0} Queue</span>
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">

@@ -53,6 +53,8 @@ interface FeedbackConfig {
   trigger_type: 'delay' | 'page_count' | 'manual_only';
   trigger_delay_seconds: number;
   pages_before_prompt: number;
+  popup_frequency?: 'once_per_device' | 'once_per_day' | 'once_per_week';
+  target_pages?: 'match_detail_only' | 'all_except_auth';
   cooldown_days_after_submit: number;
   cooldown_days_after_dismiss: number;
   cooldown_days_after_later: number;
@@ -964,6 +966,75 @@ export const AdminFeedback: React.FC = () => {
               </div>
             </div>
 
+            {/* Target Pages Restriction */}
+            <div className="space-y-3 pt-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                Target Page Restriction
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { id: 'match_detail_only', title: 'Match Details Page Only (Recommended)', desc: 'Only prompt viewers while watching or viewing a match stream' },
+                  { id: 'all_except_auth', title: 'All Pages (Except Auth & Admin)', desc: 'Allow auto-prompt across the entire public platform' },
+                ].map((item) => (
+                  <label
+                    key={item.id}
+                    className={`flex flex-col p-4 rounded-xl border cursor-pointer transition-all ${
+                      (config.target_pages || 'match_detail_only') === item.id
+                        ? 'bg-yellow-500/10 border-yellow-500 text-slate-900 dark:text-white'
+                        : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700/60 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-sm">{item.title}</span>
+                      <input
+                        type="radio"
+                        name="target_pages"
+                        checked={(config.target_pages || 'match_detail_only') === item.id}
+                        onChange={() => setConfig({ ...config, target_pages: item.id as any })}
+                        className="accent-yellow-500"
+                      />
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{item.desc}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Device Popup Frequency */}
+            <div className="space-y-3 pt-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                Device Popup Frequency
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { id: 'once_per_device', title: 'Once Per Device (Recommended)', desc: 'Only prompt once ever per browser/device' },
+                  { id: 'once_per_day', title: 'Once Per Day', desc: 'At most 1 prompt every 24 hours per device' },
+                  { id: 'once_per_week', title: 'Once Per Week', desc: 'At most 1 prompt every 7 days per device' },
+                ].map((item) => (
+                  <label
+                    key={item.id}
+                    className={`flex flex-col p-4 rounded-xl border cursor-pointer transition-all ${
+                      (config.popup_frequency || 'once_per_device') === item.id
+                        ? 'bg-yellow-500/10 border-yellow-500 text-slate-900 dark:text-white'
+                        : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700/60 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-sm">{item.title}</span>
+                      <input
+                        type="radio"
+                        name="popup_frequency"
+                        checked={(config.popup_frequency || 'once_per_device') === item.id}
+                        onChange={() => setConfig({ ...config, popup_frequency: item.id as any })}
+                        className="accent-yellow-500"
+                      />
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{item.desc}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             {/* Delay and Page Count Inputs */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="space-y-1.5">
@@ -974,11 +1045,11 @@ export const AdminFeedback: React.FC = () => {
                   type="number"
                   min="5"
                   max="600"
-                  value={config.trigger_delay_seconds}
-                  onChange={(e) => setConfig({ ...config, trigger_delay_seconds: parseInt(e.target.value) || 15 })}
+                  value={config.trigger_delay_seconds || 120}
+                  onChange={(e) => setConfig({ ...config, trigger_delay_seconds: parseInt(e.target.value) || 120 })}
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-yellow-500"
                 />
-                <span className="text-[11px] text-slate-500">Wait time before prompt if using Time Delay mode</span>
+                <span className="text-[11px] text-slate-500">Wait time before prompt if using Time Delay mode (Default: 120s / 2 minutes)</span>
               </div>
 
               <div className="space-y-1.5">
