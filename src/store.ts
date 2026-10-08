@@ -1219,6 +1219,7 @@ export interface Match {
 
 interface MatchState {
   matches: Match[];
+  isLoading: boolean;
   addMatch: (match: Match) => Promise<void>;
   adminMatches: Match[];
   fetchAdminMatches: () => Promise<void>;
@@ -1228,25 +1229,61 @@ interface MatchState {
   revokeMatch: (id: number | string, durationDays: number, reason?: string) => Promise<boolean>;
   restoreMatch: (id: number | string) => Promise<boolean>;
   fetchMatches: () => Promise<void>;
+  fetchMatchBySlugOrId: (slugOrId: string) => Promise<Match | null>;
   watchHistory: { userId: number; matchId: number; watchedAt: string; }[];
   addToWatchHistory: (userId: number, matchId: number) => void;
 }
 
 export const useMatchStore = create<MatchState>((set, get) => ({
   matches: [],
+  isLoading: true,
   adminMatches: [],
   fetchMatches: async () => {
     try {
+      set({ isLoading: true });
       const res = await fetch('/api/matches', { 
         cache: 'no-store'
       });
       if (res.ok) {
         const data = await res.json();
-        set({ matches: Array.isArray(data) ? data : [] });
+        set({ matches: Array.isArray(data) ? data : [], isLoading: false });
+      } else {
+        set({ isLoading: false });
       }
     } catch (err) {
       console.error('Failed to fetch matches', err);
+      set({ isLoading: false });
     }
+  },
+  fetchMatchBySlugOrId: async (slugOrId: string) => {
+    const clean = decodeURIComponent(slugOrId || '').trim();
+    if (!clean) return null;
+    const current = get().matches;
+    const found = current.find(m => 
+      String(m.id) === clean || 
+      (m.slug && m.slug.toLowerCase() === clean.toLowerCase())
+    );
+    if (found) return found;
+
+    try {
+      const res = await fetch(`/api/matches/${encodeURIComponent(clean)}`, { cache: 'no-store' });
+      if (res.ok) {
+        const match = await res.json();
+        if (match && match.id) {
+          set(state => {
+            const exists = state.matches.some(m => String(m.id) === String(match.id));
+            if (!exists) {
+              return { matches: [match, ...state.matches] };
+            }
+            return state;
+          });
+          return match;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch match by slug/id', err);
+    }
+    return null;
   },
   fetchAdminMatches: async () => {
     try {

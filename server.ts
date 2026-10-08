@@ -1687,8 +1687,24 @@ async function startServer() {
 
   app.get("/api/matches/:id", async (req, res) => {
     try {
-      const doc = await db.collection("matches").doc(req.params.id).get();
-      if (!doc.exists) return res.status(404).json({ error: "Not found" });
+      const rawParam = req.params.id;
+      const decodedParam = decodeURIComponent(rawParam || "").trim();
+      let doc = await db.collection("matches").doc(decodedParam).get();
+      if (!doc.exists) {
+        // Query by slug
+        let snap = await db.collection("matches").where("slug", "==", decodedParam).limit(1).get();
+        if (snap.docs.length === 0) {
+          snap = await db.collection("matches").where("slug", "==", decodedParam.toLowerCase()).limit(1).get();
+        }
+        if (snap.docs.length === 0) {
+          snap = await db.collection("matches").where("id", "==", decodedParam).limit(1).get();
+        }
+        if (snap.docs.length > 0) {
+          doc = snap.docs[0];
+        } else {
+          return res.status(404).json({ error: "Match not found" });
+        }
+      }
       const match = doc.data();
       const rStatus = match.revoke_status || match.revokeStatus;
       const pStatus = match.publish_status || match.publishStatus;

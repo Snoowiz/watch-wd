@@ -78,18 +78,19 @@ export const AccountGateModal: React.FC<AccountGateModalProps> = ({
           </div>
 
           {/* Modal Body */}
-          <div className="p-6 space-y-6">
+          <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
             <div>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight">
                 Account Required to Watch Free
               </h2>
-              <p className="mt-1.5 text-sm text-slate-300 leading-relaxed">
-                Enjoy complimentary, full-stream match coverage and on-demand replays. Sign in or create a free WatchWDS account to start watching instantly.
+              <p className="mt-1 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                <span className="sm:hidden">Sign in to watch this match for free. New users can create an account directly from the login page.</span>
+                <span className="hidden sm:inline">Enjoy complimentary, full-stream match coverage and on-demand replays. Sign in or create a free WatchWDS account to start watching instantly.</span>
               </p>
             </div>
 
             {/* Feature Perks */}
-            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4 space-y-2.5 text-xs text-slate-300">
+            <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 sm:p-4 space-y-2 sm:space-y-2.5 text-xs text-slate-300">
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>Instant access to free livestreams and full replay archives</span>
@@ -104,28 +105,19 @@ export const AccountGateModal: React.FC<AccountGateModalProps> = ({
               </div>
               <div className="flex items-center gap-2.5">
                 <Shield className="w-4 h-4 text-yellow-400 shrink-0" />
-                <span className="font-semibold text-slate-200">Zero cost — no credit card or subscription needed</span>
+                <span className="font-semibold text-slate-200">Zero cost — no credit card needed</span>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="space-y-3">
+            {/* Action Button: Single Login Button */}
+            <div className="space-y-2">
               <button
                 type="button"
                 onClick={onLogin}
-                className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold py-3.5 px-5 rounded-xl transition-all shadow-lg shadow-yellow-500/25 flex items-center justify-center gap-2.5 text-sm sm:text-base active:scale-[0.98]"
+                className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black py-3 sm:py-3.5 px-5 rounded-xl transition-all shadow-lg shadow-yellow-500/25 flex items-center justify-center gap-2.5 text-sm sm:text-base active:scale-[0.98] cursor-pointer"
               >
                 <LogIn className="w-4 h-4" />
                 <span>Log In to Watch Free</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onRegister}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-5 rounded-xl transition-all border border-slate-700 hover:border-slate-600 flex items-center justify-center gap-2.5 text-sm sm:text-base active:scale-[0.98]"
-              >
-                <UserPlus className="w-4 h-4 text-yellow-400" />
-                <span>Create Free Account</span>
               </button>
             </div>
 

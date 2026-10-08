@@ -21,7 +21,9 @@ export function MatchDetail() {
   const { isFeatureActive } = useFeatureStore();
   const { currencySymbol, walletSettings } = useSettingsStore();
   const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
-  const { matches, addToWatchHistory, restoreMatch } = useMatchStore();
+  const { matches, addToWatchHistory, restoreMatch, fetchMatchBySlugOrId } = useMatchStore();
+  const [directMatch, setDirectMatch] = useState<any>(null);
+  const [isResolvingMatch, setIsResolvingMatch] = useState<boolean>(true);
   const { categories = [] } = useCategoryStore();
   const { purchases = [], addPurchase, addTransaction, fetchPurchases } = usePurchaseStore();
   const { savedMatches = [], saveMatch, unsaveMatch, fetchSavedMatches } = useSavedMatchesStore();
@@ -75,7 +77,57 @@ export function MatchDetail() {
     }
   };
 
-  const match = matches.find(m => m.slug === slug || String(m.id) === String(slug));
+  // Robust match lookup: store first, then direct fetched match
+  const match = useMemo(() => {
+    const cleanSlug = decodeURIComponent(slug || '').trim();
+    if (!cleanSlug) return null;
+    return matches.find(m => 
+      String(m.id) === cleanSlug || 
+      (m.slug && m.slug.toLowerCase() === cleanSlug.toLowerCase()) ||
+      (m.slug && decodeURIComponent(m.slug).toLowerCase() === cleanSlug.toLowerCase())
+    ) || directMatch;
+  }, [matches, slug, directMatch]);
+
+  // Direct fetch resolution for direct link visits
+  useEffect(() => {
+    let isMounted = true;
+    const cleanSlug = decodeURIComponent(slug || '').trim();
+    if (!cleanSlug) {
+      setIsResolvingMatch(false);
+      return;
+    }
+
+    const storeMatch = matches.find(m => 
+      String(m.id) === cleanSlug || 
+      (m.slug && m.slug.toLowerCase() === cleanSlug.toLowerCase()) ||
+      (m.slug && decodeURIComponent(m.slug).toLowerCase() === cleanSlug.toLowerCase())
+    );
+
+    if (storeMatch) {
+      if (isMounted) {
+        setDirectMatch(storeMatch);
+        setIsResolvingMatch(false);
+      }
+      return;
+    }
+
+    // Not in store yet: fetch single match directly from backend
+    setIsResolvingMatch(true);
+    fetchMatchBySlugOrId(cleanSlug)
+      .then(fetched => {
+        if (isMounted) {
+          if (fetched) {
+            setDirectMatch(fetched);
+          }
+          setIsResolvingMatch(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setIsResolvingMatch(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [slug, matches, fetchMatchBySlugOrId]);
 
   // All hooks must be called before any early return to satisfy React rules-of-hooks
   const [accessDetails, setAccessDetails] = useState<{
@@ -343,13 +395,23 @@ export function MatchDetail() {
   }, [effectiveExpiresAt]);
 
   // Early return AFTER all hooks have been called
+  if (isResolvingMatch && !match) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] py-20 text-center animate-fade-in">
+        <Loader2 className="w-12 h-12 text-yellow-500 animate-spin mb-4" />
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Loading match...</h2>
+        <p className="text-xs text-slate-400 mt-1">Connecting to broadcast stream</p>
+      </div>
+    );
+  }
+
   if (!match || isRevoked || isDraft) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Match Not Found</h2>
         <p className="text-slate-500 mt-2 mb-6">The match you're looking for doesn't exist or has been removed.</p>
-        <Link to="/matches" className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold">Browse All Matches</Link>
+        <Link to="/matches" className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 px-6 py-2.5 rounded-xl font-bold transition-all shadow-md">Browse All Matches</Link>
       </div>
     );
   }
@@ -633,7 +695,7 @@ export function MatchDetail() {
     <div className="max-w-6xl mx-auto space-y-8 pb-24">
       {/* Video Player Section */}
       <div className="-mx-4 -mt-8 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
-        <div className="aspect-video bg-black relative flex items-center justify-center overflow-hidden">
+        <div className={`bg-black relative flex items-center justify-center overflow-hidden ${effectiveHasAccess ? 'aspect-video' : 'min-h-[290px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
           <AdOverlay match={match} />
           {effectiveHasAccess && accessCountdown && accessCountdown !== 'Expired' && (
             <div className={`absolute top-4 left-4 z-30 flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg border transition-all ${
@@ -669,10 +731,10 @@ export function MatchDetail() {
               </div>
             )
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-xl p-4 sm:p-8 text-center overflow-y-auto">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-xl p-3 sm:p-8 text-center overflow-y-auto">
               <Link 
                 to="/" 
-                className="absolute top-4 right-4 sm:top-6 sm:right-6 text-white/70 hover:text-white transition-colors text-xs sm:text-sm font-bold flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg backdrop-blur-md border border-white/10 shadow-lg"
+                className="absolute top-2.5 right-2.5 sm:top-6 sm:right-6 text-white/70 hover:text-white transition-colors text-[10px] sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5 bg-white/5 hover:bg-white/10 px-2.5 py-1 sm:px-4 sm:py-2 rounded-lg backdrop-blur-md border border-white/10 shadow-lg z-20"
               >
                 Back to Home
               </Link>
@@ -744,41 +806,35 @@ export function MatchDetail() {
                   </div>
                 </>
               ) : isFreeGated ? (
-                <div className="flex flex-col items-center justify-center max-w-lg mx-auto p-4 sm:p-6 text-center animate-fade-in">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 mb-4 shadow-lg backdrop-blur-md">
-                    <Sparkles className="w-3.5 h-3.5" />
+                <div className="flex flex-col items-center justify-center max-w-lg mx-auto p-2 sm:p-6 text-center animate-fade-in w-full">
+                  <div className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 mb-2 sm:mb-4 shadow-lg backdrop-blur-md">
+                    <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                     <span>Free Match Broadcast</span>
                   </div>
 
                   <button
                     onClick={handleFreePlayClick}
-                    className="group relative flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 shadow-2xl shadow-yellow-500/40 transition-all duration-300 hover:scale-105 active:scale-95 mb-5 cursor-pointer"
+                    className="group relative flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 shadow-2xl shadow-yellow-500/40 transition-all duration-300 hover:scale-105 active:scale-95 mb-2.5 sm:mb-5 cursor-pointer"
                     aria-label="Play Free Match"
                   >
-                    <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-current ml-1 transition-transform group-hover:scale-110" />
+                    <Play className="w-5 h-5 sm:w-8 sm:h-8 md:w-10 md:h-10 fill-current ml-0.5 sm:ml-1 transition-transform group-hover:scale-110" />
                   </button>
 
-                  <h2 className="text-xl sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-3 tracking-tight uppercase text-balance">
+                  <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white mb-1.5 sm:mb-2.5 tracking-tight uppercase text-balance leading-tight">
                     Account Required to Watch Free
                   </h2>
-                  <p className="text-slate-300 mb-6 sm:mb-8 max-w-md text-xs sm:text-sm md:text-base leading-relaxed text-balance">
-                    This match is 100% free to stream live and on replay. Simply sign in or create your free account to unlock instant playback.
+                  <p className="text-slate-300 mb-3.5 sm:mb-6 max-w-md text-xs sm:text-sm md:text-base leading-snug sm:leading-relaxed text-balance px-2">
+                    <span className="sm:hidden">Sign in to watch this match for free.</span>
+                    <span className="hidden sm:inline">This match is 100% free to stream live and on replay. Simply sign in or create an account to unlock instant playback.</span>
                   </p>
 
-                  <div className="flex flex-col sm:flex-row justify-center items-center gap-3 w-full sm:w-auto">
+                  <div className="flex justify-center items-center w-full sm:w-auto px-4 sm:px-0">
                     <button
                       onClick={() => handleAuthGateRedirect('login')}
-                      className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-3.5 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-95"
+                      className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-6 py-2.5 sm:px-8 sm:py-3.5 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-2 text-xs sm:text-base active:scale-95 cursor-pointer"
                     >
                       <LogIn className="w-4 h-4" />
                       <span>Log In to Watch Free</span>
-                    </button>
-                    <button
-                      onClick={() => handleAuthGateRedirect('register')}
-                      className="w-full sm:w-auto bg-white/10 hover:bg-white/20 text-white font-bold px-6 py-3.5 rounded-xl transition-all backdrop-blur-md border border-white/15 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-95"
-                    >
-                      <UserPlus className="w-4 h-4 text-yellow-400" />
-                      <span>Create Free Account</span>
                     </button>
                   </div>
                 </div>
