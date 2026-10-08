@@ -53,14 +53,20 @@ try {
 
 import { initializeFirebase } from './lib/firebase';
 
-initializeFirebase().then(() => {
-  initializeFirebaseSync();
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </StrictMode>,
+);
 
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </StrictMode>,
-  );
-});
+// Initialize Firebase services in the background without blocking initial app render
+initializeFirebase()
+  .then(() => {
+    initializeFirebaseSync();
+  })
+  .catch((err) => {
+    console.warn('Firebase initialization error:', err);
+  });
+

@@ -79,26 +79,37 @@ export function MatchDetail() {
 
   // Robust match lookup: store first, then direct fetched match
   const match = useMemo(() => {
-    const cleanSlug = decodeURIComponent(slug || '').trim();
+    const cleanSlug = decodeURIComponent(slug || '').trim().toLowerCase();
     if (!cleanSlug) return null;
-    return matches.find(m => 
-      String(m.id) === cleanSlug || 
-      (m.slug && m.slug.toLowerCase() === cleanSlug.toLowerCase()) ||
-      (m.slug && decodeURIComponent(m.slug).toLowerCase() === cleanSlug.toLowerCase())
-    ) || directMatch;
+    const storeMatch = matches.find(m => 
+      String(m.id).toLowerCase() === cleanSlug || 
+      (m.slug && m.slug.toLowerCase() === cleanSlug) ||
+      (m.slug && decodeURIComponent(m.slug).toLowerCase() === cleanSlug)
+    );
+    if (storeMatch) return storeMatch;
+    if (directMatch) {
+      const matchId = String(directMatch.id).toLowerCase() === cleanSlug;
+      const matchSlug = directMatch.slug && directMatch.slug.toLowerCase() === cleanSlug;
+      const matchDecodedSlug = directMatch.slug && decodeURIComponent(directMatch.slug).toLowerCase() === cleanSlug;
+      if (matchId || matchSlug || matchDecodedSlug) {
+        return directMatch;
+      }
+    }
+    return null;
   }, [matches, slug, directMatch]);
 
-  // Direct fetch resolution for direct link visits
+  // Direct fetch resolution for direct link visits & page refresh
   useEffect(() => {
     let isMounted = true;
     const cleanSlug = decodeURIComponent(slug || '').trim();
     if (!cleanSlug) {
+      setDirectMatch(null);
       setIsResolvingMatch(false);
       return;
     }
 
     const storeMatch = matches.find(m => 
-      String(m.id) === cleanSlug || 
+      String(m.id).toLowerCase() === cleanSlug.toLowerCase() || 
       (m.slug && m.slug.toLowerCase() === cleanSlug.toLowerCase()) ||
       (m.slug && decodeURIComponent(m.slug).toLowerCase() === cleanSlug.toLowerCase())
     );
@@ -111,7 +122,18 @@ export function MatchDetail() {
       return;
     }
 
-    // Not in store yet: fetch single match directly from backend
+    // Reset directMatch if not matching current slug
+    setDirectMatch(prev => {
+      if (prev && (
+        String(prev.id).toLowerCase() === cleanSlug.toLowerCase() ||
+        (prev.slug && prev.slug.toLowerCase() === cleanSlug.toLowerCase()) ||
+        (prev.slug && decodeURIComponent(prev.slug).toLowerCase() === cleanSlug.toLowerCase())
+      )) {
+        return prev;
+      }
+      return null;
+    });
+
     setIsResolvingMatch(true);
     fetchMatchBySlugOrId(cleanSlug)
       .then(fetched => {
@@ -394,27 +416,6 @@ export function MatchDetail() {
     return () => clearInterval(interval);
   }, [effectiveExpiresAt]);
 
-  // Early return AFTER all hooks have been called
-  if (isResolvingMatch && !match) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] py-20 text-center animate-fade-in">
-        <Loader2 className="w-12 h-12 text-yellow-500 animate-spin mb-4" />
-        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Loading match...</h2>
-        <p className="text-xs text-slate-400 mt-1">Connecting to broadcast stream</p>
-      </div>
-    );
-  }
-
-  if (!match || isRevoked || isDraft) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Match Not Found</h2>
-        <p className="text-slate-500 mt-2 mb-6">The match you're looking for doesn't exist or has been removed.</p>
-        <Link to="/matches" className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 px-6 py-2.5 rounded-xl font-bold transition-all shadow-md">Browse All Matches</Link>
-      </div>
-    );
-  }
 
   const handleRequestAccess = async () => {
     if (!match) return;
@@ -640,6 +641,7 @@ export function MatchDetail() {
   // Second match guard removed — already handled above after all hooks
 
   const handleUnlockClick = () => {
+    if (!match) return;
     if (!user) {
       navigate('/login', { state: { from: `/matches/${match.slug}` } });
       return;
@@ -652,7 +654,7 @@ export function MatchDetail() {
   };
 
   const confirmUnlock = async () => {
-    if (!user || isProcessingPurchase) return;
+    if (!match || !user || isProcessingPurchase) return;
     
     const priceToPay = match.ppv_price || match.price;
     setCheckoutData({
@@ -665,8 +667,8 @@ export function MatchDetail() {
   };
 
   const handleBuyEmbed = async () => {
-    if (!user) {
-      navigate('/login', { state: { from: `/matches/${match.slug}` } });
+    if (!match || !user) {
+      navigate('/login', { state: { from: `/matches/${match?.slug}` } });
       return;
     }
     if (isProcessingPurchase) return;
@@ -680,6 +682,7 @@ export function MatchDetail() {
   };
 
   const renderAccessIcon = () => {
+    if (!match) return null;
     const iconClass = "w-6 h-6 sm:w-10 sm:h-10 text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]";
     if (match.access_type === 'plan') return <Lock className={iconClass} />;
     
@@ -690,6 +693,28 @@ export function MatchDetail() {
       default: return <Coins className={iconClass} />;
     }
   };
+
+  // Safe early returns AFTER all hooks have executed unconditionally
+  if (isResolvingMatch && !match) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] py-20 text-center animate-fade-in">
+        <Loader2 className="w-12 h-12 text-yellow-500 animate-spin mb-4" />
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Loading match...</h2>
+        <p className="text-xs text-slate-400 mt-1">Connecting to broadcast stream</p>
+      </div>
+    );
+  }
+
+  if (!match || isRevoked || isDraft) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Match Not Found</h2>
+        <p className="text-slate-500 mt-2 mb-6">The match you're looking for doesn't exist or has been removed.</p>
+        <Link to="/matches" className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 px-6 py-2.5 rounded-xl font-bold transition-all shadow-md">Browse All Matches</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-24">
