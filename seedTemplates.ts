@@ -8,8 +8,9 @@ export interface SeedTemplate {
 }
 
 export const defaultBranding = {
-  logo_url: "/logo.png",
-  primary_color: "#fbbf24",
+  logo_url: "",
+  sync_with_platform: true,
+  primary_color: "#3b82f6",
   secondary_color: "#0f172a",
   button_style: "rounded-lg",
   footer_content: "Thank you for being part of the WatchWDS community. Keep playing, keep watching, and stay connected!",

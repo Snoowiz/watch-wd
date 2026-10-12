@@ -10,11 +10,22 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { MediaPickerModal } from '../../components/MediaPickerModal';
 import { BrandLogo } from '../../components/BrandLogo';
+import { getContrastTextColor, hexToRgb } from '../../utils/themeColors';
 
 interface EmailBranding {
   logo_url: string;
+  sync_with_platform?: boolean;
+  use_custom_colors?: boolean;
   primary_color: string;
   secondary_color: string;
+  platform_primary_color?: string;
+  platform_secondary_color?: string;
+  platform_button_text_color?: string;
+  platform_logo_light?: string;
+  platform_logo_dark?: string;
+  adaptive_logo_url?: string;
+  effective_primary_color?: string;
+  effective_secondary_color?: string;
   button_style: 'rounded-sm' | 'rounded-lg' | 'rounded-full';
   footer_content: string;
   social_twitter: string;
@@ -114,12 +125,35 @@ export function EmailManagement() {
     reply_to: 'support@watchwds.com'
   });
 
-  const { logoUrl: platformLogoUrl, logoLightUrl: platformLogoLight, logoDarkUrl: platformLogoDark } = useSettingsStore();
+  const { logoUrl: platformLogoUrl, logoLightUrl: platformLogoLight, logoDarkUrl: platformLogoDark, siteColorSettings } = useSettingsStore();
   const currentPlatformLogo = platformLogoDark || platformLogoUrl || platformLogoLight || '/wds-logo-white.png';
 
+  const isDarkColor = (colorHex: string): boolean => {
+    if (!colorHex) return true;
+    const [r, g, b] = hexToRgb(colorHex);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.55;
+  };
+
+  const getActiveEmailLogo = (headerBg: string, customLogoUrl?: string, syncWithPlatform: boolean = true) => {
+    if (!syncWithPlatform && customLogoUrl && customLogoUrl.trim() && !customLogoUrl.includes('images.unsplash.com')) {
+      return customLogoUrl.trim();
+    }
+    const isDarkHeader = isDarkColor(headerBg);
+    // Dark header (black, slate-900) -> light/white logo
+    // Light header (white, slate-50) -> dark/black logo
+    if (isDarkHeader) {
+      return platformLogoDark || platformLogoUrl || '/wds-logo-white.png';
+    } else {
+      return platformLogoLight || platformLogoUrl || '/wds-logo-dark.png';
+    }
+  };
+
   const [branding, setBranding] = useState<EmailBranding>({
-    logo_url: '/wds-logo-white.png',
-    primary_color: '#fbbf24',
+    logo_url: '',
+    sync_with_platform: true,
+    use_custom_colors: false,
+    primary_color: '#3b82f6',
     secondary_color: '#0f172a',
     button_style: 'rounded-lg',
     footer_content: 'Thank you for being part of the WatchWDS community. Keep playing, keep watching, and stay connected!',
@@ -194,7 +228,14 @@ export function EmailManagement() {
         });
         
         if (brandingData) {
-          setBranding(brandingData);
+          const effectivePrimary = brandingData.use_custom_colors 
+            ? brandingData.primary_color 
+            : (siteColorSettings?.primaryColor || brandingData.effective_primary_color || brandingData.primary_color || '#3b82f6');
+          setBranding({
+            ...brandingData,
+            sync_with_platform: brandingData.sync_with_platform !== false,
+            primary_color: effectivePrimary
+          });
         }
       }
 
@@ -524,7 +565,21 @@ export function EmailManagement() {
       subject = subject.replace(regex, val);
     });
 
+    const headerBg = branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a';
+    const activeLogo = getActiveEmailLogo(headerBg, branding.logo_url, branding.sync_with_platform !== false);
+    const activePrimaryColor = branding.use_custom_colors 
+      ? branding.primary_color 
+      : (siteColorSettings?.primaryColor || branding.effective_primary_color || branding.primary_color || '#3b82f6');
+    const activeBtnTextColor = getContrastTextColor(activePrimaryColor);
     const buttonClassRadius = branding.button_style === 'rounded-full' ? '9999px' : (branding.button_style === 'rounded-sm' ? '4px' : '8px');
+
+    // Dynamically replace legacy hardcoded colors in template bodies
+    body = body.replace(/background-color:\s*#fbbf24/gi, `background-color: ${activePrimaryColor}`);
+    body = body.replace(/#fbbf24/gi, activePrimaryColor);
+    if (isDarkColor(activePrimaryColor)) {
+      body = body.replace(/color:\s*#(?:0f171e|0d1720|000000)(;[^>]*class="button")/gi, `color: ${activeBtnTextColor}$1`);
+      body = body.replace(/class="button"\s+style="color:\s*#(?:0f171e|0d1720|000000)/gi, `class="button" style="color: ${activeBtnTextColor}`);
+    }
 
     return `<!DOCTYPE html>
 <html>
@@ -532,14 +587,15 @@ export function EmailManagement() {
   <meta charset="utf-8">
   <style>
     body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; }
-    .email-container { max-width: 580px; margin: 20px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
-    .email-header { padding: 24px; text-align: center; }
-    .email-logo { max-height: 40px; }
-    .email-body { padding: 32px; color: #1e293b; font-size: 15px; line-height: 1.5; }
-    .email-body h2 { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 12px; }
-    .email-footer { padding: 24px; text-align: center; color: #cbd5e1; font-size: 11px; }
+    .email-container { max-width: 580px; margin: 20px auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .email-accent-bar { height: 4px; width: 100%; background-color: ${activePrimaryColor}; }
+    .email-header { padding: 26px 20px; text-align: center; }
+    .email-logo { max-height: 44px; max-width: 220px; height: auto; display: block; margin: 0 auto; border: 0; }
+    .email-body { padding: 32px 28px; color: #1e293b; font-size: 15px; line-height: 1.6; }
+    .email-body h2 { font-size: 19px; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 12px; }
+    .email-footer { padding: 26px 20px; text-align: center; color: #cbd5e1; font-size: 11px; }
     .email-footer a { color: #f1f5f9; text-decoration: none; font-weight: bold; margin: 0 4px; }
-    .button { display: inline-block; padding: 10px 20px; font-weight: bold; text-decoration: none; font-size: 13px; margin: 20px 0; border-radius: ${buttonClassRadius}; background-color: ${branding.primary_color}; color: #0d1720; }
+    .button { display: inline-block; padding: 11px 22px; font-weight: bold; text-decoration: none; font-size: 13px; margin: 20px 0; border-radius: ${buttonClassRadius}; background-color: ${activePrimaryColor} !important; color: ${activeBtnTextColor} !important; }
     .meta-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
     .meta-table td { padding: 10px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
     .meta-table td.label { font-weight: bold; color: #64748b; width: 35%; }
@@ -548,8 +604,9 @@ export function EmailManagement() {
 </head>
 <body>
   <div class="email-container">
-    <div class="email-header" style="background-color: ${branding.secondary_color};">
-      <img src="${branding.logo_url}" alt="WatchWDS" class="email-logo" />
+    <div class="email-accent-bar"></div>
+    <div class="email-header" style="background-color: ${headerBg};">
+      <img src="${activeLogo}" alt="WatchWDS" class="email-logo" />
     </div>
     <div class="email-body">
       ${body}
@@ -577,8 +634,13 @@ export function EmailManagement() {
     if (!selectedTemplate) return;
     let snippet = '';
     
+    const activePrimary = branding.use_custom_colors 
+      ? branding.primary_color 
+      : (siteColorSettings?.primaryColor || branding.primary_color || '#3b82f6');
+    const activeBtnText = getContrastTextColor(activePrimary);
+    
     if (type === 'button') {
-      snippet = `<p style="text-align: center;"><a href="#" class="button" style="color: #0f171e; background-color: ${branding.primary_color}; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Action Call Button</a></p>`;
+      snippet = `<p style="text-align: center;"><a href="#" class="button" style="color: ${activeBtnText}; background-color: ${activePrimary}; padding: 12px 24px; text-decoration: none; font-weight: bold; display: inline-block; margin: 16px 0; border-radius: 8px;">Action Call Button</a></p>`;
     } else if (type === 'table') {
       snippet = `<table class="meta-table" style="width: 100%; border-collapse: collapse; margin: 20px 0;">
   <tr><td class="label" style="font-weight: bold; color: #64748b; padding: 10px; border-bottom: 1px solid #e2e8f0;">Transaction Description</td><td class="value" style="color: #1e293b; font-weight: 500; padding: 10px; border-bottom: 1px solid #e2e8f0;">Order #{{invoice_number}}</td></tr>
@@ -588,8 +650,8 @@ export function EmailManagement() {
     } else if (type === 'divider') {
       snippet = `<hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />`;
     } else if (type === 'callout') {
-      snippet = `<div style="background-color: #f8fafc; border-left: 4px solid ${branding.primary_color}; padding: 16px; border-radius: 0 8px 8px 0; margin: 16px 0;">
-  <p style="margin: 0; font-weight: 600; color: #1e293b;">Important Warning Details</p>
+      snippet = `<div style="background-color: #f8fafc; border-left: 4px solid ${activePrimary}; padding: 16px; border-radius: 0 8px 8px 0; margin: 16px 0;">
+  <p style="margin: 0; font-weight: 600; color: #1e293b;">Important Highlight</p>
   <p style="margin: 8px 0 0 0; color: #64748b; font-size: 14px;">Place critical highlight details here. Fits perfect for subscription notices and registration alerts!</p>
 </div>`;
     }
@@ -1017,45 +1079,246 @@ export function EmailManagement() {
         <form onSubmit={handleSaveSettings} className="grid lg:grid-cols-12 gap-8">
           
           <div className="lg:col-span-6 space-y-6">
+
+            {/* PLATFORM THEME & DYNAMIC ADAPTATION ENGINE CARD */}
+            <div className="bg-gradient-to-br from-blue-500/10 via-slate-50 to-indigo-500/5 dark:from-blue-950/30 dark:via-slate-900/60 dark:to-indigo-950/20 rounded-3xl border border-blue-200/80 dark:border-blue-800/60 p-6 xl:p-8 space-y-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-blue-200/50 dark:border-blue-800/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-600/10 dark:bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                      Website Theme & Dynamic Logo Synchronization
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Synchronize emails with live website colors and adaptive contrast logos
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-2xs font-extrabold uppercase tracking-wider ${
+                    branding.sync_with_platform !== false
+                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                  }`}>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {branding.sync_with_platform !== false ? 'Dynamic Sync Active' : 'Manual Override'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Sync Toggle */}
+              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur rounded-2xl p-4 border border-blue-100 dark:border-blue-900/40 flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    Auto-Adapt with Website Settings
+                  </span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Whenever you update the platform logo or site theme color in Admin Settings, all outgoing emails immediately adapt.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={branding.sync_with_platform !== false}
+                    onChange={(e) => setBranding({ ...branding, sync_with_platform: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+
+              {/* Dual Logo Intelligent Contrast Engine Preview */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-500" />
+                    Intelligent Logo Contrast Selection
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Auto-selected based on header luminance
+                  </span>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {/* Dark header scenario */}
+                  <div className={`rounded-2xl p-3.5 border transition-all ${
+                    isDarkColor(branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a')
+                      ? 'border-blue-500 ring-2 ring-blue-500/20 bg-slate-900 text-white'
+                      : 'border-slate-700 bg-slate-900 text-white opacity-70'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-300">
+                        Dark Header Background
+                      </span>
+                      {isDarkColor(branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a') && (
+                        <span className="text-[9px] font-bold bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30">
+                          Active Selection
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-14 rounded-xl bg-slate-950 flex items-center justify-center p-2 border border-slate-800">
+                      <img
+                        src={platformLogoDark || platformLogoUrl || '/wds-logo-white.png'}
+                        alt="White Logo"
+                        className="max-h-full max-w-full object-contain"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-2 text-center">
+                      White / Light Logo for dark header background
+                    </p>
+                  </div>
+
+                  {/* Light header scenario */}
+                  <div className={`rounded-2xl p-3.5 border transition-all ${
+                    !isDarkColor(branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a')
+                      ? 'border-blue-500 ring-2 ring-blue-500/20 bg-white text-slate-900'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-white opacity-70'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                        Light Header Background
+                      </span>
+                      {!isDarkColor(branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a') && (
+                        <span className="text-[9px] font-bold bg-blue-500/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">
+                          Active Selection
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-14 rounded-xl bg-white flex items-center justify-center p-2 border border-slate-200">
+                      <img
+                        src={platformLogoLight || platformLogoUrl || '/wds-logo-dark.png'}
+                        alt="Dark Logo"
+                        className="max-h-full max-w-full object-contain"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 text-center">
+                      Black / Dark Logo for light header background
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Website Theme Values */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-xl shadow-inner border border-white/20 flex-shrink-0"
+                    style={{ backgroundColor: siteColorSettings?.primaryColor || '#3b82f6' }}
+                  />
+                  <div>
+                    <span className="text-2xs font-extrabold uppercase tracking-wider text-slate-400 block">
+                      Active Website Primary Theme
+                    </span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-white">
+                      {siteColorSettings?.primaryColor || '#3b82f6'} (Platform Theme)
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBranding({
+                      ...branding,
+                      sync_with_platform: true,
+                      use_custom_colors: false,
+                      primary_color: siteColorSettings?.primaryColor || '#3b82f6',
+                      secondary_color: siteColorSettings?.secondaryColor || '#0f172a',
+                      logo_url: ''
+                    });
+                    setMessage({ type: 'success', text: 'Mailing system synchronized with current website theme and logo!' });
+                    setTimeout(() => setMessage(null), 3000);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-xl border border-blue-200 dark:border-blue-800 transition-colors"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Sync Website Colors Now
+                </button>
+              </div>
+
+            </div>
+
+            {/* THEME & LAYOUT STYLING */}
             <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 xl:p-8 space-y-6 shadow-sm">
-              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white pb-4 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">
-                <Paintbrush className="w-5 h-5 text-yellow-500" />
-                Theme & Layout Styling
-              </h2>
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-700">
+                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Paintbrush className="w-5 h-5 text-blue-500" />
+                  Theme & Layout Styling
+                </h2>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-500 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={branding.use_custom_colors === true}
+                    onChange={(e) => setBranding({ ...branding, use_custom_colors: e.target.checked })}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Custom Color Override</span>
+                </label>
+              </div>
 
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-0.5">Primary Branding Color</label>
+                  <div className="flex items-center justify-between mb-1.5 px-0.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Primary Branding Color
+                    </label>
+                    {!branding.use_custom_colors && (
+                      <span className="text-[9px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded">
+                        Website Synced
+                      </span>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <input 
                       type="color"
-                      value={branding.primary_color}
-                      onChange={(e) => setBranding({...branding, primary_color: e.target.value})}
+                      value={branding.primary_color || siteColorSettings?.primaryColor || '#3b82f6'}
+                      onChange={(e) => setBranding({ ...branding, primary_color: e.target.value, use_custom_colors: true })}
                       className="w-12 h-10 bg-transparent border-0 outline-none rounded cursor-pointer"
-                    />                    <input 
+                    />
+                    <input 
                       type="text"
-                      value={branding.primary_color}
-                      onChange={(e) => setBranding({...branding, primary_color: e.target.value})}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs font-semibold uppercase focus:ring-1 focus:ring-yellow-500 dark:text-white"
+                      value={branding.primary_color || siteColorSettings?.primaryColor || '#3b82f6'}
+                      onChange={(e) => setBranding({ ...branding, primary_color: e.target.value, use_custom_colors: true })}
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs font-semibold uppercase focus:ring-1 focus:ring-blue-500 dark:text-white"
                     />
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Used for action buttons, links, highlights, and the top accent line.
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-0.5">Secondary Branding Color</label>
+                  <div className="flex items-center justify-between mb-1.5 px-0.5">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Secondary (Header & Footer) Color
+                    </label>
+                    {!branding.use_custom_colors && (
+                      <span className="text-[9px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded">
+                        Website Synced
+                      </span>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <input 
                       type="color"
-                      value={branding.secondary_color}
-                      onChange={(e) => setBranding({...branding, secondary_color: e.target.value})}
+                      value={branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a'}
+                      onChange={(e) => setBranding({ ...branding, secondary_color: e.target.value, use_custom_colors: true })}
                       className="w-12 h-10 bg-transparent border-0 outline-none rounded cursor-pointer"
                     />
                     <input 
                       type="text"
-                      value={branding.secondary_color}
-                      onChange={(e) => setBranding({...branding, secondary_color: e.target.value})}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs font-semibold uppercase focus:ring-1 focus:ring-yellow-500 dark:text-white"
+                      value={branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a'}
+                      onChange={(e) => setBranding({ ...branding, secondary_color: e.target.value, use_custom_colors: true })}
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs font-semibold uppercase focus:ring-1 focus:ring-blue-500 dark:text-white"
                     />
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Header background luminance dictates whether white or dark logo is selected.
+                  </p>
                 </div>
               </div>
 
@@ -1066,23 +1329,25 @@ export function EmailManagement() {
                       Email System Header Logo
                     </label>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      This logo appears at the top of all outgoing emails sent to users.
+                      {branding.sync_with_platform !== false && (!branding.logo_url || !branding.logo_url.trim())
+                        ? 'Dynamically adapting from Website Branding settings.'
+                        : 'Custom logo URL specified below.'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setBranding({ ...branding, logo_url: currentPlatformLogo })}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl shadow-sm transition-all duration-200"
-                      title="Use the platform's active logo"
+                      onClick={() => setBranding({ ...branding, logo_url: '', sync_with_platform: true })}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-300 text-xs font-bold rounded-xl shadow-sm transition-all duration-200"
+                      title="Use dynamic platform logo"
                     >
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>Use Platform Logo</span>
+                      <Sparkles className="w-4 h-4 text-blue-500" />
+                      <span>Use Dynamic Website Logo</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowLogoMediaPicker(true)}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-950 text-xs font-bold rounded-xl shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl shadow-sm transition-all duration-200"
                     >
                       <ImageIcon className="w-4 h-4" />
                       <span>Choose from Media Library</span>
@@ -1094,20 +1359,16 @@ export function EmailManagement() {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-1">
                   <div 
                     className="w-36 h-16 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center p-2 overflow-hidden shadow-inner flex-shrink-0 relative group"
-                    style={{ backgroundColor: branding.secondary_color || '#0f172a' }}
+                    style={{ backgroundColor: branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a' }}
                   >
-                    {branding.logo_url && !branding.logo_url.includes('images.unsplash.com') ? (
-                      <img 
-                        src={branding.logo_url} 
-                        alt="Email Header Logo Preview" 
-                        className="max-h-full max-w-full object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <BrandLogo variant="light" size="sm" />
-                    )}
+                    <img 
+                      src={getActiveEmailLogo(branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a', branding.logo_url, branding.sync_with_platform !== false)} 
+                      alt="Email Header Logo Preview" 
+                      className="max-h-full max-w-full object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
                   </div>
 
                   <div className="flex-1 w-full space-y-1.5">
@@ -1115,23 +1376,23 @@ export function EmailManagement() {
                       <input 
                         type="text"
                         value={branding.logo_url}
-                        onChange={(e) => setBranding({...branding, logo_url: e.target.value})}
-                        placeholder="https://example.com/logo.png"
-                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
+                        onChange={(e) => setBranding({...branding, logo_url: e.target.value, sync_with_platform: !e.target.value})}
+                        placeholder="Leave blank to auto-sync with Website Logo"
+                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-semibold focus:ring-1 focus:ring-blue-500 dark:text-white"
                       />
                       {branding.logo_url && (
                         <button
                           type="button"
-                          onClick={() => setBranding({...branding, logo_url: ''})}
+                          onClick={() => setBranding({...branding, logo_url: '', sync_with_platform: true})}
                           className="px-2.5 py-2 text-xs text-slate-400 hover:text-red-500 font-semibold transition-colors"
-                          title="Remove logo"
+                          title="Reset to Website Logo"
                         >
-                          Clear
+                          Auto-Sync
                         </button>
                       )}
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      Recommended: Transparent PNG or SVG asset (3:1 horizontal ratio).
+                      When left blank, the email engine automatically uses your official platform logo with automatic dark/light contrast selection.
                     </p>
                   </div>
                 </div>
@@ -1145,7 +1406,7 @@ export function EmailManagement() {
                       key={btnStyle}
                       type="button"
                       onClick={() => setBranding({...branding, button_style: btnStyle as any})}
-                      className={`text-2xs font-extrabold py-2.5 border rounded-lg transition-all ${branding.button_style === btnStyle ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-600' : 'bg-white hover:bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'}`}
+                      className={`text-2xs font-extrabold py-2.5 border rounded-lg transition-all ${branding.button_style === btnStyle ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400' : 'bg-white hover:bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500'}`}
                     >
                       {btnStyle === 'rounded-sm' ? 'Flat/Sharp' : btnStyle === 'rounded-lg' ? 'Standard Safe' : 'Full Rounded'}
                     </button>
@@ -1159,7 +1420,7 @@ export function EmailManagement() {
                   value={branding.footer_content}
                   onChange={(e) => setBranding({...branding, footer_content: e.target.value})}
                   rows={3}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white leading-relaxed"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-blue-500 dark:text-white leading-relaxed"
                 />
               </div>
 
@@ -1170,7 +1431,7 @@ export function EmailManagement() {
                     type="text"
                     value={branding.contact_info}
                     onChange={(e) => setBranding({...branding, contact_info: e.target.value})}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-blue-500 dark:text-white"
                   />
                 </div>
                 <div>
@@ -1179,7 +1440,7 @@ export function EmailManagement() {
                     type="text"
                     value={branding.copyright_text}
                     onChange={(e) => setBranding({...branding, copyright_text: e.target.value})}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-yellow-500 dark:text-white"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-1 focus:ring-blue-500 dark:text-white"
                   />
                 </div>
               </div>
@@ -1230,10 +1491,10 @@ export function EmailManagement() {
                 <button 
                   type="submit"
                   disabled={isSaving}
-                  className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow shadow-yellow-500/10 transition-all disabled:opacity-50"
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition-all disabled:opacity-50 hover:scale-[1.01] active:scale-[0.99]"
                 >
                   <Save className="w-5 h-5" />
-                  {isSaving ? 'Updating...' : 'Apply Central Styling across templates'}
+                  {isSaving ? 'Updating...' : 'Save & Apply Central Email Branding'}
                 </button>
               </div>
 
@@ -1241,9 +1502,17 @@ export function EmailManagement() {
           </div>
 
           <div className="lg:col-span-6 space-y-6">
-            <div className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 xl:p-8 space-y-5">
-              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">Live Mock Email Frame Preview</h3>
-              <p className="text-2xs text-slate-450 leading-relaxed">
+            <div className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 xl:p-8 space-y-5 sticky top-8">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-blue-500" />
+                  Live Mock Email Frame Preview
+                </h3>
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  {isDarkColor(branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a') ? 'Dark Header (White Logo)' : 'Light Header (Dark Logo)'}
+                </span>
+              </div>
+              <p className="text-2xs text-slate-400 leading-relaxed">
                 Centralized templates merge layout properties dynamically from visual configurations above. Preview the master shell architecture.
               </p>
               <div className="min-h-[560px] bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
@@ -1252,24 +1521,33 @@ export function EmailManagement() {
                   srcDoc={`<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <style>
-    body { font-family: sans-serif; background-color: #f1f5f9; padding: 20px; text-align: center; }
-    .email-container { max-width: 480px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; text-align: left;}
-    .email-header { padding: 20px; text-align: center; background-color: ${branding.secondary_color}; }
-    .email-body { padding: 28px; line-height: 1.5; color: #334155; font-size: 14px;}
-    .email-footer { padding: 20px; text-align: center; background-color: ${branding.secondary_color}; color: #94a3b8; font-size: 10px;}
-    .button { display: inline-block; padding: 10px 20px; font-weight: bold; text-decoration: none; border-radius: ${branding.button_style === 'rounded-full' ? '9999px' : (branding.button_style === 'rounded-sm' ? '4px' : '8px')}; background-color: ${branding.primary_color}; color: #0d1720; margin: 15px 0;}
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f1f5f9; padding: 24px; margin: 0; text-align: center; }
+    .email-container { max-width: 480px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; text-align: left; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .email-accent-bar { height: 4px; width: 100%; background-color: ${branding.use_custom_colors ? branding.primary_color : (siteColorSettings?.primaryColor || branding.effective_primary_color || branding.primary_color || '#3b82f6')}; }
+    .email-header { padding: 24px 20px; text-align: center; background-color: ${branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a'}; }
+    .email-logo { max-height: 42px; max-width: 220px; height: auto; display: block; margin: 0 auto; border: 0; }
+    .email-body { padding: 32px 28px; line-height: 1.6; color: #1e293b; font-size: 14px; }
+    .email-body h3 { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 0; margin-bottom: 12px; }
+    .email-footer { padding: 24px 20px; text-align: center; background-color: ${branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a'}; color: #cbd5e1; font-size: 11px; }
+    .button { display: inline-block; padding: 12px 24px; font-weight: bold; text-decoration: none; border-radius: ${branding.button_style === 'rounded-full' ? '9999px' : (branding.button_style === 'rounded-sm' ? '4px' : '8px')}; background-color: ${branding.use_custom_colors ? branding.primary_color : (siteColorSettings?.primaryColor || branding.effective_primary_color || branding.primary_color || '#3b82f6')}; color: ${getContrastTextColor(branding.use_custom_colors ? branding.primary_color : (siteColorSettings?.primaryColor || branding.effective_primary_color || branding.primary_color || '#3b82f6'))}; margin: 18px 0; font-size: 13px; }
     .f-links a { color: #f1f5f9; text-decoration: none; font-weight: bold; margin: 0 4px; }
   </style>
 </head>
 <body>
   <div class="email-container">
-    <div class="email-header"><img src="${branding.logo_url}" style="max-height: 36px;" /></div>
+    <div class="email-accent-bar"></div>
+    <div class="email-header">
+      <img src="${getActiveEmailLogo(branding.secondary_color || siteColorSettings?.secondaryColor || '#0f172a', branding.logo_url, branding.sync_with_platform !== false)}" alt="WatchWDS Logo" class="email-logo" />
+    </div>
     <div class="email-body">
       <h3>Central Styling Layout Preview</h3>
       <p>This is a simulated transactional newsletter showcasing how branding attributes apply to matches, billing invoices, streaks and verification emails automatically!</p>
-      <a href="#" class="button">Interactive Action Button</a>
-      <p>Colors, branding logo, footer coordinates and roundness map safely instantly.</p>
+      <div style="text-align: center;">
+        <a href="#" class="button">Interactive Action Button</a>
+      </div>
+      <p style="color: #64748b; font-size: 12px; line-height: 1.5;">Colors, branding logo, footer coordinates and roundness map safely instantly.</p>
     </div>
     <div class="email-footer">
       <div style="margin-bottom: 8px; color: #cbd5e1;">${branding.footer_content}</div>
