@@ -9840,9 +9840,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   ];
   app.get("/api/sliders", async (_req, res) => {
     try {
-      const doc = await db.collection("settings").doc("sliders").get();
-      if (doc.exists) {
-        const data = doc.data();
+      const data = await getSecureDocument("settings", "sliders");
+      if (data) {
         const slidersList = Array.isArray(data) ? data : data?.sliders || DEFAULT_SLIDERS;
         return res.json({ success: true, sliders: slidersList });
       }
@@ -9859,8 +9858,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!slidersArray) {
         return res.status(400).json({ error: "Invalid sliders payload: must be an array of slider groups" });
       }
-      await db.collection("settings").doc("sliders").set({ sliders: slidersArray });
-      console.log(`[SLIDER BUILDER] Saved ${slidersArray.length} slider groups to database`);
+      await saveSecureDocument("settings", "sliders", { sliders: slidersArray });
+      cacheEngine.invalidateCollection("settings");
+      console.log(`[SLIDER BUILDER] Saved ${slidersArray.length} slider groups to database & persistent mirror`);
       res.json({ success: true, message: "Sliders saved to database successfully", sliders: slidersArray });
     } catch (err) {
       console.error("Error saving sliders:", err);

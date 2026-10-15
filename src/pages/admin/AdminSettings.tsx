@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette, Sun, Moon, Sparkles, Play, X } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette, Sun, Moon, Sparkles, Play, X, Loader2 } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -831,13 +831,14 @@ function AppearanceSettings() {
 
 function PlatformBrandingSettings() {
   const { 
-    platformName, setPlatformName, 
-    logoUrl, setLogoUrl, 
-    logoLightUrl, setLogoLightUrl,
-    logoDarkUrl, setLogoDarkUrl,
-    favicon, setFavicon, 
-    preloaderEnabled, setPreloaderEnabled,
-    preloaderStyle, setPreloaderStyle
+    platformName, 
+    logoUrl, 
+    logoLightUrl, 
+    logoDarkUrl, 
+    favicon, 
+    preloaderEnabled, 
+    preloaderStyle,
+    saveBrandingSettings
   } = useSettingsStore();
 
   const [localName, setLocalName] = useState(platformName !== undefined ? platformName : 'WatchWDS');
@@ -849,6 +850,7 @@ function PlatformBrandingSettings() {
   const [previewStyle, setPreviewStyle] = useState<'bouncing-ball' | 'scanning-logo' | null>(null);
   const [pickerTarget, setPickerTarget] = useState<'favicon' | 'logo-light' | 'logo-dark' | null>(null);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const lightFileInputRef = useRef<HTMLInputElement>(null);
   const darkFileInputRef = useRef<HTMLInputElement>(null);
@@ -884,16 +886,22 @@ function PlatformBrandingSettings() {
     setLocalPreloaderStyle(preloaderStyle || 'bouncing-ball');
   }, [platformName, logoUrl, logoLightUrl, logoDarkUrl, favicon, preloaderEnabled, preloaderStyle]);
 
-  const handleSave = () => {
-    setPlatformName(localName);
-    setLogoLightUrl(localLogoLightUrl);
-    setLogoDarkUrl(localLogoDarkUrl);
-    setLogoUrl(localLogoLightUrl || localLogoDarkUrl);
-    setFavicon(localFavicon);
-    setPreloaderEnabled(localPreloaderEnabled);
-    setPreloaderStyle(localPreloaderStyle);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
+  const handleSave = async () => {
+    setIsSaving(true);
+    const success = await saveBrandingSettings({
+      platformName: localName,
+      logoLightUrl: localLogoLightUrl,
+      logoDarkUrl: localLogoDarkUrl,
+      logoUrl: localLogoLightUrl || localLogoDarkUrl,
+      favicon: localFavicon,
+      preloaderEnabled: localPreloaderEnabled,
+      preloaderStyle: localPreloaderStyle
+    });
+    setIsSaving(false);
+    if (success) {
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2500);
+    }
   };
 
   // Compute initials preview if no logo is selected
@@ -1193,19 +1201,19 @@ function PlatformBrandingSettings() {
                 Displays a responsive animated loading screen while initial platform data and assets initialize.
               </span>
             </div>
-            <div className="relative">
+            <label className="relative inline-flex items-center cursor-pointer select-none">
               <input
                 type="checkbox"
-                className="sr-only"
+                className="sr-only peer"
                 checked={localPreloaderEnabled}
                 onChange={(e) => {
                   setLocalPreloaderEnabled(e.target.checked);
                   setIsSaved(false);
                 }}
               />
-              <div className={`block w-10 h-6 rounded-full transition-colors ${localPreloaderEnabled ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`}></div>
-              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${localPreloaderEnabled ? 'transform translate-x-4' : ''}`}></div>
-            </div>
+              <div className={`w-11 h-6 rounded-full transition-colors ${localPreloaderEnabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}></div>
+              <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${localPreloaderEnabled ? 'transform translate-x-5' : ''}`}></div>
+            </label>
           </div>
 
           {localPreloaderEnabled && (
@@ -1317,13 +1325,22 @@ function PlatformBrandingSettings() {
       <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
         <button
           onClick={handleSave}
+          disabled={isSaving}
           className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2 ${
             isSaved 
               ? 'bg-green-500 text-white' 
-              : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              : isSaving 
+              ? 'bg-indigo-400 text-white cursor-wait'
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer'
           }`}
         >
-          {isSaved ? <><CheckCircle className="w-4 h-4" />Saved Successfully</> : 'Save Brand Settings'}
+          {isSaving ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Saving Brand Settings...</>
+          ) : isSaved ? (
+            <><CheckCircle className="w-4 h-4" /> Saved Successfully</>
+          ) : (
+            'Save Brand Settings'
+          )}
         </button>
       </div>
 

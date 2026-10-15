@@ -614,6 +614,15 @@ interface SettingsState {
   setPreloaderEnabled: (enabled: boolean) => void;
   preloaderStyle: 'bouncing-ball' | 'scanning-logo';
   setPreloaderStyle: (style: 'bouncing-ball' | 'scanning-logo') => void;
+  saveBrandingSettings: (settings: {
+    platformName?: string;
+    logoUrl?: string;
+    logoLightUrl?: string;
+    logoDarkUrl?: string;
+    favicon?: string;
+    preloaderEnabled?: boolean;
+    preloaderStyle?: 'bouncing-ball' | 'scanning-logo';
+  }) => Promise<boolean>;
   googleAuthSettings: GoogleAuthSettings;
   setGoogleAuthSettings: (settings: GoogleAuthSettings) => void;
   blogSettings: BlogSettings;
@@ -638,6 +647,22 @@ const saveSettingHelper = (key: string, value: any) => {
     },
     body: JSON.stringify(value)
   }).catch(console.error);
+};
+
+const getInitialPreloaderEnabled = (): boolean => {
+  try {
+    const val = localStorage.getItem('watchwds_preloader_enabled');
+    if (val !== null) return val === 'true';
+  } catch (_) {}
+  return true;
+};
+
+const getInitialPreloaderStyle = (): 'bouncing-ball' | 'scanning-logo' => {
+  try {
+    const val = localStorage.getItem('watchwds_preloader_style');
+    if (val === 'scanning-logo' || val === 'bouncing-ball') return val;
+  } catch (_) {}
+  return 'bouncing-ball';
 };
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -717,93 +742,85 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   platformName: 'WatchWDS',
   setPlatformName: (name) => {
     set({ platformName: name });
-    saveSettingHelper('branding', { 
-      platformName: name, 
-      logoUrl: get().logoUrl, 
-      logoLightUrl: get().logoLightUrl, 
-      logoDarkUrl: get().logoDarkUrl, 
-      favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled,
-      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
-    });
+    get().saveBrandingSettings({ platformName: name });
   },
   logoUrl: '',
   setLogoUrl: (logoUrl) => {
     set({ logoUrl });
-    saveSettingHelper('branding', { 
-      platformName: get().platformName, 
-      logoUrl, 
-      logoLightUrl: get().logoLightUrl, 
-      logoDarkUrl: get().logoDarkUrl, 
-      favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled,
-      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
-    });
+    get().saveBrandingSettings({ logoUrl });
   },
   logoLightUrl: '',
   setLogoLightUrl: (logoLightUrl) => {
     set({ logoLightUrl });
-    saveSettingHelper('branding', { 
-      platformName: get().platformName, 
-      logoUrl: get().logoUrl || logoLightUrl, 
-      logoLightUrl, 
-      logoDarkUrl: get().logoDarkUrl, 
-      favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled,
-      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
-    });
+    get().saveBrandingSettings({ logoLightUrl });
   },
   logoDarkUrl: '',
   setLogoDarkUrl: (logoDarkUrl) => {
     set({ logoDarkUrl });
-    saveSettingHelper('branding', { 
-      platformName: get().platformName, 
-      logoUrl: get().logoUrl || logoDarkUrl, 
-      logoLightUrl: get().logoLightUrl, 
-      logoDarkUrl, 
-      favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled,
-      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
-    });
+    get().saveBrandingSettings({ logoDarkUrl });
   },
   favicon: '/favicon.ico',
   setFavicon: (favicon) => {
     set({ favicon });
-    saveSettingHelper('branding', { 
-      platformName: get().platformName, 
-      logoUrl: get().logoUrl, 
-      logoLightUrl: get().logoLightUrl, 
-      logoDarkUrl: get().logoDarkUrl, 
-      favicon, 
-      preloaderEnabled: get().preloaderEnabled,
-      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
-    });
+    get().saveBrandingSettings({ favicon });
   },
-  preloaderEnabled: true,
+  preloaderEnabled: getInitialPreloaderEnabled(),
   setPreloaderEnabled: (enabled) => {
     set({ preloaderEnabled: enabled });
-    saveSettingHelper('branding', { 
-      platformName: get().platformName, 
-      logoUrl: get().logoUrl, 
-      logoLightUrl: get().logoLightUrl, 
-      logoDarkUrl: get().logoDarkUrl, 
-      favicon: get().favicon, 
-      preloaderEnabled: enabled,
-      preloaderStyle: get().preloaderStyle || 'bouncing-ball'
-    });
+    try {
+      localStorage.setItem('watchwds_preloader_enabled', String(enabled));
+    } catch (_) {}
+    get().saveBrandingSettings({ preloaderEnabled: enabled });
   },
-  preloaderStyle: 'bouncing-ball',
+  preloaderStyle: getInitialPreloaderStyle(),
   setPreloaderStyle: (style) => {
     set({ preloaderStyle: style });
-    saveSettingHelper('branding', { 
-      platformName: get().platformName, 
-      logoUrl: get().logoUrl, 
-      logoLightUrl: get().logoLightUrl, 
-      logoDarkUrl: get().logoDarkUrl, 
-      favicon: get().favicon, 
-      preloaderEnabled: get().preloaderEnabled,
-      preloaderStyle: style
+    try {
+      localStorage.setItem('watchwds_preloader_style', style);
+    } catch (_) {}
+    get().saveBrandingSettings({ preloaderStyle: style });
+  },
+  saveBrandingSettings: async (settings) => {
+    const current = {
+      platformName: settings.platformName !== undefined ? settings.platformName : get().platformName,
+      logoUrl: settings.logoUrl !== undefined ? settings.logoUrl : get().logoUrl,
+      logoLightUrl: settings.logoLightUrl !== undefined ? settings.logoLightUrl : get().logoLightUrl,
+      logoDarkUrl: settings.logoDarkUrl !== undefined ? settings.logoDarkUrl : get().logoDarkUrl,
+      favicon: settings.favicon !== undefined ? settings.favicon : get().favicon,
+      preloaderEnabled: settings.preloaderEnabled !== undefined ? settings.preloaderEnabled : get().preloaderEnabled,
+      preloaderStyle: settings.preloaderStyle !== undefined ? settings.preloaderStyle : get().preloaderStyle || 'bouncing-ball'
+    };
+
+    set({
+      platformName: current.platformName,
+      logoUrl: current.logoUrl,
+      logoLightUrl: current.logoLightUrl,
+      logoDarkUrl: current.logoDarkUrl,
+      favicon: current.favicon,
+      preloaderEnabled: current.preloaderEnabled,
+      preloaderStyle: current.preloaderStyle
     });
+
+    try {
+      localStorage.setItem('watchwds_preloader_enabled', String(current.preloaderEnabled));
+      localStorage.setItem('watchwds_preloader_style', current.preloaderStyle);
+    } catch (_) {}
+
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/admin/settings/branding', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(current)
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Failed to save branding settings:', err);
+      return false;
+    }
   },
   googleAuthSettings: {
     enabled: false,
@@ -872,14 +889,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const brandingRes = await fetch('/api/settings/branding');
       if (brandingRes.ok) {
         const data = await brandingRes.json();
+        const pEnabled = data.preloaderEnabled !== false;
+        const pStyle = (data.preloaderStyle === 'scanning-logo' ? 'scanning-logo' : 'bouncing-ball') as 'bouncing-ball' | 'scanning-logo';
+        try {
+          localStorage.setItem('watchwds_preloader_enabled', String(pEnabled));
+          localStorage.setItem('watchwds_preloader_style', pStyle);
+        } catch (_) {}
         set({
           platformName: data.platformName !== undefined ? data.platformName : 'WatchWDS',
           logoUrl: data.logoUrl || data.logoLightUrl || data.logoDarkUrl || '',
           logoLightUrl: data.logoLightUrl || data.logoUrl || '',
           logoDarkUrl: data.logoDarkUrl || data.logoUrl || '',
           favicon: data.favicon || '/favicon.ico',
-          preloaderEnabled: data.preloaderEnabled !== false,
-          preloaderStyle: data.preloaderStyle || 'bouncing-ball'
+          preloaderEnabled: pEnabled,
+          preloaderStyle: pStyle
         });
       }
       const seoRes = await fetch('/api/settings/seo');
@@ -2214,25 +2237,8 @@ interface SliderState {
   addSlider: (slider: Omit<SliderGroup, 'id' | 'shortcode'>) => void;
   updateSlider: (id: string, slider: Partial<SliderGroup>) => void;
   deleteSlider: (id: string) => void;
-  saveSlidersToDatabase: () => Promise<boolean>;
+  saveSlidersToDatabase: (slidersToSave?: SliderGroup[]) => Promise<boolean>;
 }
-
-const syncSlidersToBackend = async (sliders: SliderGroup[]) => {
-  const token = localStorage.getItem('token');
-  if (!token || token === 'undefined' || token === 'null') return;
-  try {
-    await fetch('/api/admin/sliders', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ sliders })
-    });
-  } catch (err) {
-    console.error('Failed to sync sliders to database:', err);
-  }
-};
 
 export const useSliderStore = create<SliderState>()(
   persist(
@@ -2277,7 +2283,6 @@ export const useSliderStore = create<SliderState>()(
       },
       setSliders: (sliders) => {
         set({ sliders });
-        syncSlidersToBackend(sliders);
       },
       addSlider: (slider) => {
         const id = Math.random().toString(36).substring(7);
@@ -2286,33 +2291,38 @@ export const useSliderStore = create<SliderState>()(
           { ...slider, id, shortcode: `[slider id="${id}"]` }
         ];
         set({ sliders: newSliders });
-        syncSlidersToBackend(newSliders);
       },
       updateSlider: (id, updates) => {
         const newSliders = get().sliders.map((s) => (s.id === id ? { ...s, ...updates } : s));
         set({ sliders: newSliders });
-        syncSlidersToBackend(newSliders);
       },
       deleteSlider: (id) => {
         const newSliders = get().sliders.filter((s) => s.id !== id);
         set({ sliders: newSliders });
-        syncSlidersToBackend(newSliders);
       },
-      saveSlidersToDatabase: async () => {
+      saveSlidersToDatabase: async (slidersToSave?: SliderGroup[]) => {
         const token = localStorage.getItem('token');
         if (!token) return false;
         try {
+          set({ isLoading: true });
+          const targetSliders = slidersToSave || get().sliders;
           const res = await fetch('/api/admin/sliders', {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify({ sliders: get().sliders })
+            body: JSON.stringify({ sliders: targetSliders })
           });
-          return res.ok;
+          if (res.ok) {
+            set({ sliders: targetSliders, isLoading: false });
+            return true;
+          }
+          set({ isLoading: false });
+          return false;
         } catch (err) {
           console.error('Failed to save sliders to database:', err);
+          set({ isLoading: false });
           return false;
         }
       }
