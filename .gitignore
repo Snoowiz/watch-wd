@@ -15,6 +15,7 @@ __pycache__/
 *.log
 *.tmp
 *.swp
+*pid.txt
 
 # Environment and sensitive storage
 .env

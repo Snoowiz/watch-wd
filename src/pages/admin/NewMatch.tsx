@@ -34,6 +34,10 @@ export function NewMatch() {
   const [ppvPrice, setPpvPrice] = useState(existingMatch?.ppv_price || 50);
   const [requiredPlanId, setRequiredPlanId] = useState<string | number | null>(existingMatch?.required_plan_id || null);
   const [clubId, setClubId] = useState<string | null>(existingMatch?.club_id || (existingMatch as any)?.clubId || null);
+  const [streamProvider, setStreamProvider] = useState<'youtube' | 'mux' | 'custom'>(
+    existingMatch?.stream_provider || 
+    (existingMatch?.description?.toLowerCase().includes('mux') ? 'mux' : 'youtube')
+  );
   const [plans, setPlans] = useState<any[]>([]);
   const [clubs, setClubs] = useState<any[]>([]);
 
@@ -133,6 +137,10 @@ export function NewMatch() {
       setPpvPrice(existingMatch.ppv_price || (existingMatch as any).ppvPrice || 50);
       setRequiredPlanId(existingMatch.required_plan_id || (existingMatch as any).requiredPlanId || null);
       setClubId(existingMatch.club_id || (existingMatch as any).clubId || null);
+      setStreamProvider(
+        existingMatch.stream_provider || 
+        (existingMatch.description?.toLowerCase().includes('mux') ? 'mux' : 'youtube')
+      );
       setAdSettingsEnabled(existingMatch.adSettings?.enabled ?? true);
       setAdFrequencyOverride(existingMatch.adSettings?.frequencyOverride || '');
       setAdCampaignIds(existingMatch.adSettings?.campaignIds || []);
@@ -238,6 +246,7 @@ export function NewMatch() {
         ppv_price: ppvPrice,
         required_plan_id: requiredPlanId,
         club_id: clubId,
+        stream_provider: streamProvider,
         embedPrice: ppvPrice * 10, // Default multiplier
         status: computedStatus as any,
         duration: Number(duration) || 120,
@@ -382,17 +391,107 @@ export function NewMatch() {
 
           {/* Description & Embeds */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
-              <Code className="w-5 h-5 text-indigo-500" />
-              <h2>Embeds Code</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+                <Code className="w-5 h-5 text-indigo-500" />
+                <h2>Broadcast Stream & Embeds</h2>
+              </div>
+              <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setStreamProvider('youtube')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    streamProvider === 'youtube'
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  YouTube
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStreamProvider('mux')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    streamProvider === 'mux'
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  Mux Video / Live
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStreamProvider('custom')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    streamProvider === 'custom'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  Custom Embed
+                </button>
+              </div>
             </div>
+
+            {streamProvider === 'mux' && (
+              <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-4 rounded-xl space-y-2">
+                <label className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider block">
+                  Mux Quick Setup (Playback ID or HLS URL)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g., d54001aBCdE123 or https://stream.mux.com/YOUR_PLAYBACK_ID.m3u8"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-purple-500 dark:text-white"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      if (val) {
+                        const pbId = val.replace(/^https?:\/\/stream\.mux\.com\//i, '').replace(/\.m3u8$/i, '');
+                        setDescription(`<mux-player playback-id="${pbId}" metadata-video-title="${title || 'Match Broadcast'}" stream-type="live" controls></mux-player>`);
+                      }
+                    }}
+                  />
+                </div>
+                <p className="text-[11px] text-purple-700 dark:text-purple-400">
+                  Enter a Mux Playback ID or Stream URL to automatically configure an accelerated, adaptive HLS player.
+                </p>
+              </div>
+            )}
+
+            {streamProvider === 'youtube' && (
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-4 rounded-xl space-y-2">
+                <label className="text-xs font-bold text-red-900 dark:text-red-300 uppercase tracking-wider block">
+                  YouTube Quick Setup (Watch URL or Embed)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-red-300 dark:border-red-700 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-red-500 dark:text-white"
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      if (val) {
+                        setDescription(val);
+                      }
+                    }}
+                  />
+                </div>
+                <p className="text-[11px] text-red-700 dark:text-red-400">
+                  Paste any YouTube URL or iframe code. It will be seamlessly embedded with responsive aspect ratios.
+                </p>
+              </div>
+            )}
+
             <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden min-h-[200px] flex">
+              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden min-h-[200px] flex flex-col">
+                <div className="bg-slate-50 dark:bg-slate-900/60 px-4 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-500">
+                  Stream HTML / Embed Markup
+                </div>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full h-full min-h-[200px] p-4 bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none resize-none font-mono text-sm leading-relaxed"
-                  placeholder='Paste your embed code here (e.g., <iframe src="..."></iframe>)...'
+                  className="w-full h-full min-h-[170px] p-4 bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none resize-none font-mono text-sm leading-relaxed"
+                  placeholder='Paste your embed code here (e.g., <iframe src="..."></iframe> or <mux-player playback-id="..."></mux-player>)...'
                 />
               </div>
               <div className="bg-slate-100 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
@@ -401,7 +500,7 @@ export function NewMatch() {
                 ) : (
                   <>
                     <Eye className="w-8 h-8 text-slate-300 mb-2" />
-                    <p className="text-sm text-slate-400">Embed Preview</p>
+                    <p className="text-sm text-slate-400">Stream Embed Preview</p>
                   </>
                 )}
               </div>
@@ -561,14 +660,28 @@ export function NewMatch() {
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Required Plan</label>
                   <select
                     value={requiredPlanId || ''}
-                    onChange={(e) => setRequiredPlanId(e.target.value ? e.target.value : null)}
+                    onChange={(e) => {
+                      const selectedVal = e.target.value ? e.target.value : null;
+                      setRequiredPlanId(selectedVal);
+                      if (selectedVal) {
+                        const chosenPlan = plans.find(p => String(p.id) === String(selectedVal));
+                        if (chosenPlan?.plan_scope === 'club' && chosenPlan?.club_id && !clubId) {
+                          setClubId(String(chosenPlan.club_id));
+                        }
+                      }
+                    }}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
                   >
                      <option value="" disabled>Select a plan...</option>
                      {plans.map(p => (
-                       <option key={p.id} value={p.id}>{p.name}</option>
+                       <option key={p.id} value={p.id}>
+                         {p.name} — {p.plan_scope === 'club' ? `Club Plan (Club #${p.club_id})` : 'Platform-Wide Plan'}
+                       </option>
                      ))}
                   </select>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Subscribers with active access to this plan will automatically unlock this match stream.
+                  </p>
                 </div>
               </div>
             )}

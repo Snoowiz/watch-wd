@@ -188,12 +188,35 @@ export function MatchDetail() {
     return format(date, formatStr);
   };
   
+  const [plans, setPlans] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/plans')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPlans(d); })
+      .catch(() => {});
+  }, []);
+
   const isRevoked = match?.revoke_status === 'revoked' || match?.revoke_status === 'auto_deleted';
   const isDraft = match?.publish_status === 'draft' || match?.publish_status === 'deleted';
 
   const isPartnerOwner = match ? (user?.role === 'partner' && !!user?.club_id && String(match.club_id || (match as any).clubId) === String(user.club_id)) : false;
   const isAdmin = user?.role === 'admin' || user?.role === 'operator';
-  const hasPlanAccess = match ? (match.access_type === 'plan' && !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date()) && (!match.required_plan_id || String(user.planId) === String(match.required_plan_id))) : false;
+
+  const userPlan = plans.find(p => String(p.id) === String(user?.planId));
+  const isPlanValid = !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date());
+  
+  let hasPlanAccess = false;
+  if (match && match.access_type === 'plan' && isPlanValid) {
+    const planMatches = !match.required_plan_id || String(user.planId) === String(match.required_plan_id);
+    if (userPlan && userPlan.plan_scope === 'club' && userPlan.club_id) {
+      // Club subscription only unlocks content for this specific club
+      const matchClubId = match.club_id || (match as any).clubId;
+      hasPlanAccess = planMatches && Boolean(matchClubId && String(matchClubId) === String(userPlan.club_id));
+    } else {
+      // Platform-wide plan
+      hasPlanAccess = planMatches;
+    }
+  }
 
   // Find user's watch purchase and verify if expired
   const watchPurchase = (user && match) ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'watch') : null;
@@ -870,7 +893,11 @@ export function MatchDetail() {
                   </h2>
                   <p className="text-slate-400 mb-4 sm:mb-10 max-w-md text-xs sm:text-base md:text-lg leading-relaxed text-balance line-clamp-2 md:line-clamp-none">
                     {match.access_type === 'plan' ? (
-                      <>This match is exclusive to subscribers of our premium plans. Subscribe to unlock access and enjoy uninterrupted coverage.</>
+                      userPlan && userPlan.plan_scope === 'club' && userPlan.club_id && String(match.club_id || (match as any).clubId) !== String(userPlan.club_id) ? (
+                        <>This match requires an all-access Platform subscription or a membership for the host club. Your active subscription is for <strong className="text-amber-400">{userPlan.name}</strong>.</>
+                      ) : (
+                        <>This match is exclusive to subscribers of our premium plans. Subscribe to unlock access and enjoy uninterrupted coverage.</>
+                      )
                     ) : match.access_type === 'ppv' || match.access === 'paid' ? (
                       <>This match is a Pay-Per-View event. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span> and support grassroots sports.</>
                     ) : (

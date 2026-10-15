@@ -66,7 +66,7 @@ export async function executeStripeWithFallback<T>(
 }
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
-import { MySQLAdapter, adminCompat } from "./db/MySQLAdapter.js";
+import { MySQLAdapter, adminCompat, clearTableColumnsCache } from "./db/MySQLAdapter.js";
 import { testConnection, query, execute } from "./db/connection.js";
 import {
   getPaymentGatewaySettings,
@@ -75,6 +75,8 @@ import {
   getPublicPaymentSettings,
   getSecureDocument,
   saveSecureDocument,
+  isMaskedSecret,
+  maskSecret,
 } from "./db/persistentConfig.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
 import {
@@ -229,7 +231,13 @@ export async function ensureIncrementalColumns() {
       \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX \`idx_pof_order\` (\`order_index\`),
       INDEX \`idx_pof_active\` (\`is_active\`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    "ALTER TABLE `plans` ADD COLUMN `plan_scope` VARCHAR(50) DEFAULT 'platform'",
+    "ALTER TABLE `plans` ADD COLUMN `club_id` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `plans` ADD COLUMN `platform_fee_percent` DECIMAL(5,2) DEFAULT 20.00",
+    "ALTER TABLE `plans` ADD COLUMN `club_share_percent` DECIMAL(5,2) DEFAULT 80.00",
+    "ALTER TABLE `club_earnings` ADD COLUMN `plan_id` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `stream_provider` VARCHAR(50) DEFAULT 'youtube'"
   ];
 
   for (const sql of migrations) {
@@ -239,6 +247,9 @@ export async function ensureIncrementalColumns() {
       // Column or modification already exists
     }
   }
+
+  // Clear table column cache so MySQLAdapter immediately introspects new columns
+  clearTableColumnsCache();
 
   // Seed default onboarding requirements if empty
   try {
@@ -1785,12 +1796,32 @@ async function startServer() {
           }
         }
 
-        // Check subscription plan access
+        // Check subscription plan access with strict scope & club separation
         if (!hasAccess && match.access_type === 'plan' && req.user.planId) {
           const planValid = !req.user.planExpiresAt || new Date(req.user.planExpiresAt) > new Date();
-          const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
-          if (planValid && planMatch) {
-            hasAccess = true;
+          if (planValid) {
+            const userPlanDoc = await db.collection("plans").doc(String(req.user.planId)).get();
+            if (userPlanDoc.exists) {
+              const userPlan = userPlanDoc.data();
+              const planScope = userPlan.plan_scope || userPlan.planScope || "platform";
+              const planClubId = userPlan.club_id || userPlan.clubId || null;
+
+              if (planScope === "club" && planClubId) {
+                // Club plan ONLY grants access if match belongs to the same assigned club
+                const matchClubId = match.club_id || match.clubId || null;
+                const isSameClub = matchClubId && String(matchClubId) === String(planClubId);
+                const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
+                if (isSameClub && planMatch) {
+                  hasAccess = true;
+                }
+              } else {
+                // Platform-wide plan: grants access according to platform rules
+                const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
+                if (planMatch) {
+                  hasAccess = true;
+                }
+              }
+            }
           }
         }
 
@@ -2033,7 +2064,8 @@ async function startServer() {
         adSettings: 'ad_settings',
         eventAccessEnabled: 'event_access_enabled',
         eventAccessDuration: 'event_access_duration',
-        eventAccessDurationLabel: 'event_access_duration_label'
+        eventAccessDurationLabel: 'event_access_duration_label',
+        streamProvider: 'stream_provider'
       };
       
       for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
@@ -2099,7 +2131,8 @@ async function startServer() {
         adSettings: 'ad_settings',
         eventAccessEnabled: 'event_access_enabled',
         eventAccessDuration: 'event_access_duration',
-        eventAccessDurationLabel: 'event_access_duration_label'
+        eventAccessDurationLabel: 'event_access_duration_label',
+        streamProvider: 'stream_provider'
       };
       
       for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
@@ -3463,7 +3496,11 @@ async function startServer() {
           price: Number(data.price) || 0,
           duration_days: Number(data.duration_days) || 30,
           categories: typeof data.categories === 'string' ? data.categories : JSON.stringify(data.categories || []),
-          is_active: Number(data.is_active) ?? 1
+          is_active: Number(data.is_active) ?? 1,
+          plan_scope: data.plan_scope || data.planScope || "platform",
+          club_id: data.club_id || data.clubId || null,
+          platform_fee_percent: data.platform_fee_percent != null ? Number(data.platform_fee_percent) : (data.platformFeePercent != null ? Number(data.platformFeePercent) : 20),
+          club_share_percent: data.club_share_percent != null ? Number(data.club_share_percent) : (data.clubSharePercent != null ? Number(data.clubSharePercent) : 80)
         };
       });
       res.json(plansList);
@@ -3484,7 +3521,11 @@ async function startServer() {
           price: Number(data.price) || 0,
           duration_days: Number(data.duration_days) || 30,
           categories: typeof data.categories === 'string' ? data.categories : JSON.stringify(data.categories || []),
-          is_active: Number(data.is_active) ?? 1
+          is_active: Number(data.is_active) ?? 1,
+          plan_scope: data.plan_scope || data.planScope || "platform",
+          club_id: data.club_id || data.clubId || null,
+          platform_fee_percent: data.platform_fee_percent != null ? Number(data.platform_fee_percent) : (data.platformFeePercent != null ? Number(data.platformFeePercent) : 20),
+          club_share_percent: data.club_share_percent != null ? Number(data.club_share_percent) : (data.clubSharePercent != null ? Number(data.clubSharePercent) : 80)
         };
       });
       res.json(plansList);
@@ -3496,6 +3537,35 @@ async function startServer() {
   app.post("/api/admin/plans", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const id = Date.now();
+      const rawScope = req.body.plan_scope || req.body.planScope || "platform";
+      const planScope = rawScope === "club" ? "club" : "platform";
+      let clubId = req.body.club_id || req.body.clubId || null;
+      let platformFeePercent = req.body.platform_fee_percent != null ? Number(req.body.platform_fee_percent) : (req.body.platformFeePercent != null ? Number(req.body.platformFeePercent) : (planScope === "platform" ? 100 : 20));
+      let clubSharePercent = req.body.club_share_percent != null ? Number(req.body.club_share_percent) : (req.body.clubSharePercent != null ? Number(req.body.clubSharePercent) : (planScope === "platform" ? 0 : 80));
+
+      if (planScope === "club") {
+        if (!clubId || String(clubId).trim() === "") {
+          return res.status(400).json({ error: "A valid partner club must be selected for club-specific subscription plans." });
+        }
+        clubId = String(clubId).trim();
+        const clubDoc = await db.collection("clubs").doc(clubId).get();
+        if (!clubDoc.exists) {
+          return res.status(400).json({ error: "The selected partner club does not exist." });
+        }
+
+        if (isNaN(platformFeePercent) || isNaN(clubSharePercent) || platformFeePercent < 0 || clubSharePercent < 0 || platformFeePercent > 100 || clubSharePercent > 100) {
+          return res.status(400).json({ error: "Platform fee and club share percentages must be numbers between 0 and 100." });
+        }
+
+        if (Math.round((platformFeePercent + clubSharePercent) * 100) / 100 !== 100) {
+          return res.status(400).json({ error: `Platform fee (${platformFeePercent}%) and club share (${clubSharePercent}%) must sum to exactly 100%. Current sum: ${platformFeePercent + clubSharePercent}%.` });
+        }
+      } else {
+        clubId = null;
+        platformFeePercent = 100;
+        clubSharePercent = 0;
+      }
+
       const planData = {
         id,
         name: req.body.name,
@@ -3503,7 +3573,11 @@ async function startServer() {
         price: Number(req.body.price) || 0,
         duration_days: Number(req.body.duration_days) || 30,
         categories: Array.isArray(req.body.categories) ? JSON.stringify(req.body.categories) : (typeof req.body.categories === 'string' ? req.body.categories : '[]'),
-        is_active: Number(req.body.is_active) ?? 1
+        is_active: Number(req.body.is_active) ?? 1,
+        plan_scope: planScope,
+        club_id: clubId,
+        platform_fee_percent: platformFeePercent,
+        club_share_percent: clubSharePercent
       };
       await db.collection("plans").doc(id.toString()).set(planData);
       cacheEngine.invalidateCollection("plans");
@@ -3516,6 +3590,35 @@ async function startServer() {
   app.put("/api/admin/plans/:id", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const { id } = req.params;
+      const rawScope = req.body.plan_scope || req.body.planScope || "platform";
+      const planScope = rawScope === "club" ? "club" : "platform";
+      let clubId = req.body.club_id || req.body.clubId || null;
+      let platformFeePercent = req.body.platform_fee_percent != null ? Number(req.body.platform_fee_percent) : (req.body.platformFeePercent != null ? Number(req.body.platformFeePercent) : (planScope === "platform" ? 100 : 20));
+      let clubSharePercent = req.body.club_share_percent != null ? Number(req.body.club_share_percent) : (req.body.clubSharePercent != null ? Number(req.body.clubSharePercent) : (planScope === "platform" ? 0 : 80));
+
+      if (planScope === "club") {
+        if (!clubId || String(clubId).trim() === "") {
+          return res.status(400).json({ error: "A valid partner club must be selected for club-specific subscription plans." });
+        }
+        clubId = String(clubId).trim();
+        const clubDoc = await db.collection("clubs").doc(clubId).get();
+        if (!clubDoc.exists) {
+          return res.status(400).json({ error: "The selected partner club does not exist." });
+        }
+
+        if (isNaN(platformFeePercent) || isNaN(clubSharePercent) || platformFeePercent < 0 || clubSharePercent < 0 || platformFeePercent > 100 || clubSharePercent > 100) {
+          return res.status(400).json({ error: "Platform fee and club share percentages must be numbers between 0 and 100." });
+        }
+
+        if (Math.round((platformFeePercent + clubSharePercent) * 100) / 100 !== 100) {
+          return res.status(400).json({ error: `Platform fee (${platformFeePercent}%) and club share (${clubSharePercent}%) must sum to exactly 100%. Current sum: ${platformFeePercent + clubSharePercent}%.` });
+        }
+      } else {
+        clubId = null;
+        platformFeePercent = 100;
+        clubSharePercent = 0;
+      }
+
       const planData = {
         id: Number(id),
         name: req.body.name,
@@ -3523,7 +3626,11 @@ async function startServer() {
         price: Number(req.body.price) || 0,
         duration_days: Number(req.body.duration_days) || 30,
         categories: Array.isArray(req.body.categories) ? JSON.stringify(req.body.categories) : (typeof req.body.categories === 'string' ? req.body.categories : '[]'),
-        is_active: Number(req.body.is_active) ?? 1
+        is_active: Number(req.body.is_active) ?? 1,
+        plan_scope: planScope,
+        club_id: clubId,
+        platform_fee_percent: platformFeePercent,
+        club_share_percent: clubSharePercent
       };
       await db.collection("plans").doc(id).set(planData);
       cacheEngine.invalidateCollection("plans");
@@ -3921,6 +4028,221 @@ async function startServer() {
     }
   }
 
+  async function processSubscriptionRevenueSplit(params: {
+    planId: string;
+    transactionId: string;
+    grossAmount: number;
+    userId?: string;
+    isDestinationCharge?: boolean;
+    connectedAccountId?: string | null;
+    platformFeePercent?: number;
+    clubSharePercent?: number;
+    stripePaymentIntentId?: string;
+  }) {
+    const { planId, transactionId, grossAmount, isDestinationCharge, connectedAccountId: passedConnectedAccountId, stripePaymentIntentId } = params;
+    try {
+      if (!planId || !grossAmount || grossAmount <= 0) return;
+
+      // 1. Deduplication safeguard: check if earning already recorded for this transaction
+      const existingEarnings = await db.collection("club_earnings")
+        .where("transaction_id", "==", String(transactionId))
+        .get();
+      if (!existingEarnings.empty) {
+        console.log(`[SubscriptionRevenueSplit] Transaction ${transactionId} already processed in club_earnings. Skipping.`);
+        return;
+      }
+
+      // 2. Load plan
+      const planDoc = await db.collection("plans").doc(String(planId)).get();
+      if (!planDoc.exists) {
+        console.log(`[SubscriptionRevenueSplit] Plan #${planId} not found. Skipping split.`);
+        return;
+      }
+      const planData = planDoc.data();
+      const planScope = planData.plan_scope || planData.planScope || "platform";
+      const clubId = planData.club_id || planData.clubId;
+
+      // Platform-wide plan or no club assigned: Platform keeps 100% of revenue
+      if (planScope !== "club" || !clubId) {
+        console.log(`[SubscriptionRevenueSplit] Plan #${planId} is platform-wide (scope: ${planScope}). 100% platform revenue. No club split required.`);
+        return;
+      }
+
+      // 3. Load assigned partner club
+      const clubDoc = await db.collection("clubs").doc(String(clubId)).get();
+      if (!clubDoc.exists) {
+        console.warn(`[SubscriptionRevenueSplit] Club #${clubId} for plan #${planId} not found in database.`);
+        return;
+      }
+      const club = clubDoc.data();
+      const stripeAccountId = passedConnectedAccountId || club.stripe_account_id || club.stripeAccountId || null;
+
+      // 4. Resolve revenue split percentages:
+      // Priority: Plan-configured split -> Club revenue policy -> Default 20% platform / 80% club
+      let feePercent = params.platformFeePercent ?? (planData.platform_fee_percent != null ? Number(planData.platform_fee_percent) : (planData.platformFeePercent != null ? Number(planData.platformFeePercent) : null));
+      let clubShare = params.clubSharePercent ?? (planData.club_share_percent != null ? Number(planData.club_share_percent) : (planData.clubSharePercent != null ? Number(planData.clubSharePercent) : null));
+
+      if (feePercent == null || clubShare == null) {
+        const policiesSnap = await db.collection("revenue_policies")
+          .where("club_id", "==", String(clubId))
+          .where("is_active", "==", 1)
+          .limit(1)
+          .get();
+        if (!policiesSnap.empty) {
+          const policy = policiesSnap.docs[0].data();
+          feePercent = Number(policy.platform_fee_percent || policy.platformFeePercent || 20);
+          clubShare = Number(policy.club_share_percent || policy.clubSharePercent || (100 - feePercent));
+        } else {
+          feePercent = 20;
+          clubShare = 80;
+        }
+      }
+
+      // 5. Calculate split amounts
+      const platformCommission = Math.round(grossAmount * (feePercent / 100) * 100) / 100;
+      const clubNetAmount = Math.round((grossAmount - platformCommission) * 100) / 100;
+
+      // 6. Record per-transaction earning in club_earnings audit ledger
+      const earningId = `earn_sub_${Date.now()}_${clubId}`;
+      await db.collection("club_earnings").doc(earningId).set({
+        id: earningId,
+        clubId: String(clubId),
+        planId: String(planId),
+        transactionId: String(transactionId),
+        grossAmount,
+        platformCommission,
+        clubNetAmount,
+        commissionRate: feePercent,
+        type: "subscription",
+        createdAt: new Date().toISOString()
+      });
+
+      // 7. Check Payout Configuration for Instant Split vs Threshold mode
+      const config = (await getSecureDocument("payment_settings", "payout_config")) || { thresholdAmount: 50, currency: "GBP", enabled: true, instantSplit: false };
+      const isInstantSplit = !!config.instantSplit;
+      const payoutCurrency = (config.currency || "GBP").toUpperCase();
+
+      // Fetch or init club balance
+      const balDoc = await db.collection("club_balances").doc(String(clubId)).get();
+      const currentBal = balDoc.exists ? balDoc.data() : { availableBalance: 0, pendingBalance: 0, totalEarned: 0, totalPaidOut: 0, currency: payoutCurrency };
+      const currAvail = Number(currentBal.availableBalance || currentBal.available_balance) || 0;
+      const currEarned = Number(currentBal.totalEarned || currentBal.total_earned) || 0;
+      const currPaid = Number(currentBal.totalPaidOut || currentBal.total_paid_out) || 0;
+      const currPending = Number(currentBal.pendingBalance || currentBal.pending_balance) || 0;
+
+      if (isInstantSplit || (isDestinationCharge && stripeAccountId)) {
+        let stripeRef = stripePaymentIntentId || (isDestinationCharge && stripeAccountId ? `dest_sub_${Date.now()}_${String(stripeAccountId).slice(-6)}` : `instant_sub_${Date.now()}`);
+        let instantSuccess = false;
+
+        if (isDestinationCharge && stripeAccountId) {
+          instantSuccess = true;
+        } else if (stripeAccountId) {
+          try {
+            const gatewaySettings = await getPaymentGatewaySettings();
+            const stripeSecret = gatewaySettings.stripe.secretKey;
+            if (stripeSecret) {
+              const transfer = await executeStripeWithFallback(stripeSecret, (client) =>
+                client.transfers.create({
+                  amount: Math.round(clubNetAmount * 100),
+                  currency: payoutCurrency.toLowerCase(),
+                  destination: stripeAccountId,
+                  description: `Instant Subscription split - Plan #${planId} (${club.name || clubId})`,
+                  metadata: { planId: String(planId), clubId: String(clubId), transactionId: String(transactionId) }
+                })
+              );
+              stripeRef = transfer.id;
+              instantSuccess = true;
+            } else {
+              console.error(`[SubscriptionRevenueSplit] Stripe secret key unconfigured; cannot transfer to club ${clubId}`);
+              instantSuccess = false;
+            }
+          } catch (trErr: any) {
+            console.error(`[SubscriptionRevenueSplit] Stripe transfer error for club ${clubId}:`, trErr.message);
+            instantSuccess = false;
+          }
+        } else {
+          stripeRef = `sim_instant_sub_${Date.now()}`;
+          instantSuccess = true;
+        }
+
+        if (instantSuccess) {
+          const payoutId = `po_inst_sub_${Date.now()}_${clubId}`;
+          await db.collection("payouts").doc(payoutId).set({
+            id: payoutId,
+            clubId: String(clubId),
+            stripePayoutId: stripeRef,
+            stripeAccountId: stripeAccountId || 'instant_disbursement',
+            amount: clubNetAmount,
+            currency: payoutCurrency,
+            status: "paid",
+            method: "instant",
+            arrivalDate: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          });
+
+          await db.collection("club_balances").doc(String(clubId)).set({
+            clubId: String(clubId),
+            availableBalance: currAvail,
+            pendingBalance: currPending,
+            totalEarned: currEarned + clubNetAmount,
+            totalPaidOut: currPaid + clubNetAmount,
+            currency: payoutCurrency
+          });
+        } else {
+          await db.collection("club_balances").doc(String(clubId)).set({
+            clubId: String(clubId),
+            availableBalance: currAvail + clubNetAmount,
+            pendingBalance: currPending,
+            totalEarned: currEarned + clubNetAmount,
+            totalPaidOut: currPaid,
+            currency: payoutCurrency
+          });
+        }
+      } else {
+        const newAvailable = currAvail + clubNetAmount;
+        await db.collection("club_balances").doc(String(clubId)).set({
+          clubId: String(clubId),
+          availableBalance: newAvailable,
+          pendingBalance: currPending,
+          totalEarned: currEarned + clubNetAmount,
+          totalPaidOut: currPaid,
+          currency: payoutCurrency
+        });
+
+        const threshold = Number(config.thresholdAmount) || 50;
+        if (config.schedule === "auto" && newAvailable >= threshold && config.enabled) {
+          triggerClubPayout(String(clubId), false).catch(err => console.error(`Auto-payout error for club ${clubId}:`, err));
+        }
+      }
+
+      cacheEngine.invalidateCollection("club_earnings");
+      cacheEngine.invalidateCollection("club_balances");
+      cacheEngine.invalidateCollection("payouts");
+      cacheEngine.invalidateCollection("plans");
+
+      notifyAdmins(
+        "Subscription Split Processed",
+        `Split recorded for ${club.name || 'Club'} (#${clubId}): Gross £${grossAmount.toFixed(2)}, Platform £${platformCommission.toFixed(2)}, Club Net £${clubNetAmount.toFixed(2)} (${isInstantSplit ? 'Instant Split' : 'Accumulated'})`,
+        "system",
+        "/admin/finance"
+      );
+
+      notifyPartnerClub(
+        String(clubId),
+        "New Subscription Earnings",
+        `Your club received £${clubNetAmount.toFixed(2)} net earnings from a subscription plan purchase (Gross: £${grossAmount.toFixed(2)}).`,
+        "payment",
+        "/partner"
+      );
+    } catch (splitErr: any) {
+      console.error("[SubscriptionRevenueSplit] Error processing club subscription revenue split:", splitErr);
+    }
+  }
+
+  // Export internal revenue split processors for testing & webhook orchestration
+  (globalThis as any).processClubRevenueSplit = processClubRevenueSplit;
+  (globalThis as any).processSubscriptionRevenueSplit = processSubscriptionRevenueSplit;
+
   app.post("/api/checkout/gateway/initialize", authenticate, async (req: any, res) => {
     try {
       const { gateway, type, currency = "GBP" } = req.body;
@@ -3969,7 +4291,52 @@ async function startServer() {
       } else if (type === "plan" && metadata?.planId) {
         const planDoc = await db.collection("plans").doc(String(metadata.planId)).get();
         if (!planDoc.exists) return res.status(404).json({ error: "Plan not found" });
-        amount = Number(planDoc.data()?.price ?? 0);
+        const planData = planDoc.data();
+        amount = Number(planData?.price ?? 0);
+
+        const planScope = planData?.plan_scope || planData?.planScope || "platform";
+        const resolvedClubId = planData?.club_id || planData?.clubId || null;
+
+        if (planScope === "club" && resolvedClubId) {
+          try {
+            const clubDoc = await db.collection("clubs").doc(String(resolvedClubId)).get();
+            if (!clubDoc.exists) {
+              return res.status(404).json({ error: "Partner club assigned to this subscription plan does not exist." });
+            }
+            const club = clubDoc.data();
+            connectedAccountId = club.stripe_account_id || club.stripeAccountId || null;
+
+            // Fail closed: A club-specific plan requires an onboarded Stripe Connect account
+            if (!connectedAccountId) {
+              return res.status(409).json({ error: "The partner club associated with this plan does not have a Stripe Connect account configured." });
+            }
+
+            platformFeePercent = planData?.platform_fee_percent != null
+              ? Number(planData.platform_fee_percent)
+              : (planData?.platformFeePercent != null ? Number(planData.platformFeePercent) : 20);
+            
+            const clubSharePercent = planData?.club_share_percent != null
+              ? Number(planData.club_share_percent)
+              : (planData?.clubSharePercent != null ? Number(planData.clubSharePercent) : (100 - platformFeePercent));
+
+            metadata.planId = String(metadata.planId);
+            metadata.planScope = "club";
+            metadata.clubId = String(resolvedClubId);
+            metadata.connectedAccountId = connectedAccountId;
+            metadata.platformFeePercent = platformFeePercent;
+            metadata.clubSharePercent = clubSharePercent;
+          } catch (clubErr: any) {
+            console.error("Error resolving club/policy in plan initialize:", clubErr);
+            return res.status(500).json({ error: "Failed to resolve subscription club partner details." });
+          }
+        } else {
+          metadata.planId = String(metadata.planId);
+          metadata.planScope = "platform";
+          metadata.clubId = null;
+          metadata.connectedAccountId = null;
+          metadata.platformFeePercent = 100;
+          metadata.clubSharePercent = 0;
+        }
       } else if (type === "top_up") {
         const walletSnap = await db.collection("settings").doc("wallet").get();
         const isWalletEnabled = walletSnap.exists ? walletSnap.data()?.enabled !== false : true;
@@ -4040,14 +4407,15 @@ async function startServer() {
             txn_id: transactionId,
             user_id: userId,
             match_id: metadata?.matchId ? String(metadata.matchId) : "",
+            plan_id: metadata?.planId ? String(metadata.planId) : "",
             club_id: metadata?.clubId ? String(metadata.clubId) : "",
             payment_type: type === "watch" ? "ppv_watch" : type
           }
         };
 
-        if (type === "watch") {
+        if (type === "watch" || (type === "plan" && metadata?.planScope === "club")) {
           metadata.applicationFeeCents = applicationFeeAmount;
-          // Add Stripe Connect destination charge routing for PPV payments with a connected partner account
+          // Add Stripe Connect destination charge routing for payments with an active partner account
           if (connectedAccountId) {
             try {
               const connectedAccount = await executeStripeWithFallback(stripeSecretKey, (client) =>
@@ -4409,6 +4777,21 @@ async function startServer() {
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
         notifyUser(userId, "Plan Subscribed", `You have successfully subscribed to the plan.`, "success", "/profile");
         notifyAdmins("New Subscription", `A user subscribed to a plan.`, "system", "/admin/transactions");
+
+        // Record Partner Club Subscription Revenue Split
+        if (metadata?.planId) {
+          await processSubscriptionRevenueSplit({
+            planId: String(metadata.planId),
+            transactionId: String(txn_id),
+            grossAmount: Number(amount) || 0,
+            userId,
+            isDestinationCharge: !!metadata?.isDestinationCharge,
+            connectedAccountId: metadata?.connectedAccountId || null,
+            platformFeePercent: metadata?.platformFeePercent ? Number(metadata.platformFeePercent) : undefined,
+            clubSharePercent: metadata?.clubSharePercent ? Number(metadata.clubSharePercent) : undefined,
+            stripePaymentIntentId: typeof stripeSession?.payment_intent === "string" ? stripeSession.payment_intent : undefined
+          });
+        }
 
         if (userEmail) {
           sendTemplateEmail(userEmail, "subscription_purchased", {
@@ -7697,6 +8080,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
               platformFeePercent: txnData.metadata?.platformFeePercent ? Number(txnData.metadata.platformFeePercent) : undefined,
               stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : undefined
             });
+          } else if (txnData.type === "plan" && txnData.metadata?.planId) {
+            await processSubscriptionRevenueSplit({
+              planId: String(txnData.metadata.planId),
+              transactionId: txnId,
+              grossAmount: Number(txnData.amount) || 0,
+              userId: txnData.userId || txnData.user_id,
+              isDestinationCharge: !!txnData.metadata?.isDestinationCharge,
+              connectedAccountId: txnData.metadata?.connectedAccountId || null,
+              platformFeePercent: txnData.metadata?.platformFeePercent ? Number(txnData.metadata.platformFeePercent) : undefined,
+              clubSharePercent: txnData.metadata?.clubSharePercent ? Number(txnData.metadata.clubSharePercent) : undefined,
+              stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : undefined
+            });
           }
           return res.json({ received: true, already_processed: true });
         }
@@ -7805,6 +8200,77 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
           notifyUser(userId, "Subscription Activated", `Your plan "${planData.name || 'Subscription'}" is now active.`, "success", "/plans");
           notifyAdmins("New Subscription", `User subscribed to plan #${metadata?.planId}`, "system", "/admin/transactions");
+
+          // Process club subscription revenue split
+          if (metadata?.planId) {
+            await processSubscriptionRevenueSplit({
+              planId: String(metadata.planId),
+              transactionId: txnId,
+              grossAmount: Number(amount) || 0,
+              userId,
+              isDestinationCharge: !!metadata?.isDestinationCharge,
+              connectedAccountId: metadata?.connectedAccountId || null,
+              platformFeePercent: metadata?.platformFeePercent ? Number(metadata.platformFeePercent) : undefined,
+              clubSharePercent: metadata?.clubSharePercent ? Number(metadata.clubSharePercent) : undefined,
+              stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : undefined
+            });
+          }
+        }
+      }
+
+      // Handle recurring subscription renewal via invoice.paid
+      if (event.type === "invoice.paid") {
+        const invoice = event.data?.object;
+        if (invoice) {
+          const subscriptionId = invoice.subscription;
+          const lines = invoice.lines?.data || [];
+          const metadata = invoice.metadata || lines[0]?.metadata || {};
+          const planId = metadata.planId || metadata.plan_id;
+          const userId = metadata.userId || metadata.user_id;
+          const grossAmount = (invoice.amount_paid || 0) / 100;
+          const txnId = `sub_inv_${invoice.id || Date.now()}`;
+
+          if (planId && userId && grossAmount > 0) {
+            const userRef = db.collection("users").doc(String(userId));
+            const userDoc = await userRef.get();
+            if (userDoc.exists) {
+              const planDoc = await db.collection("plans").doc(String(planId)).get();
+              const planData = planDoc.exists ? planDoc.data() : {};
+              const durationDays = Number(planData.duration_days || planData.durationDays || 30);
+              
+              const currentExpiry = userDoc.data()?.planExpiresAt ? new Date(userDoc.data()?.planExpiresAt) : new Date();
+              const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+              baseDate.setDate(baseDate.getDate() + durationDays);
+
+              await userRef.update({
+                planId: Number(planId),
+                planExpiresAt: baseDate.toISOString()
+              });
+
+              await db.collection("transactions").doc(txnId).set({
+                id: txnId,
+                userId: String(userId),
+                type: "plan",
+                amount: grossAmount,
+                status: "completed",
+                gateway: "stripe",
+                metadata: {
+                  planId: String(planId),
+                  invoiceId: invoice.id,
+                  subscriptionId
+                },
+                date: new Date().toISOString()
+              });
+
+              await processSubscriptionRevenueSplit({
+                planId: String(planId),
+                transactionId: txnId,
+                grossAmount,
+                userId: String(userId),
+                stripePaymentIntentId: typeof invoice.payment_intent === "string" ? invoice.payment_intent : undefined
+              });
+            }
+          }
         }
       }
 

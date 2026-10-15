@@ -1,4 +1,4 @@
-import DOMPurify from 'dompurify';
+import DOMPurify from 'isomorphic-dompurify';
 
 /**
  * Loads the @mux/mux-player Web Component custom element script if not already loaded.
@@ -111,8 +111,21 @@ export function formatStreamHtml(raw: string, options?: { autoplay?: boolean }):
 
   // Pre-load the script if Mux is referenced
   loadMuxPlayerIfNeeded(content);
+  const sanitize = (html: string, config: any): string => {
+    try {
+      if (DOMPurify && typeof (DOMPurify as any).sanitize === 'function') {
+        return (DOMPurify as any).sanitize(html, config);
+      }
+      if ((DOMPurify as any)?.default && typeof (DOMPurify as any).default.sanitize === 'function') {
+        return (DOMPurify as any).default.sanitize(html, config);
+      }
+    } catch {
+      // safe fallback
+    }
+    return html;
+  };
 
-  return DOMPurify.sanitize(content, {
+  return sanitize(content, {
     ADD_TAGS: [
       'iframe',
       'video',

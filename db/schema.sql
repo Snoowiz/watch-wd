@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `operator_id` VARCHAR(100) DEFAULT NULL,
   `creator_id` VARCHAR(100) DEFAULT NULL,
   `duration` INT DEFAULT 120,
+  `stream_provider` VARCHAR(50) DEFAULT 'youtube',
   `event_access_enabled` TINYINT(1) DEFAULT 0,
   `event_access_duration` INT DEFAULT NULL,
   `event_access_duration_label` VARCHAR(50) DEFAULT NULL,
@@ -122,7 +123,12 @@ CREATE TABLE IF NOT EXISTS `plans` (
   `duration_days` INT DEFAULT 30,
   `categories` JSON DEFAULT NULL,
   `is_active` TINYINT(1) DEFAULT 1,
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  `plan_scope` ENUM('platform', 'club') DEFAULT 'platform',
+  `club_id` VARCHAR(100) DEFAULT NULL,
+  `platform_fee_percent` DECIMAL(5,2) DEFAULT 20.00,
+  `club_share_percent` DECIMAL(5,2) DEFAULT 80.00,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_plans_club` (`club_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
@@ -464,6 +470,40 @@ CREATE TABLE IF NOT EXISTS `revenue_policies` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_policy_club` (`club_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- CLUB BALANCES
+-- ============================================
+CREATE TABLE IF NOT EXISTS `club_balances` (
+  `club_id` VARCHAR(100) PRIMARY KEY,
+  `available_balance` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `pending_balance` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `total_earned` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `total_paid_out` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  `currency` VARCHAR(10) DEFAULT 'GBP',
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- CLUB EARNINGS (Per-transaction audit ledger)
+-- ============================================
+CREATE TABLE IF NOT EXISTS `club_earnings` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `club_id` VARCHAR(100) NOT NULL,
+  `match_id` VARCHAR(100) DEFAULT NULL,
+  `plan_id` VARCHAR(100) DEFAULT NULL,
+  `transaction_id` VARCHAR(100) DEFAULT NULL,
+  `gross_amount` DECIMAL(10,2) NOT NULL,
+  `platform_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `club_net_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `commission_rate` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+  `type` VARCHAR(50) DEFAULT 'ppv',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_earning_club` (`club_id`),
+  INDEX `idx_earning_match` (`match_id`),
+  INDEX `idx_earning_plan` (`plan_id`),
+  INDEX `idx_earning_txn` (`transaction_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================

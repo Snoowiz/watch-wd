@@ -1215,6 +1215,21 @@ export interface Match {
   original_status?: string | null;
   start_time?: string | null;
   publish_status?: 'pending' | 'approved' | 'rejected' | 'published' | 'draft' | 'scheduled' | 'deleted' | null;
+  stream_provider?: 'youtube' | 'mux' | 'custom' | null;
+}
+
+export interface Plan {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  duration_days: number;
+  categories: string;
+  is_active: number;
+  plan_scope?: 'platform' | 'club';
+  club_id?: string | null;
+  platform_fee_percent?: number;
+  club_share_percent?: number;
 }
 
 interface MatchState {

@@ -49,6 +49,14 @@ function isKeyValueTable(table: string): boolean {
 // ===== Introspect table columns to guard against unknown column insert/update crashes =====
 const tableColumnsCache = new Map<string, Set<string>>();
 
+export function clearTableColumnsCache(tableName?: string): void {
+  if (tableName) {
+    tableColumnsCache.delete(tableName);
+  } else {
+    tableColumnsCache.clear();
+  }
+}
+
 async function getTableColumns(tableName: string): Promise<Set<string> | null> {
   if (isKeyValueTable(tableName)) return null;
   if (tableColumnsCache.has(tableName)) return tableColumnsCache.get(tableName)!;
@@ -180,6 +188,8 @@ function camelToSnake(str: string, tableName?: string): string {
     timestamp: 'timestamp',
     likedBy: 'liked_by',
     clubId: 'club_id',
+    planScope: 'plan_scope',
+    streamProvider: 'stream_provider',
     stripeAccountId: 'stripe_account_id',
     stripeOnboardingComplete: 'stripe_onboarding_complete',
     contactEmail: 'contact_email',
@@ -295,6 +305,8 @@ function snakeToCamel(str: string, tableName?: string): string {
     timestamp: 'timestamp',
     liked_by: 'likedBy',
     club_id: 'clubId',
+    plan_scope: 'planScope',
+    stream_provider: 'streamProvider',
     stripe_account_id: 'stripeAccountId',
     stripe_onboarding_complete: 'stripeOnboardingComplete',
     contact_email: 'contactEmail',
