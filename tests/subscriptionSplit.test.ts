@@ -406,9 +406,22 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
         plan_scope?: 'platform' | 'club';
         club_id?: string | null;
       } | null;
-      purchases?: Array<{ matchId: string | number; userId: string | number; type: string }>;
+      purchases?: Array<{ 
+        matchId?: string | number; 
+        userId: string | number; 
+        type: string;
+        planId?: string | number;
+        clubId?: string | number | null;
+        access_expires_at?: string | null;
+        access_status?: string;
+      }>;
+      allPlans?: Array<{
+        id: string | number;
+        plan_scope?: 'platform' | 'club';
+        club_id?: string | null;
+      }>;
     }) => {
-      const { match, user, userPlan, purchases = [] } = params;
+      const { match, user, userPlan, purchases = [], allPlans = [] } = params;
 
       if (match.access === 'free' && user) return { hasAccess: true, reason: 'free' };
       if (!user) return { hasAccess: false, reason: 'unauthenticated' };
@@ -419,22 +432,49 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
       if (hasPurchased) return { hasAccess: true, reason: 'ppv_purchase' };
 
       // Plan check
-      if (match.access_type === 'plan' && user.planId) {
-        const isPlanActive = !user.planExpiresAt || new Date(user.planExpiresAt) > new Date();
-        if (isPlanActive && userPlan) {
-          const planMatches = !match.required_plan_id || String(user.planId) === String(match.required_plan_id);
+      if (match.access_type === 'plan') {
+        const now = new Date();
 
-          if (userPlan.plan_scope === 'club' && userPlan.club_id) {
-            // Club plan: strictly requires match to belong to the exact same club
-            const isSameClub = Boolean(match.club_id && String(match.club_id) === String(userPlan.club_id));
-            if (isSameClub && planMatches) {
-              return { hasAccess: true, reason: 'club_plan' };
+        // 1. Primary user.planId
+        if (user.planId) {
+          const isPlanActive = !user.planExpiresAt || new Date(user.planExpiresAt) > now;
+          if (isPlanActive && userPlan) {
+            const planMatches = !match.required_plan_id || String(user.planId) === String(match.required_plan_id);
+
+            if (userPlan.plan_scope === 'club' && userPlan.club_id) {
+              const isSameClub = Boolean(match.club_id && String(match.club_id) === String(userPlan.club_id));
+              if (isSameClub && planMatches) {
+                return { hasAccess: true, reason: 'club_plan' };
+              }
+            } else {
+              if (planMatches) {
+                return { hasAccess: true, reason: 'platform_plan' };
+              }
             }
-            return { hasAccess: false, reason: 'club_mismatch' };
-          } else {
-            // Platform plan: unlocks according to required_plan_id
-            if (planMatches) {
-              return { hasAccess: true, reason: 'platform_plan' };
+          }
+        }
+
+        // 2. Active plan purchases (supports multiple club + platform subscriptions)
+        for (const p of purchases) {
+          if (p.type === 'plan' && String(p.userId) === String(user.id) && p.access_status !== 'expired' && p.access_status !== 'revoked') {
+            const isNotExpired = !p.access_expires_at || new Date(p.access_expires_at) > now;
+            if (isNotExpired) {
+              const subPlanId = p.planId || p.matchId;
+              const targetPlan = allPlans.find(pl => String(pl.id) === String(subPlanId));
+              const planMatches = !match.required_plan_id || String(subPlanId) === String(match.required_plan_id);
+
+              const scope = targetPlan?.plan_scope || (p.clubId ? 'club' : 'platform');
+              const resolvedClubId = targetPlan?.club_id || p.clubId;
+
+              if (scope === 'club' && resolvedClubId) {
+                if (match.club_id && String(match.club_id) === String(resolvedClubId) && planMatches) {
+                  return { hasAccess: true, reason: 'multi_club_plan' };
+                }
+              } else if (scope === 'platform') {
+                if (planMatches) {
+                  return { hasAccess: true, reason: 'multi_platform_plan' };
+                }
+              }
             }
           }
         }
@@ -462,7 +502,7 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
 
       const res = evaluateAccess({ match, user, userPlan });
       expect(res.hasAccess).toBe(false);
-      expect(res.reason).toBe('club_mismatch');
+      expect(res.reason).toBe('restricted');
     });
 
     it('A subscriber to an all-access Platform Plan CAN watch matches across clubs', () => {
@@ -473,6 +513,226 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
       const res = evaluateAccess({ match, user, userPlan });
       expect(res.hasAccess).toBe(true);
       expect(res.reason).toBe('platform_plan');
+    });
+
+    it('Multi-Subscription: A user holding a Platform Plan AND a Club A Plan can watch both Club A and Platform matches', () => {
+      const user = { id: 'u3', planId: 'plan-platform', planExpiresAt: futureDate };
+      const userPlan = { id: 'plan-platform', plan_scope: 'platform' as const, club_id: null };
+      const purchases = [
+        {
+          userId: 'u3',
+          type: 'plan',
+          planId: 'plan-club-A',
+          clubId: 'club-A',
+          access_expires_at: futureDate,
+          access_status: 'active'
+        }
+      ];
+      const allPlans = [
+        { id: 'plan-platform', plan_scope: 'platform' as const, club_id: null },
+        { id: 'plan-club-A', plan_scope: 'club' as const, club_id: 'club-A' }
+      ];
+
+      // Match 1: Club A match
+      const matchA = { id: 201, access: 'paid' as const, access_type: 'plan' as const, club_id: 'club-A' };
+      const resA = evaluateAccess({ match: matchA, user, userPlan, purchases, allPlans });
+      expect(resA.hasAccess).toBe(true);
+
+      // Match 2: Platform match (no club)
+      const matchPlatform = { id: 202, access: 'paid' as const, access_type: 'plan' as const, club_id: null };
+      const resPlatform = evaluateAccess({ match: matchPlatform, user, userPlan, purchases, allPlans });
+      expect(resPlatform.hasAccess).toBe(true);
+      expect(resPlatform.reason).toBe('platform_plan');
+
+      // Match 3: Club B match requiring Club B subscription
+      const matchB = { id: 203, access: 'paid' as const, access_type: 'plan' as const, club_id: 'club-B', required_plan_id: 'plan-club-B' };
+      const resB = evaluateAccess({ match: matchB, user, userPlan, purchases, allPlans });
+      expect(resB.hasAccess).toBe(false);
+    });
+
+    it('Multi-Subscription: A user holding multiple club subscriptions (Club A & Club B) can watch both clubs', () => {
+      const user = { id: 'u4', planId: null, planExpiresAt: null };
+      const purchases = [
+        {
+          userId: 'u4',
+          type: 'plan',
+          planId: 'plan-club-A',
+          clubId: 'club-A',
+          access_expires_at: futureDate,
+          access_status: 'active'
+        },
+        {
+          userId: 'u4',
+          type: 'plan',
+          planId: 'plan-club-B',
+          clubId: 'club-B',
+          access_expires_at: futureDate,
+          access_status: 'active'
+        }
+      ];
+      const allPlans = [
+        { id: 'plan-club-A', plan_scope: 'club' as const, club_id: 'club-A' },
+        { id: 'plan-club-B', plan_scope: 'club' as const, club_id: 'club-B' }
+      ];
+
+      const matchA = { id: 301, access: 'paid' as const, access_type: 'plan' as const, club_id: 'club-A' };
+      const resA = evaluateAccess({ match: matchA, user, purchases, allPlans });
+      expect(resA.hasAccess).toBe(true);
+
+      const matchB = { id: 302, access: 'paid' as const, access_type: 'plan' as const, club_id: 'club-B' };
+      const resB = evaluateAccess({ match: matchB, user, purchases, allPlans });
+      expect(resB.hasAccess).toBe(true);
+
+      const matchC = { id: 303, access: 'paid' as const, access_type: 'plan' as const, club_id: 'club-C' };
+      const resC = evaluateAccess({ match: matchC, user, purchases, allPlans });
+      expect(resC.hasAccess).toBe(false);
+    });
+  });
+
+  describe('4b. Upgrade & Purchase Logic: Independent Club Plans vs Platform-Wide Upgrade Ladder', () => {
+    // Pure function mirroring /api/plans/upgrade-cost
+    const calculatePlanPurchaseCost = (params: {
+      newPlan: {
+        id: string | number;
+        price: number;
+        plan_scope?: 'platform' | 'club';
+        club_id?: string | null;
+      };
+      user: {
+        id: string | number;
+        planId?: string | number | null;
+        planExpiresAt?: string | null;
+      };
+      currentPlan?: {
+        id: string | number;
+        price: number;
+        duration_days?: number;
+        plan_scope?: 'platform' | 'club';
+      } | null;
+      userPurchases?: Array<{
+        type: string;
+        planId?: string | number;
+        access_expires_at?: string | null;
+        access_status?: string;
+      }>;
+    }) => {
+      const { newPlan, user, currentPlan, userPurchases = [] } = params;
+      const newPlanPrice = Number(newPlan.price);
+      const newPlanScope = newPlan.plan_scope || 'platform';
+      const now = new Date();
+
+      // 1. Club-specific plans are standalone independent purchases, NOT an upgrade ladder
+      if (newPlanScope === 'club') {
+        const isAlreadyActiveInPurchases = userPurchases.some(p => 
+          p.type === 'plan' && 
+          String(p.planId) === String(newPlan.id) &&
+          (!p.access_expires_at || new Date(p.access_expires_at) > now) &&
+          p.access_status !== 'expired'
+        );
+        const isAlreadyActiveOnUser = String(user.planId) === String(newPlan.id) && 
+          Boolean(user.planExpiresAt && new Date(user.planExpiresAt) > now);
+
+        if (isAlreadyActiveInPurchases || isAlreadyActiveOnUser) {
+          return { error: 'You already have an active subscription for this club plan.', status: 400 };
+        }
+
+        // Direct independent purchase at regular full price, 0 credit
+        return { cost: newPlanPrice, credit: 0, isUpgrade: false };
+      }
+
+      // 2. Platform-wide plan upgrade logic
+      if (!user.planId || !user.planExpiresAt) {
+        return { cost: newPlanPrice, credit: 0, isUpgrade: false };
+      }
+
+      if (!currentPlan || currentPlan.plan_scope === 'club') {
+        // User has no platform plan yet
+        return { cost: newPlanPrice, credit: 0, isUpgrade: false };
+      }
+
+      const currentPlanPrice = Number(currentPlan.price);
+      const expiresAt = new Date(user.planExpiresAt);
+
+      if (String(user.planId) === String(newPlan.id)) {
+        if (expiresAt > now) {
+          return { error: 'You already have an active subscription for this plan.', status: 400 };
+        }
+        return { cost: newPlanPrice, credit: 0, isUpgrade: false };
+      }
+
+      if (expiresAt <= now) {
+        return { cost: newPlanPrice, credit: 0, isUpgrade: false };
+      }
+
+      // Enforce: only upgrade to higher platform plans
+      if (newPlanPrice <= currentPlanPrice) {
+        return { error: 'You can only upgrade to a higher platform plan.', status: 400 };
+      }
+
+      const durationDays = Number(currentPlan.duration_days) || 30;
+      const totalMs = durationDays * 24 * 60 * 60 * 1000;
+      const remainingMs = expiresAt.getTime() - now.getTime();
+      const credit = (currentPlanPrice * remainingMs) / totalMs;
+
+      let cost = newPlanPrice - credit;
+      if (cost < 0) cost = 0;
+
+      return {
+        cost: Math.round(cost * 100) / 100,
+        credit: Math.round(credit * 100) / 100,
+        isUpgrade: true
+      };
+    };
+
+    const futureDate = new Date(Date.now() + 86400000 * 15).toISOString(); // 15 days remaining
+
+    it('A user with a £20 Platform Plan CAN buy a £10 Club Plan without upgrade error', () => {
+      const user = { id: 'u1', planId: 'plat-pro', planExpiresAt: futureDate };
+      const currentPlan = { id: 'plat-pro', price: 20.00, plan_scope: 'platform' as const, duration_days: 30 };
+      const newPlan = { id: 'se-dons-monthly', price: 10.00, plan_scope: 'club' as const, club_id: 'club-se-dons' };
+
+      const res = calculatePlanPurchaseCost({ newPlan, user, currentPlan });
+      expect(res.error).toBeUndefined();
+      expect(res.cost).toBe(10.00);
+      expect(res.credit).toBe(0);
+      expect(res.isUpgrade).toBe(false);
+    });
+
+    it('A user with a £10 Club Plan CAN buy another club plan (Club B) at regular price', () => {
+      const user = { id: 'u2', planId: null, planExpiresAt: null };
+      const userPurchases = [
+        { type: 'plan', planId: 'club-A-pass', access_expires_at: futureDate, access_status: 'active' }
+      ];
+      const newPlan = { id: 'club-B-pass', price: 15.00, plan_scope: 'club' as const, club_id: 'club-B' };
+
+      const res = calculatePlanPurchaseCost({ newPlan, user, userPurchases });
+      expect(res.error).toBeUndefined();
+      expect(res.cost).toBe(15.00);
+      expect(res.credit).toBe(0);
+      expect(res.isUpgrade).toBe(false);
+    });
+
+    it('Platform-to-Platform upgrade: Prorates remaining duration and deducts credit', () => {
+      const user = { id: 'u3', planId: 'plat-standard', planExpiresAt: futureDate }; // 15/30 days remaining = 50%
+      const currentPlan = { id: 'plat-standard', price: 20.00, duration_days: 30, plan_scope: 'platform' as const };
+      const newPlan = { id: 'plat-vip', price: 40.00, plan_scope: 'platform' as const };
+
+      const res = calculatePlanPurchaseCost({ newPlan, user, currentPlan });
+      expect(res.error).toBeUndefined();
+      expect(res.isUpgrade).toBe(true);
+      // Credit should be roughly 10.00 (half of £20), cost roughly 30.00
+      expect(res.credit).toBeCloseTo(10.00, 0);
+      expect(res.cost).toBeCloseTo(30.00, 0);
+    });
+
+    it('Platform-to-Platform downgrade: Rejected with clear error', () => {
+      const user = { id: 'u4', planId: 'plat-vip', planExpiresAt: futureDate };
+      const currentPlan = { id: 'plat-vip', price: 40.00, duration_days: 30, plan_scope: 'platform' as const };
+      const newPlan = { id: 'plat-standard', price: 20.00, plan_scope: 'platform' as const };
+
+      const res = calculatePlanPurchaseCost({ newPlan, user, currentPlan });
+      expect(res.status).toBe(400);
+      expect(res.error).toContain('You can only upgrade to a higher platform plan');
     });
   });
 

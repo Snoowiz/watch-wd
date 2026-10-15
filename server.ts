@@ -159,6 +159,8 @@ export async function ensureIncrementalColumns() {
     "ALTER TABLE `purchases` ADD COLUMN `access_starts_at` DATETIME DEFAULT NULL",
     "ALTER TABLE `purchases` ADD COLUMN `access_expires_at` DATETIME DEFAULT NULL",
     "ALTER TABLE `purchases` ADD COLUMN `access_status` VARCHAR(50) DEFAULT 'active'",
+    "ALTER TABLE `purchases` ADD COLUMN `plan_id` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `purchases` ADD COLUMN `club_id` VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE `matches` ADD COLUMN `views` INT DEFAULT 0",
     `CREATE TABLE IF NOT EXISTS \`match_view_sessions\` (
       \`id\` INT AUTO_INCREMENT PRIMARY KEY,
@@ -1796,29 +1798,72 @@ async function startServer() {
           }
         }
 
-        // Check subscription plan access with strict scope & club separation
-        if (!hasAccess && match.access_type === 'plan' && req.user.planId) {
-          const planValid = !req.user.planExpiresAt || new Date(req.user.planExpiresAt) > new Date();
-          if (planValid) {
-            const userPlanDoc = await db.collection("plans").doc(String(req.user.planId)).get();
-            if (userPlanDoc.exists) {
-              const userPlan = userPlanDoc.data();
-              const planScope = userPlan.plan_scope || userPlan.planScope || "platform";
-              const planClubId = userPlan.club_id || userPlan.clubId || null;
+        // Check subscription plan access with strict scope & club separation (supporting multiple club & platform subscriptions)
+        if (!hasAccess && match.access_type === 'plan') {
+          const now = new Date();
 
-              if (planScope === "club" && planClubId) {
-                // Club plan ONLY grants access if match belongs to the same assigned club
-                const matchClubId = match.club_id || match.clubId || null;
-                const isSameClub = matchClubId && String(matchClubId) === String(planClubId);
-                const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
-                if (isSameClub && planMatch) {
-                  hasAccess = true;
+          // 1. Check primary req.user.planId
+          if (req.user.planId) {
+            const planValid = !req.user.planExpiresAt || new Date(req.user.planExpiresAt) > now;
+            if (planValid) {
+              const userPlanDoc = await db.collection("plans").doc(String(req.user.planId)).get();
+              if (userPlanDoc.exists) {
+                const userPlan = userPlanDoc.data();
+                const planScope = userPlan.plan_scope || userPlan.planScope || "platform";
+                const planClubId = userPlan.club_id || userPlan.clubId || null;
+
+                if (planScope === "club" && planClubId) {
+                  // Club plan ONLY grants access if match belongs to the same assigned club
+                  const matchClubId = match.club_id || match.clubId || null;
+                  const isSameClub = matchClubId && String(matchClubId) === String(planClubId);
+                  const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
+                  if (isSameClub && planMatch) {
+                    hasAccess = true;
+                  }
+                } else {
+                  // Platform-wide plan: grants access according to platform rules
+                  const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
+                  if (planMatch) {
+                    hasAccess = true;
+                  }
                 }
-              } else {
-                // Platform-wide plan: grants access according to platform rules
-                const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
-                if (planMatch) {
-                  hasAccess = true;
+              }
+            }
+          }
+
+          // 2. Check active plan purchases (supports multiple club + platform subscriptions)
+          if (!hasAccess) {
+            const purchasesSnap = await db.collection("purchases")
+              .where("user_id", "==", req.user.id.toString())
+              .get();
+
+            const matchClubId = match.club_id || match.clubId || null;
+
+            for (const doc of (purchasesSnap.docs || [])) {
+              const pdata = doc.data();
+              if (pdata.type === "plan" && pdata.access_status !== "expired" && pdata.access_status !== "revoked") {
+                const exp = pdata.access_expires_at ? new Date(pdata.access_expires_at) : null;
+                if (!exp || exp > now) {
+                  const subPlanId = pdata.plan_id || pdata.planId || pdata.match_id;
+                  const planDoc = await db.collection("plans").doc(String(subPlanId)).get();
+                  if (planDoc.exists) {
+                    const pl = planDoc.data();
+                    const scope = pl.plan_scope || pl.planScope || (pdata.club_id ? "club" : "platform");
+                    const planClubId = pl.club_id || pl.clubId || pdata.club_id || pdata.clubId || null;
+                    const planMatch = !match.required_plan_id || String(subPlanId) === String(match.required_plan_id);
+
+                    if (scope === "club" && planClubId) {
+                      if (matchClubId && String(matchClubId) === String(planClubId) && planMatch) {
+                        hasAccess = true;
+                        break;
+                      }
+                    } else if (scope === "platform") {
+                      if (planMatch) {
+                        hasAccess = true;
+                        break;
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3429,11 +3474,10 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // Default catch-all for missing routes returning mock data or simple success so UI doesn't crash empty state
   app.post("/api/plans/upgrade-cost", authenticate, async (req: any, res) => {
     try {
       const { planId } = req.body;
-      const userDoc = await db.collection("users").doc(req.user.id).get();
+      const userDoc = await db.collection("users").doc(req.user.id.toString()).get();
       if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
       const user = userDoc.data() as any;
       
@@ -3441,37 +3485,81 @@ async function startServer() {
       if (!newPlanDoc.exists) return res.status(404).json({ error: "New plan not found" });
       const newPlan = newPlanDoc.data() as any;
       const newPlanPrice = Number(newPlan.price);
+      const newPlanScope = newPlan.plan_scope || newPlan.planScope || "platform";
+      const now = new Date();
 
+      // 1. Club-specific plans are independent standalone purchases, NOT an upgrade ladder.
+      // Users can buy multiple club plans independently from multiple partner clubs.
+      if (newPlanScope === "club") {
+        let isAlreadyActive = false;
+
+        const purchasesSnap = await db.collection("purchases")
+          .where("user_id", "==", req.user.id.toString())
+          .get();
+
+        for (const doc of (purchasesSnap.docs || [])) {
+          const pdata = doc.data();
+          if (pdata.type === "plan" && String(pdata.plan_id || pdata.planId || pdata.match_id) === String(planId)) {
+            const exp = pdata.access_expires_at ? new Date(pdata.access_expires_at) : null;
+            if ((!exp || exp > now) && pdata.access_status !== "expired" && pdata.access_status !== "revoked") {
+              isAlreadyActive = true;
+              break;
+            }
+          }
+        }
+
+        if (!isAlreadyActive && String(user.plan_id) === String(planId) && user.plan_expires_at) {
+          if (new Date(user.plan_expires_at) > now) {
+            isAlreadyActive = true;
+          }
+        }
+
+        if (isAlreadyActive) {
+          return res.status(400).json({ error: "You already have an active subscription for this club plan." });
+        }
+
+        return res.json({ cost: newPlanPrice, credit: 0, isUpgrade: false });
+      }
+
+      // 2. Platform-wide subscription upgrade logic
+      // Only applies between platform-wide subscription tiers.
       if (!user.plan_id || !user.plan_expires_at) {
-        return res.json({ cost: newPlanPrice, credit: 0 });
+        return res.json({ cost: newPlanPrice, credit: 0, isUpgrade: false });
       }
 
       const currentPlanDoc = await db.collection("plans").doc(user.plan_id.toString()).get();
       if (!currentPlanDoc.exists) {
-        return res.json({ cost: newPlanPrice, credit: 0 });
+        return res.json({ cost: newPlanPrice, credit: 0, isUpgrade: false });
       }
 
       const currentPlan = currentPlanDoc.data() as any;
-      const currentPlanPrice = Number(currentPlan.price);
-      
-      if (newPlanPrice <= currentPlanPrice && String(user.plan_id) !== String(planId)) {
-        return res.status(400).json({ error: "You can only upgrade to a higher plan." });
+      const currentPlanScope = currentPlan.plan_scope || currentPlan.planScope || "platform";
+
+      // If current active plan is club-specific, buying a platform plan is a separate subscription
+      if (currentPlanScope === "club") {
+        return res.json({ cost: newPlanPrice, credit: 0, isUpgrade: false });
       }
-      
+
+      const currentPlanPrice = Number(currentPlan.price);
+      const expiresAt = new Date(user.plan_expires_at);
+
       if (String(user.plan_id) === String(planId)) {
-        const expiresAt = new Date(user.plan_expires_at);
-        if (expiresAt > new Date()) {
+        if (expiresAt > now) {
           return res.status(400).json({ error: "You already have an active subscription for this plan." });
         }
+        return res.json({ cost: newPlanPrice, credit: 0, isUpgrade: false });
       }
 
-      const expiresAt = new Date(user.plan_expires_at);
-      const now = new Date();
-      if (expiresAt <= now || String(user.plan_id) === String(planId)) {
-        return res.json({ cost: newPlanPrice, credit: 0 });
+      if (expiresAt <= now) {
+        return res.json({ cost: newPlanPrice, credit: 0, isUpgrade: false });
       }
 
-      // Calculate credit
+      // Upgrades only apply to higher platform plans
+      if (newPlanPrice <= currentPlanPrice) {
+        return res.status(400).json({ error: "You can only upgrade to a higher platform plan." });
+      }
+
+      // Calculate prorated credit for platform upgrade
       const durationDays = Number(currentPlan.duration_days) || 30;
       const totalMs = durationDays * 24 * 60 * 60 * 1000;
       const remainingMs = expiresAt.getTime() - now.getTime();
@@ -3480,15 +3568,32 @@ async function startServer() {
       let cost = newPlanPrice - credit;
       if (cost < 0) cost = 0;
 
-      res.json({ cost: Math.round(cost * 100) / 100, credit: Math.round(credit * 100) / 100 });
+      return res.json({
+        cost: Math.round(cost * 100) / 100,
+        credit: Math.round(credit * 100) / 100,
+        isUpgrade: true
+      });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   app.get("/api/plans", cdnEdgeSim(120), apiFragmentCache(60), async (req, res) => {
     try {
-      const plansSnap = await db.collection("plans").get();
+      const [plansSnap, clubsSnap] = await Promise.all([
+        db.collection("plans").get(),
+        db.collection("clubs").get()
+      ]);
+
+      const clubMap = new Map<string, any>();
+      for (const c of (clubsSnap.docs || [])) {
+        clubMap.set(String(c.id), c.data());
+      }
+
       const plansList = plansSnap.docs.map(doc => {
         const data = doc.data();
+        const planScope = data.plan_scope || data.planScope || "platform";
+        const clubId = data.club_id || data.clubId || null;
+        const clubData = clubId ? clubMap.get(String(clubId)) : null;
+
         return {
           id: Number(data.id || doc.id),
           name: data.name || "",
@@ -3497,8 +3602,10 @@ async function startServer() {
           duration_days: Number(data.duration_days) || 30,
           categories: typeof data.categories === 'string' ? data.categories : JSON.stringify(data.categories || []),
           is_active: Number(data.is_active) ?? 1,
-          plan_scope: data.plan_scope || data.planScope || "platform",
-          club_id: data.club_id || data.clubId || null,
+          plan_scope: planScope,
+          club_id: clubId,
+          club_name: clubData?.name || null,
+          club_logo: clubData?.logo || null,
           platform_fee_percent: data.platform_fee_percent != null ? Number(data.platform_fee_percent) : (data.platformFeePercent != null ? Number(data.platformFeePercent) : 20),
           club_share_percent: data.club_share_percent != null ? Number(data.club_share_percent) : (data.clubSharePercent != null ? Number(data.clubSharePercent) : 80)
         };
@@ -4769,13 +4876,53 @@ async function startServer() {
         const durationDays = Number(planData.duration_days) || 30;
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + durationDays);
-        
-        await userRef.update({ 
-          planId: Number(metadata.planId),
-          planExpiresAt: expiresAt.toISOString()
-        });
+
+        const planScope = planData.plan_scope || planData.planScope || "platform";
+        const planClubId = planData.club_id || planData.clubId || metadata?.clubId || null;
+
+        // Platform-wide plan updates primary plan on user
+        if (planScope === "platform") {
+          await userRef.update({ 
+            planId: Number(metadata.planId),
+            planExpiresAt: expiresAt.toISOString()
+          });
+        } else {
+          // Club plan: only set user.planId if user does not already have an active platform plan
+          const currentUserDoc = await userRef.get();
+          const currentUserData = currentUserDoc.data() || {};
+          const hasActivePlatformPlan = currentUserData.plan_id && currentUserData.plan_expires_at && new Date(currentUserData.plan_expires_at) > new Date();
+          if (!hasActivePlatformPlan) {
+            await userRef.update({ 
+              planId: Number(metadata.planId),
+              planExpiresAt: expiresAt.toISOString()
+            });
+          }
+        }
+
+        // Always record subscription purchase in purchases collection (multi-plan support)
+        const purchaseId = `sub_${userId}_${metadata.planId}_${Date.now()}`;
+        const purchaseData: any = {
+          id: purchaseId,
+          userId: userId,
+          user_id: userId,
+          planId: String(metadata.planId),
+          plan_id: String(metadata.planId),
+          clubId: planClubId ? String(planClubId) : null,
+          club_id: planClubId ? String(planClubId) : null,
+          amount: Number(amount) || Number(planData.price) || 0,
+          type: 'plan',
+          date: new Date().toISOString(),
+          access_starts_at: new Date().toISOString(),
+          access_expires_at: expiresAt.toISOString(),
+          access_status: 'active'
+        };
+        await db.collection("purchases").doc(purchaseId).set(purchaseData);
+
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
-        notifyUser(userId, "Plan Subscribed", `You have successfully subscribed to the plan.`, "success", "/profile");
+        cacheEngine.invalidateCollection("purchases");
+        cacheEngine.invalidateCollection("users");
+
+        notifyUser(userId, "Plan Subscribed", `You have successfully subscribed to ${planData.name || 'the plan'}.`, "success", "/profile");
         notifyAdmins("New Subscription", `A user subscribed to a plan.`, "system", "/admin/transactions");
 
         // Record Partner Club Subscription Revenue Split
@@ -4884,7 +5031,9 @@ async function startServer() {
           id: d.id,
           ...data,
           userId: data.user_id,
-          matchId: data.match_id
+          matchId: data.match_id,
+          planId: data.plan_id || data.planId,
+          clubId: data.club_id || data.clubId
         };
       }));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -5089,11 +5238,50 @@ async function startServer() {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + durationDays);
 
-      await userRef.update({ 
-        balance: newBalance, 
-        planId: Number(planId),
-        planExpiresAt: expiresAt.toISOString()
-      });
+      const planScope = planData.plan_scope || planData.planScope || "platform";
+      const planClubId = planData.club_id || planData.clubId || null;
+
+      if (planScope === "platform") {
+        await userRef.update({ 
+          balance: newBalance, 
+          planId: Number(planId),
+          planExpiresAt: expiresAt.toISOString()
+        });
+      } else {
+        const hasActivePlatformPlan = userData.plan_id && userData.plan_expires_at && new Date(userData.plan_expires_at) > new Date();
+        if (!hasActivePlatformPlan) {
+          await userRef.update({ 
+            balance: newBalance, 
+            planId: Number(planId),
+            planExpiresAt: expiresAt.toISOString()
+          });
+        } else {
+          await userRef.update({ 
+            balance: newBalance 
+          });
+        }
+      }
+
+      // Record subscription purchase in purchases collection (multi-plan support)
+      const purchaseId = `sub_${userId}_${planId}_${Date.now()}`;
+      const purchaseData: any = {
+        id: purchaseId,
+        userId: userId,
+        user_id: userId,
+        planId: String(planId),
+        plan_id: String(planId),
+        clubId: planClubId ? String(planClubId) : null,
+        club_id: planClubId ? String(planClubId) : null,
+        amount: deductAmount,
+        type: 'plan',
+        date: new Date().toISOString(),
+        access_starts_at: new Date().toISOString(),
+        access_expires_at: expiresAt.toISOString(),
+        access_status: 'active'
+      };
+      await db.collection("purchases").doc(purchaseId).set(purchaseData);
+      cacheEngine.invalidateCollection("purchases");
+      cacheEngine.invalidateCollection("users");
 
       // Save transaction
       const transactionId = Date.now().toString();
@@ -5107,8 +5295,20 @@ async function startServer() {
         status: 'completed'
       };
       await db.collection("transactions").doc(transactionId).set(transactionData);
+
+      // Process subscription revenue split for club plans
+      if (planScope === "club" && planClubId) {
+        await processSubscriptionRevenueSplit({
+          planId: String(planId),
+          transactionId: transactionId,
+          grossAmount: deductAmount,
+          userId,
+          platformFeePercent: planData.platform_fee_percent != null ? Number(planData.platform_fee_percent) : undefined,
+          clubSharePercent: planData.club_share_percent != null ? Number(planData.club_share_percent) : undefined
+        });
+      }
       
-      notifyUser(userId, "Plan Upgraded", `You successfully upgraded your subscription using your wallet.`, "success", "/profile");
+      notifyUser(userId, "Subscription Purchased", `You successfully subscribed to ${planData.name || 'plan'} using your wallet.`, "success", "/profile");
       notifyAdmins("Subscription Purchase", `A plan was purchased via wallet.`, "system", "/admin/transactions");
       
       const userEmail = userData.email;
@@ -5124,7 +5324,7 @@ async function startServer() {
         }).catch(err => console.error("Failed to send subscription purchased email:", err));
       }
 
-      res.json({ success: true, newBalance, newPoints: newBalance, planId: Number(planId) });
+      res.json({ success: true, newBalance, newPoints: newBalance, planId: Number(planId), purchase: purchaseData });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -8208,10 +8408,46 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           const expiresAt = new Date();
           expiresAt.setDate(expiresAt.getDate() + durationDays);
 
-          await userRef.update({
-            planId: Number(metadata?.planId),
-            planExpiresAt: expiresAt.toISOString()
-          });
+          const planScope = planData.plan_scope || planData.planScope || "platform";
+          const planClubId = planData.club_id || planData.clubId || metadata?.clubId || null;
+
+          if (planScope === "platform") {
+            await userRef.update({
+              planId: Number(metadata?.planId),
+              planExpiresAt: expiresAt.toISOString()
+            });
+          } else {
+            const currentUserDoc = await userRef.get();
+            const currentUserData = currentUserDoc.data() || {};
+            const hasActivePlatformPlan = currentUserData.plan_id && currentUserData.plan_expires_at && new Date(currentUserData.plan_expires_at) > new Date();
+            if (!hasActivePlatformPlan) {
+              await userRef.update({
+                planId: Number(metadata?.planId),
+                planExpiresAt: expiresAt.toISOString()
+              });
+            }
+          }
+
+          const purchaseId = `sub_${userId}_${metadata?.planId}_${Date.now()}`;
+          const purchaseData: any = {
+            id: purchaseId,
+            userId: userId,
+            user_id: userId,
+            planId: String(metadata?.planId),
+            plan_id: String(metadata?.planId),
+            clubId: planClubId ? String(planClubId) : null,
+            club_id: planClubId ? String(planClubId) : null,
+            amount: Number(amount) || Number(planData.price) || 0,
+            type: 'plan',
+            date: new Date().toISOString(),
+            access_starts_at: new Date().toISOString(),
+            access_expires_at: expiresAt.toISOString(),
+            access_status: 'active'
+          };
+          await db.collection("purchases").doc(purchaseId).set(purchaseData);
+          cacheEngine.invalidateCollection("purchases");
+          cacheEngine.invalidateCollection("users");
+
           await db.collection("transactions").doc(txnId).update({ status: "completed" });
 
           notifyUser(userId, "Subscription Activated", `Your plan "${planData.name || 'Subscription'}" is now active.`, "success", "/plans");

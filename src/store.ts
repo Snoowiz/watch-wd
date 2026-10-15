@@ -1573,13 +1573,17 @@ export const useCategoryStore = create<CategoryState>((set, get) => ({
 }));
 
 export interface Purchase {
-  id: number;
-  userId: number;
-  matchId: number;
+  id: number | string;
+  userId: number | string;
+  matchId?: number | string | null;
   amount: number;
-  type: 'watch' | 'embed';
+  type: 'watch' | 'embed' | 'plan';
   date: string;
   code?: string; // The streaming code if type is 'embed'
+  planId?: number | string | null;
+  plan_id?: number | string | null;
+  clubId?: number | string | null;
+  club_id?: number | string | null;
   access_starts_at?: string | null;
   access_expires_at?: string | null;
   access_status?: 'active' | 'expired' | 'revoked';

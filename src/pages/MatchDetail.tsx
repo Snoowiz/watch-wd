@@ -206,15 +206,54 @@ export function MatchDetail() {
   const isPlanValid = !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date());
   
   let hasPlanAccess = false;
-  if (match && match.access_type === 'plan' && isPlanValid) {
-    const planMatches = !match.required_plan_id || String(user.planId) === String(match.required_plan_id);
-    if (userPlan && userPlan.plan_scope === 'club' && userPlan.club_id) {
-      // Club subscription only unlocks content for this specific club
-      const matchClubId = match.club_id || (match as any).clubId;
-      hasPlanAccess = planMatches && Boolean(matchClubId && String(matchClubId) === String(userPlan.club_id));
-    } else {
-      // Platform-wide plan
-      hasPlanAccess = planMatches;
+  if (match && match.access_type === 'plan') {
+    const now = new Date();
+    const matchClubId = match.club_id || (match as any).clubId;
+
+    // 1. Check primary user.planId
+    if (isPlanValid && userPlan) {
+      const planMatches = !match.required_plan_id || String(user.planId) === String(match.required_plan_id);
+      if (userPlan.plan_scope === 'club' && userPlan.club_id) {
+        hasPlanAccess = planMatches && Boolean(matchClubId && String(matchClubId) === String(userPlan.club_id));
+      } else {
+        hasPlanAccess = planMatches;
+      }
+    }
+
+    // 2. Check active plan purchases (supports multiple club subscriptions alongside platform plan)
+    if (!hasPlanAccess && user && purchases.length > 0) {
+      for (const p of purchases) {
+        if (p.type === 'plan' && String(p.userId) === String(user.id) && p.access_status !== 'expired' && p.access_status !== 'revoked') {
+          const isNotExpired = !p.access_expires_at || new Date(p.access_expires_at) > now;
+          if (isNotExpired) {
+            const planId = (p as any).planId || (p as any).plan_id || p.matchId;
+            const targetPlan = plans.find(pl => String(pl.id) === String(planId));
+            const planMatches = !match.required_plan_id || String(planId) === String(match.required_plan_id);
+
+            if (targetPlan) {
+              const scope = targetPlan.plan_scope || 'platform';
+              const clubId = targetPlan.club_id || (p as any).clubId || (p as any).club_id;
+              if (scope === 'club' && clubId) {
+                if (planMatches && matchClubId && String(matchClubId) === String(clubId)) {
+                  hasPlanAccess = true;
+                  break;
+                }
+              } else if (scope === 'platform') {
+                if (planMatches) {
+                  hasPlanAccess = true;
+                  break;
+                }
+              }
+            } else if ((p as any).clubId || (p as any).club_id) {
+              const clubId = (p as any).clubId || (p as any).club_id;
+              if (planMatches && matchClubId && String(matchClubId) === String(clubId)) {
+                hasPlanAccess = true;
+                break;
+              }
+            }
+          }
+        }
+      }
     }
   }
 

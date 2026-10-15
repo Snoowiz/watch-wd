@@ -91,8 +91,11 @@ CREATE TABLE IF NOT EXISTS `purchases` (
   `access_starts_at` DATETIME DEFAULT NULL,
   `access_expires_at` DATETIME DEFAULT NULL,
   `access_status` VARCHAR(50) DEFAULT 'active',
+  `plan_id` VARCHAR(100) DEFAULT NULL,
+  `club_id` VARCHAR(100) DEFAULT NULL,
   INDEX `idx_purchases_user` (`user_id`),
-  INDEX `idx_purchases_match` (`match_id`)
+  INDEX `idx_purchases_match` (`match_id`),
+  INDEX `idx_purchases_plan` (`plan_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
