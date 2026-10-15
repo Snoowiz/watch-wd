@@ -6,6 +6,94 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <title>Watch WDS - Live Sports Streaming</title>
+  <script>
+    (function () {
+      try {
+        var p = localStorage.getItem('watchwds_primary_color') || '#3B82F6';
+        var s = localStorage.getItem('watchwds_secondary_color') || '#10B981';
+        var b = localStorage.getItem('watchwds_button_text_color') || '#FFFFFF';
+
+        function hexToRgb(hex) {
+          var c = hex.replace('#', '');
+          if (c.length === 3) c = c.split('').map(function(x){ return x + x; }).join('');
+          var n = parseInt(c, 16);
+          return isNaN(n) ? [59, 130, 246] : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+        }
+        function rgbToHex(r, g, b) {
+          var cl = function(v){ return Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0'); };
+          return '#' + cl(r) + cl(g) + cl(b);
+        }
+        function mix(c1, c2, w) {
+          return rgbToHex(c1[0] + (c2[0] - c1[0]) * w, c1[1] + (c2[1] - c1[1]) * w, c1[2] + (c2[2] - c1[2]) * w);
+        }
+
+        var rgb = hexToRgb(p);
+        var white = [255, 255, 255], black = [0, 0, 0];
+        var s50 = mix(rgb, white, 0.92), s100 = mix(rgb, white, 0.82), s200 = mix(rgb, white, 0.65);
+        var s300 = mix(rgb, white, 0.45), s400 = mix(rgb, white, 0.20), s500 = p;
+        var s600 = mix(rgb, black, 0.15), s700 = mix(rgb, black, 0.30), s800 = mix(rgb, black, 0.45);
+        var s900 = mix(rgb, black, 0.60), s950 = mix(rgb, black, 0.75);
+
+        var lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+        var contrast = lum > 0.55 ? '#0a0a0a' : '#ffffff';
+
+        var root = document.documentElement;
+        root.style.setProperty('--color-yellow-50', s50);
+        root.style.setProperty('--color-yellow-100', s100);
+        root.style.setProperty('--color-yellow-200', s200);
+        root.style.setProperty('--color-yellow-300', s300);
+        root.style.setProperty('--color-yellow-400', s400);
+        root.style.setProperty('--color-yellow-500', s500);
+        root.style.setProperty('--color-yellow-600', s600);
+        root.style.setProperty('--color-yellow-700', s700);
+        root.style.setProperty('--color-yellow-800', s800);
+        root.style.setProperty('--color-yellow-900', s900);
+        root.style.setProperty('--color-yellow-950', s950);
+
+        root.style.setProperty('--color-amber-400', s400);
+        root.style.setProperty('--color-amber-500', s500);
+        root.style.setProperty('--color-amber-600', s600);
+
+        root.style.setProperty('--primary-500', s500);
+        root.style.setProperty('--secondary-500', s);
+        root.style.setProperty('--primary-contrast-text', contrast);
+        root.style.setProperty('--button-text-color', b);
+
+        var st = document.createElement('style');
+        st.id = 'watchwds-dynamic-theme-colors';
+        st.textContent = ':root {' +
+          '--color-yellow-50: ' + s50 + ' !important;' +
+          '--color-yellow-100: ' + s100 + ' !important;' +
+          '--color-yellow-200: ' + s200 + ' !important;' +
+          '--color-yellow-300: ' + s300 + ' !important;' +
+          '--color-yellow-400: ' + s400 + ' !important;' +
+          '--color-yellow-500: ' + s500 + ' !important;' +
+          '--color-yellow-600: ' + s600 + ' !important;' +
+          '--color-yellow-700: ' + s700 + ' !important;' +
+          '--color-yellow-800: ' + s800 + ' !important;' +
+          '--color-yellow-900: ' + s900 + ' !important;' +
+          '--color-yellow-950: ' + s950 + ' !important;' +
+          '--color-amber-400: ' + s400 + ' !important;' +
+          '--color-amber-500: ' + s500 + ' !important;' +
+          '--color-amber-600: ' + s600 + ' !important;' +
+          '--primary-500: ' + s500 + ' !important;' +
+          '--secondary-500: ' + s + ' !important;' +
+          '--primary-contrast-text: ' + contrast + ' !important;' +
+          '--button-text-color: ' + b + ' !important;' +
+        '} ' +
+        'button.bg-yellow-500, a.bg-yellow-500, button.bg-yellow-400, a.bg-yellow-400, button.bg-amber-500, a.bg-amber-500, .btn-primary, .btn-solid-primary, .btn-rotating-border-inner, .play-rotating-border-inner, [role="button"].bg-yellow-500, [role="button"][class*="bg-yellow-500"] {' +
+          'color: ' + b + ' !important;' +
+        '} ' +
+        'button.bg-yellow-500 svg, a.bg-yellow-500 svg, .btn-rotating-border-inner svg, .play-rotating-border-inner svg {' +
+          'color: ' + b + ' !important;' +
+        '} ' +
+        '.rotating-border-effect::before {' +
+          'background: conic-gradient(from 0deg, ' + s500 + ' 0deg, ' + s + ' 120deg, ' + s500 + ' 240deg, ' + s + ' 360deg) !important;' +
+        '}';
+        document.head.appendChild(st);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>

@@ -7432,6 +7432,14 @@ async function startServer() {
   app.get("/api/settings/:key", async (req, res) => {
     try {
       const data = await getSecureDocument("settings", req.params.key);
+      if (req.params.key === "site_colors") {
+        return res.json({
+          primaryColor: "#3B82F6",
+          secondaryColor: "#10B981",
+          buttonTextColor: "#FFFFFF",
+          ...data || {}
+        });
+      }
       res.json(data || {});
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -7440,6 +7448,14 @@ async function startServer() {
   app.get("/api/admin/settings/:key", async (req, res) => {
     try {
       const data = await getSecureDocument("settings", req.params.key);
+      if (req.params.key === "site_colors") {
+        return res.json({
+          primaryColor: "#3B82F6",
+          secondaryColor: "#10B981",
+          buttonTextColor: "#FFFFFF",
+          ...data || {}
+        });
+      }
       res.json(data || {});
     } catch (e) {
       res.status(500).json({ error: e.message });

@@ -11,8 +11,15 @@ export interface ColorPreset {
 
 export const COLOR_PRESETS: ColorPreset[] = [
   {
+    id: 'sapphire',
+    name: 'Sapphire Blue (Default)',
+    primary: '#3B82F6',
+    secondary: '#10B981',
+    description: 'Crisp sports sapphire & broadcast royal blue'
+  },
+  {
     id: 'gold',
-    name: 'WatchWDS Gold (Default)',
+    name: 'WatchWDS Gold',
     primary: '#EAB308',
     secondary: '#6366F1',
     description: 'Signature electric yellow and broadcast gold'
@@ -60,13 +67,6 @@ export const COLOR_PRESETS: ColorPreset[] = [
     description: 'Vibrant neon rose & modern athletic magenta'
   },
   {
-    id: 'sapphire',
-    name: 'Sapphire Blue',
-    primary: '#3B82F6',
-    secondary: '#10B981',
-    description: 'Crisp sports sapphire & broadcast royal blue'
-  },
-  {
     id: 'lime',
     name: 'Neon Lime',
     primary: '#84CC16',
@@ -75,8 +75,8 @@ export const COLOR_PRESETS: ColorPreset[] = [
   }
 ];
 
-export const DEFAULT_PRIMARY_COLOR = '#EAB308';
-export const DEFAULT_SECONDARY_COLOR = '#6366F1';
+export const DEFAULT_PRIMARY_COLOR = '#3B82F6';
+export const DEFAULT_SECONDARY_COLOR = '#10B981';
 export const DEFAULT_BUTTON_TEXT_COLOR = '#FFFFFF';
 
 // Convert hex (#RRGGBB or #RGB) to [r, g, b]
@@ -86,10 +86,10 @@ export function hexToRgb(hex: string): [number, number, number] {
     cleanHex = cleanHex.split('').map(c => c + c).join('');
   }
   if (cleanHex.length !== 6) {
-    return [234, 179, 8]; // fallback to #EAB308
+    return [59, 130, 246]; // fallback to #3B82F6
   }
   const num = parseInt(cleanHex, 16);
-  if (isNaN(num)) return [234, 179, 8];
+  if (isNaN(num)) return [59, 130, 246];
   return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
 }
 

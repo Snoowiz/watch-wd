@@ -14,40 +14,42 @@
   --color-slate-900: #0a0a0a;
   --color-slate-950: #050505;
 
-  --color-yellow-50: var(--color-yellow-50, #fefce8);
-  --color-yellow-100: var(--color-yellow-100, #fef9c3);
-  --color-yellow-200: var(--color-yellow-200, #fef08a);
-  --color-yellow-300: var(--color-yellow-300, #fde047);
-  --color-yellow-400: var(--color-yellow-400, #facc15);
-  --color-yellow-500: var(--color-yellow-500, #eab308);
-  --color-yellow-600: var(--color-yellow-600, #ca8a04);
-  --color-yellow-700: var(--color-yellow-700, #a16207);
-  --color-yellow-800: var(--color-yellow-800, #854d0e);
-  --color-yellow-900: var(--color-yellow-900, #713f12);
-  --color-yellow-950: var(--color-yellow-950, #422006);
+  --color-yellow-50: var(--color-yellow-50, #eff5fe);
+  --color-yellow-100: var(--color-yellow-100, #dce9fd);
+  --color-yellow-200: var(--color-yellow-200, #bad3fc);
+  --color-yellow-300: var(--color-yellow-300, #93bafa);
+  --color-yellow-400: var(--color-yellow-400, #629bf8);
+  --color-yellow-500: var(--color-yellow-500, #3b82f6);
+  --color-yellow-600: var(--color-yellow-600, #326fd1);
+  --color-yellow-700: var(--color-yellow-700, #295bac);
+  --color-yellow-800: var(--color-yellow-800, #204887);
+  --color-yellow-900: var(--color-yellow-900, #183462);
+  --color-yellow-950: var(--color-yellow-950, #0f213e);
 
-  --color-amber-400: var(--color-amber-400, #fbbf24);
-  --color-amber-500: var(--color-amber-500, #f59e0b);
-  --color-amber-600: var(--color-amber-600, #d97706);
+  --color-amber-400: var(--color-amber-400, #629bf8);
+  --color-amber-500: var(--color-amber-500, #3b82f6);
+  --color-amber-600: var(--color-amber-600, #326fd1);
 }
 
 :root {
-  --color-yellow-50: #fefce8;
-  --color-yellow-100: #fef9c3;
-  --color-yellow-200: #fef08a;
-  --color-yellow-300: #fde047;
-  --color-yellow-400: #facc15;
-  --color-yellow-500: #eab308;
-  --color-yellow-600: #ca8a04;
-  --color-yellow-700: #a16207;
-  --color-yellow-800: #854d0e;
-  --color-yellow-900: #713f12;
-  --color-yellow-950: #422006;
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #eab308;
-  --color-amber-600: #ca8a04;
-  --primary-500: #eab308;
-  --secondary-500: #6366f1;
+  --color-yellow-50: #eff5fe;
+  --color-yellow-100: #dce9fd;
+  --color-yellow-200: #bad3fc;
+  --color-yellow-300: #93bafa;
+  --color-yellow-400: #629bf8;
+  --color-yellow-500: #3b82f6;
+  --color-yellow-600: #326fd1;
+  --color-yellow-700: #295bac;
+  --color-yellow-800: #204887;
+  --color-yellow-900: #183462;
+  --color-yellow-950: #0f213e;
+  --color-amber-400: #629bf8;
+  --color-amber-500: #3b82f6;
+  --color-amber-600: #326fd1;
+  --primary-500: #3b82f6;
+  --secondary-500: #10b981;
+  --primary-contrast-text: #ffffff;
+  --button-text-color: #ffffff;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -122,10 +124,10 @@
   height: 200%;
   background: conic-gradient(
     from 0deg,
-    var(--color-yellow-500, #eab308) 0deg,
-    var(--color-secondary-500, #22c55e) 120deg,
-    var(--color-yellow-500, #eab308) 240deg,
-    var(--color-secondary-500, #22c55e) 360deg
+    var(--color-yellow-500, #3b82f6) 0deg,
+    var(--color-secondary-500, #10b981) 120deg,
+    var(--color-yellow-500, #3b82f6) 240deg,
+    var(--color-secondary-500, #10b981) 360deg
   );
   animation: border-spin 3s linear infinite;
 }
@@ -144,6 +146,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Ensure primary and action buttons use crisp white text by default */
+button.bg-yellow-500,
+a.bg-yellow-500,
+button.bg-yellow-400,
+a.bg-yellow-400,
+button.bg-amber-500,
+a.bg-amber-500,
+.btn-primary,
+.btn-solid-primary,
+.btn-rotating-border-inner,
+.play-rotating-border-inner,
+button[class*="bg-yellow-500"],
+a[class*="bg-yellow-500"],
+button[class*="bg-yellow-400"],
+a[class*="bg-yellow-400"],
+[role="button"].bg-yellow-500,
+[role="button"][class*="bg-yellow-500"] {
+  color: var(--button-text-color, #ffffff) !important;
+}
+
+button.bg-yellow-500 svg,
+a.bg-yellow-500 svg,
+button.bg-yellow-400 svg,
+a.bg-yellow-400 svg,
+.btn-rotating-border-inner svg,
+.play-rotating-border-inner svg,
+button[class*="bg-yellow-500"] svg,
+a[class*="bg-yellow-500"] svg,
+[role="button"].bg-yellow-500 svg {
+  color: var(--button-text-color, #ffffff) !important;
 }
 
 /* For play icon overlay */

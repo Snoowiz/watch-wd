@@ -145,7 +145,7 @@ export function AdminSiteColorSettings() {
     setIsSaved(false);
   };
 
-  // Reset to default WatchWDS gold & white button text
+  // Reset to default WatchWDS Sapphire Blue & white button text
   const handleResetToDefault = () => {
     setPrimaryColor(DEFAULT_PRIMARY_COLOR);
     setSecondaryColor(DEFAULT_SECONDARY_COLOR);
@@ -344,7 +344,7 @@ export function AdminSiteColorSettings() {
                 type="text"
                 value={hexInput}
                 onChange={(e) => handlePrimaryHexInput(e.target.value)}
-                placeholder="#EAB308"
+                placeholder="#3B82F6"
                 maxLength={7}
                 className="w-full pl-3 pr-20 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
               />
