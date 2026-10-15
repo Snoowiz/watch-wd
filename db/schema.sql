@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `creator_id` VARCHAR(100) DEFAULT NULL,
   `duration` INT DEFAULT 120,
   `stream_provider` VARCHAR(50) DEFAULT 'youtube',
+  `club_id` VARCHAR(100) DEFAULT NULL,
   `event_access_enabled` TINYINT(1) DEFAULT 0,
   `event_access_duration` INT DEFAULT NULL,
   `event_access_duration_label` VARCHAR(50) DEFAULT NULL,

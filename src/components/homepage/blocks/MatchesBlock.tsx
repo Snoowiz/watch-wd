@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -29,10 +29,16 @@ function formatSafeDate(dateVal: any, formatStr: string): string {
 export function MatchesBlock({ block }: { block: HomepageBlock }) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { matches = [] } = useMatchStore();
+  const { matches = [], isLoading, fetchMatches } = useMatchStore();
   const { savedMatches = [], saveMatch, unsaveMatch } = useSavedMatchesStore();
   const { currencySymbol } = useSettingsStore();
   const carouselRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (matches.length === 0) {
+      fetchMatches();
+    }
+  }, []);
 
   const handleToggleSave = (e: React.MouseEvent, matchId: number) => {
     e.preventDefault();
@@ -174,7 +180,16 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
         </div>
       </div>
 
-      {displayedMatches.length === 0 ? (
+      {isLoading && matches.length === 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+          {[1, 2, 3].map((n) => (
+            <div key={n} className="rounded-2xl bg-slate-100 dark:bg-slate-800/60 h-72 border border-slate-200/60 dark:border-slate-700/50 flex flex-col justify-end p-5 space-y-3">
+              <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3" />
+              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/3" />
+            </div>
+          ))}
+        </div>
+      ) : displayedMatches.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 p-8 space-y-2">
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
             No matches scheduled in this category right now.

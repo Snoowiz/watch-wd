@@ -239,7 +239,8 @@ export async function ensureIncrementalColumns() {
     "ALTER TABLE `plans` ADD COLUMN `platform_fee_percent` DECIMAL(5,2) DEFAULT 20.00",
     "ALTER TABLE `plans` ADD COLUMN `club_share_percent` DECIMAL(5,2) DEFAULT 80.00",
     "ALTER TABLE `club_earnings` ADD COLUMN `plan_id` VARCHAR(100) DEFAULT NULL",
-    "ALTER TABLE `matches` ADD COLUMN `stream_provider` VARCHAR(50) DEFAULT 'youtube'"
+    "ALTER TABLE `matches` ADD COLUMN `stream_provider` VARCHAR(50) DEFAULT 'youtube'",
+    "ALTER TABLE `matches` ADD COLUMN `club_id` VARCHAR(100) DEFAULT NULL"
   ];
 
   for (const sql of migrations) {
