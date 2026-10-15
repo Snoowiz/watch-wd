@@ -66,7 +66,15 @@ Matches are stored in the `matches` table and mapped to the `Match` interface in
 Access validation is performed in `MatchDetail.tsx` using the following factors:
 
 ```typescript
+const matchClubId = match.club_id || (match as any).clubId || null;
+
 const hasPlanAccess = match.access_type === 'plan' && 
+                      (
+                        // 1. Club plan: grants access only if match belongs to the same assigned club
+                        (userPlan?.plan_scope === 'club' && userPlan?.club_id && matchClubId && String(matchClubId) === String(userPlan.club_id)) ||
+                        // 2. Platform plan: strictly grants access ONLY to paid matches not assigned to a partner club
+                        ((!userPlan?.plan_scope || userPlan?.plan_scope === 'platform') && !matchClubId)
+                      ) &&
                       !!user?.planId && 
                       (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date()) && 
                       (!match.required_plan_id || String(user.planId) === String(match.required_plan_id));
@@ -80,7 +88,10 @@ const hasAccess = !!(user ?
 
 1. **Free Access**: If `match.access === 'free'`, all users (including guests) can watch.
 2. **PPV Access**: Checked via `purchases` query. A row must exist with `match_id = match.id`, `user_id = user.id`, and `type = 'watch'`.
-3. **Plan/Subscription Access**: Validated if the match's `access_type` is `'plan'`. The user's active plan ID (`user.planId`) must match the required plan (`match.required_plan_id`), and the expiration timestamp (`user.planExpiresAt`) must be in the future.
+3. **Plan/Subscription Access**: Validated if the match's `access_type` is `'plan'`.
+   - **Partner Club Match (`match.club_id != null`)**: Strictly requires an active subscription for that specific partner club (`userPlan.plan_scope === 'club'` and `userPlan.club_id === match.club_id`). Platform-wide plans **do not** grant access to partner club matches.
+   - **Platform Match (`match.club_id == null`)**: Unlocked by active Platform-Wide subscriptions.
+   - Users can simultaneously hold multiple club subscriptions alongside a platform-wide plan (tracked in `purchases` with `type = 'plan'`).
 
 ---
 
@@ -146,7 +157,7 @@ The platform supports dual-mode Stripe checkouts with robust network resilience 
 
 ### 1. Dual-Mode Checkout Routing:
 - **Club PPV with Stripe Connect Destination Charges (`/api/checkout/gateway/connect-ppv`)**:
-  - When a match belongs to a club with an onboarded, active Stripe Express/Custom account (`club.stripe_account_id` with `payouts_enabled === true`):
+  - When a match belongs to a club with an onboarded, active Stripe Express/Custom account (`club.stripe_account_id` with `transfers === 'active'`):
   - The Stripe Checkout session is created with:
     ```typescript
     payment_intent_data: {
@@ -157,8 +168,19 @@ The platform supports dual-mode Stripe checkouts with robust network resilience 
   - Platform fee is derived from the club's configured revenue split (e.g. 20% platform fee, 80% club share).
   - Stripe handles instant payouts directly to the club's connected account while depositing the application fee into the platform balance.
   - Verification calls `processClubRevenueSplit()` to record the transaction, update the ledger, and grant the user match watch rights.
+- **Club Subscription Plans with Stripe Connect Destination Charges (`/api/checkout/gateway/connect-plan`)**:
+  - When a subscription plan has `plan_scope === 'club'` and belongs to an onboarded partner club:
+  - The Stripe Checkout session is created with:
+    ```typescript
+    payment_intent_data: {
+      transfer_data: { destination: club.stripe_account_id },
+      application_fee_amount: platformFeeInCents
+    }
+  ```
+  - Platform fee is derived from the plan's custom split or the club's configured revenue policy.
+  - Verification calls `processSubscriptionRevenueSplit()` to record the transaction in `club_earnings`, issue an instant disbursement in `payouts`, update `club_balances`, and grant multi-plan entitlements in `purchases`.
 - **Platform Direct Revenue (`/api/checkout/gateway/initialize`)**:
-  - Used for subscriptions (Plans) and PPV matches not linked to a connected club account.
+  - Used for platform-wide subscriptions (Plans) and PPV matches not linked to a connected club account.
   - 100% of the funds route directly to the platform's main Stripe account.
 
 ### 2. Resilient Dual-Engine Stripe Execution (`executeStripeWithFallback`):

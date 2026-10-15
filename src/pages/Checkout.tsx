@@ -36,11 +36,16 @@ export function Checkout() {
 
       if (state.type === 'plan') {
          payload.type = 'plan';
+         payload.planId = state.metadata?.planId;
          payload.metadata = { 
            planId: state.metadata?.planId,
            matchId: state.metadata?.matchId || null,
            fromMatchSlug: state.metadata?.fromMatchSlug || null
          };
+         // Use Stripe Connect Plan endpoint if payment gateway is Stripe
+         if (state.paymentMethod === 'stripe') {
+           endpoint = '/api/checkout/gateway/connect-plan';
+         }
       } else if (state.metadata?.matchId) {
          payload.type = state.metadata.type || 'watch';
          payload.matchId = state.metadata.matchId;

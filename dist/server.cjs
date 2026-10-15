@@ -3931,8 +3931,9 @@ async function startServer() {
                 const userPlan = userPlanDoc.data();
                 const planScope = userPlan.plan_scope || userPlan.planScope || "platform";
                 const planClubId = userPlan.club_id || userPlan.clubId || null;
+                const rawMatchClubId = match.club_id || match.clubId || null;
+                const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
                 if (planScope === "club" && planClubId) {
-                  const matchClubId = match.club_id || match.clubId || null;
                   const isSameClub = matchClubId && String(matchClubId) === String(planClubId);
                   const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
                   if (isSameClub && planMatch) {
@@ -3940,7 +3941,7 @@ async function startServer() {
                   }
                 } else {
                   const planMatch = !match.required_plan_id || String(req.user.planId) === String(match.required_plan_id);
-                  if (planMatch) {
+                  if (!matchClubId && planMatch) {
                     hasAccess = true;
                   }
                 }
@@ -3949,7 +3950,8 @@ async function startServer() {
           }
           if (!hasAccess) {
             const purchasesSnap2 = await db.collection("purchases").where("user_id", "==", req.user.id.toString()).get();
-            const matchClubId = match.club_id || match.clubId || null;
+            const rawMatchClubId = match.club_id || match.clubId || null;
+            const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
             for (const doc of purchasesSnap2.docs || []) {
               const pdata = doc.data();
               if (pdata.type === "plan" && pdata.access_status !== "expired" && pdata.access_status !== "revoked") {
@@ -3960,7 +3962,8 @@ async function startServer() {
                   if (planDoc.exists) {
                     const pl = planDoc.data();
                     const scope = pl.plan_scope || pl.planScope || (pdata.club_id ? "club" : "platform");
-                    const planClubId = pl.club_id || pl.clubId || pdata.club_id || pdata.clubId || null;
+                    const rawPlanClubId = pl.club_id || pl.clubId || pdata.club_id || pdata.clubId || null;
+                    const planClubId = rawPlanClubId && String(rawPlanClubId).trim() !== "" ? String(rawPlanClubId).trim() : null;
                     const planMatch = !match.required_plan_id || String(subPlanId) === String(match.required_plan_id);
                     if (scope === "club" && planClubId) {
                       if (matchClubId && String(matchClubId) === String(planClubId) && planMatch) {
@@ -3968,7 +3971,7 @@ async function startServer() {
                         break;
                       }
                     } else if (scope === "platform") {
-                      if (planMatch) {
+                      if (!matchClubId && planMatch) {
                         hasAccess = true;
                         break;
                       }
@@ -6137,14 +6140,27 @@ async function startServer() {
             if (!connectedAccountId) {
               return res.status(409).json({ error: "The partner club associated with this plan does not have a Stripe Connect account configured." });
             }
-            platformFeePercent = planData?.platform_fee_percent != null ? Number(planData.platform_fee_percent) : planData?.platformFeePercent != null ? Number(planData.platformFeePercent) : 20;
-            const clubSharePercent = planData?.club_share_percent != null ? Number(planData.club_share_percent) : planData?.clubSharePercent != null ? Number(planData.clubSharePercent) : 100 - platformFeePercent;
+            if (planData?.platform_fee_percent != null) {
+              platformFeePercent = Number(planData.platform_fee_percent);
+            } else if (planData?.platformFeePercent != null) {
+              platformFeePercent = Number(planData.platformFeePercent);
+            } else {
+              const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", String(resolvedClubId)).where("is_active", "==", 1).limit(1).get();
+              if (!policiesSnap.empty) {
+                platformFeePercent = Number(policiesSnap.docs[0].data().platform_fee_percent || 20);
+              } else {
+                platformFeePercent = 20;
+              }
+            }
+            const clubSharePercent = 100 - platformFeePercent;
             metadata.planId = String(metadata.planId);
             metadata.planScope = "club";
             metadata.clubId = String(resolvedClubId);
             metadata.connectedAccountId = connectedAccountId;
             metadata.platformFeePercent = platformFeePercent;
             metadata.clubSharePercent = clubSharePercent;
+            metadata.isDestinationCharge = true;
+            metadata.settlement_model = "STRIPE_DESTINATION_ROUTED";
           } catch (clubErr) {
             console.error("Error resolving club/policy in plan initialize:", clubErr);
             return res.status(500).json({ error: "Failed to resolve subscription club partner details." });
@@ -6156,6 +6172,8 @@ async function startServer() {
           metadata.connectedAccountId = null;
           metadata.platformFeePercent = 100;
           metadata.clubSharePercent = 0;
+          metadata.isDestinationCharge = false;
+          metadata.settlement_model = "PLATFORM_DIRECT";
         }
       } else if (type === "top_up") {
         const walletSnap = await db.collection("settings").doc("wallet").get();
@@ -9496,6 +9514,172 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       return res.status(400).json({ error: "Only Stripe is supported for PPV Connect payments" });
     } catch (e) {
       console.error("Connect PPV checkout error:", {
+        name: e?.name,
+        code: e?.code,
+        type: e?.type,
+        message: e?.message,
+        detail: e?.detail?.message || e?.detail,
+        cause: e?.cause?.message || e?.cause
+      });
+      let errMsg = e?.message || "An error occurred with our connection to Stripe. Please try again.";
+      if (e?.name === "StripeConnectionError" || e?.message?.includes("connection to Stripe")) {
+        errMsg = "Unable to connect to Stripe payment services. Please check your internet connection or verify Stripe credentials in Admin Settings.";
+      } else if (e?.name === "StripeAuthenticationError") {
+        errMsg = "Stripe authentication failed. Please check your Stripe Secret Key in Admin > Settings > Payment Settings.";
+      }
+      res.status(500).json({ error: errMsg });
+    }
+  });
+  app.post("/api/checkout/gateway/connect-plan", authenticate, async (req, res) => {
+    try {
+      const { planId: rawPlanId, gateway = "stripe", currency = "GBP" } = req.body;
+      const planId = rawPlanId || req.body.metadata?.planId;
+      if (!planId) return res.status(400).json({ error: "Missing plan ID" });
+      const userId = req.user.id.toString();
+      const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || "https"}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, "");
+      const planDoc = await db.collection("plans").doc(String(planId)).get();
+      if (!planDoc.exists) return res.status(404).json({ error: "Subscription plan not found" });
+      const plan = planDoc.data();
+      const planPrice = Number(plan.price);
+      if (isNaN(planPrice) || planPrice <= 0) return res.status(400).json({ error: "Invalid plan price" });
+      const planScope = plan.plan_scope || plan.planScope || "platform";
+      const rawClubId = plan.club_id || plan.clubId || null;
+      const clubId = rawClubId && String(rawClubId).trim() !== "" ? String(rawClubId).trim() : null;
+      let club = null;
+      let connectedAccountId = null;
+      let platformFeePercent = 100;
+      const isSplitPayment = Boolean(planScope === "club" && clubId);
+      if (isSplitPayment) {
+        const clubDoc = await db.collection("clubs").doc(clubId).get();
+        if (!clubDoc.exists) {
+          return res.status(404).json({ error: "Assigned partner club not found. Cannot process split payment." });
+        }
+        club = clubDoc.data();
+        connectedAccountId = club.stripe_account_id || club.stripeAccountId || null;
+        if (!connectedAccountId) {
+          return res.status(409).json({ error: "Partner club has no Stripe connected account. Cannot process split payment." });
+        }
+        if (plan.platform_fee_percent != null) {
+          platformFeePercent = Number(plan.platform_fee_percent);
+        } else if (plan.platformFeePercent != null) {
+          platformFeePercent = Number(plan.platformFeePercent);
+        } else {
+          const policiesSnap = await db.collection("revenue_policies").where("club_id", "==", clubId).where("is_active", "==", 1).limit(1).get();
+          platformFeePercent = 20;
+          if (!policiesSnap.empty) {
+            const policy = policiesSnap.docs[0].data();
+            platformFeePercent = Number(policy.platform_fee_percent || policy.platformFeePercent || 20);
+          }
+        }
+      }
+      const clubSharePercent = isSplitPayment ? 100 - platformFeePercent : 0;
+      const totalAmountCents = Math.round(planPrice * 100);
+      const applicationFeeCents = isSplitPayment ? Math.round(totalAmountCents * (platformFeePercent / 100)) : 0;
+      const transactionId = `txn_sub_${Date.now()}_${userId}`;
+      const metadata = {
+        planId: String(planId),
+        planScope: isSplitPayment ? "club" : "platform",
+        clubId: isSplitPayment ? String(clubId) : null,
+        type: "plan",
+        fromMatchSlug: req.body.metadata?.fromMatchSlug || null,
+        matchId: req.body.metadata?.matchId || null,
+        platformFeePercent: isSplitPayment ? platformFeePercent : 100,
+        clubSharePercent: isSplitPayment ? clubSharePercent : 0,
+        applicationFeeCents: isSplitPayment ? applicationFeeCents : 0,
+        connectedAccountId: isSplitPayment ? connectedAccountId : null,
+        isDestinationCharge: isSplitPayment,
+        settlement_model: isSplitPayment ? "STRIPE_DESTINATION_ROUTED" : "PLATFORM_DIRECT"
+      };
+      await db.collection("transactions").doc(transactionId).set({
+        userId,
+        type: "plan",
+        amount: planPrice,
+        status: "pending",
+        gateway,
+        metadata,
+        date: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      const gatewaySettings = await getPaymentGatewaySettings();
+      const settings = gatewaySettings;
+      const stripeSecretKey = gatewaySettings.stripe.secretKey;
+      if (gateway === "stripe") {
+        if (!gatewaySettings?.stripe?.enabled || !stripeSecretKey) {
+          return res.status(400).json({
+            error: "Stripe Connect is not configured or is currently disabled. Please ensure your Stripe Secret Key is saved in Admin > Settings > Payment Settings."
+          });
+        }
+        if (stripeSecretKey.startsWith("mk_")) {
+          return res.status(400).json({
+            error: "Invalid Stripe Secret Key: An API Key Identifier (starts with 'mk_') was entered. Please enter your actual Stripe Secret Key (starts with 'sk_test_', 'sk_live_', or 'rk_') in Admin > Settings > Payment Settings."
+          });
+        }
+        const targetCurrency = (settings.stripe?.merchantCurrency || currency || "GBP").toLowerCase();
+        const sessionParams = {
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: targetCurrency,
+                product_data: {
+                  name: plan.name || "Subscription Plan",
+                  description: isSplitPayment ? `Subscription Pass \u2014 ${club?.name || "Partner Club"}` : `Platform All-Access Subscription`
+                },
+                unit_amount: totalAmountCents
+              },
+              quantity: 1
+            }
+          ],
+          mode: "payment",
+          success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}&txn_id=${transactionId}&gateway=stripe`,
+          cancel_url: `${origin}/checkout/cancel`,
+          client_reference_id: transactionId,
+          metadata: {
+            txn_id: transactionId,
+            plan_id: String(planId),
+            club_id: isSplitPayment ? String(clubId) : "",
+            user_id: userId,
+            payment_type: "plan_subscription",
+            settlement_model: isSplitPayment ? "STRIPE_DESTINATION_ROUTED" : "PLATFORM_DIRECT"
+          }
+        };
+        if (isSplitPayment) {
+          try {
+            const connectedAccount = await executeStripeWithFallback(
+              stripeSecretKey,
+              (client) => client.accounts.retrieve(connectedAccountId)
+            );
+            const transfersCapability = connectedAccount.capabilities?.transfers;
+            if (transfersCapability !== "active") {
+              return res.status(409).json({ error: "Partner account is not yet eligible to receive transfers. Onboarding may be incomplete." });
+            }
+          } catch (acctErr) {
+            console.error(`[ConnectPlan] Failed to verify connected account ${connectedAccountId}:`, acctErr.message);
+            return res.status(409).json({ error: `Could not verify partner Stripe account: ${acctErr.message}` });
+          }
+          sessionParams.payment_intent_data = {
+            application_fee_amount: applicationFeeCents,
+            transfer_data: {
+              destination: connectedAccountId
+            },
+            metadata: {
+              txn_id: transactionId,
+              plan_id: String(planId),
+              club_id: String(clubId),
+              user_id: userId,
+              payment_type: "plan_subscription",
+              settlement_model: "STRIPE_DESTINATION_ROUTED"
+            }
+          };
+        }
+        const session = await executeStripeWithFallback(
+          stripeSecretKey,
+          (client) => client.checkout.sessions.create(sessionParams)
+        );
+        return res.json({ checkoutUrl: session.url });
+      }
+      return res.status(400).json({ error: "Only Stripe is supported for Connect Plan payments" });
+    } catch (e) {
+      console.error("Connect Plan checkout error:", {
         name: e?.name,
         code: e?.code,
         type: e?.type,

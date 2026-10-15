@@ -447,7 +447,8 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
                 return { hasAccess: true, reason: 'club_plan' };
               }
             } else {
-              if (planMatches) {
+              // Platform-wide plan ONLY grants access to paid matches that are NOT assigned to a partner club
+              if (!match.club_id && planMatches) {
                 return { hasAccess: true, reason: 'platform_plan' };
               }
             }
@@ -471,7 +472,8 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
                   return { hasAccess: true, reason: 'multi_club_plan' };
                 }
               } else if (scope === 'platform') {
-                if (planMatches) {
+                // Platform-wide plan ONLY grants access to paid matches that are NOT assigned to a partner club
+                if (!match.club_id && planMatches) {
                   return { hasAccess: true, reason: 'multi_platform_plan' };
                 }
               }
@@ -505,8 +507,18 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
       expect(res.reason).toBe('restricted');
     });
 
-    it('A subscriber to an all-access Platform Plan CAN watch matches across clubs', () => {
+    it('A subscriber to a Platform-Wide Plan CANNOT watch matches assigned to a partner club (Club B)', () => {
       const match = { id: 103, access: 'paid' as const, access_type: 'plan' as const, club_id: 'club-B' };
+      const user = { id: 'u2', planId: 'plan-platform', planExpiresAt: futureDate };
+      const userPlan = { id: 'plan-platform', plan_scope: 'platform' as const, club_id: null };
+
+      const res = evaluateAccess({ match, user, userPlan });
+      expect(res.hasAccess).toBe(false);
+      expect(res.reason).toBe('restricted');
+    });
+
+    it('A subscriber to a Platform-Wide Plan CAN watch paid matches that are NOT assigned to a partner club', () => {
+      const match = { id: 104, access: 'paid' as const, access_type: 'plan' as const, club_id: null };
       const user = { id: 'u2', planId: 'plan-platform', planExpiresAt: futureDate };
       const userPlan = { id: 'plan-platform', plan_scope: 'platform' as const, club_id: null };
 
@@ -537,6 +549,7 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
       const matchA = { id: 201, access: 'paid' as const, access_type: 'plan' as const, club_id: 'club-A' };
       const resA = evaluateAccess({ match: matchA, user, userPlan, purchases, allPlans });
       expect(resA.hasAccess).toBe(true);
+      expect(resA.reason).toBe('multi_club_plan');
 
       // Match 2: Platform match (no club)
       const matchPlatform = { id: 202, access: 'paid' as const, access_type: 'plan' as const, club_id: null };
@@ -770,6 +783,215 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
       const customIframe = '<iframe src="https://example.com/custom-live" width="800" height="450"></iframe>';
       const formatted = formatStreamHtml(customIframe);
       expect(formatted).toContain('https://example.com/custom-live');
+    });
+  });
+
+  describe('6. Stripe Connect Subscription Plan Gateway (/api/checkout/gateway/connect-plan)', () => {
+    // Pure function replicating /api/checkout/gateway/connect-plan
+    const handleConnectPlanCheckout = (params: {
+      plan: {
+        id: string | number;
+        name: string;
+        price: number;
+        plan_scope?: 'platform' | 'club';
+        club_id?: string | null;
+        platform_fee_percent?: number;
+      } | null;
+      club?: {
+        id: string;
+        name: string;
+        stripe_account_id?: string | null;
+        stripeAccountId?: string | null;
+        transfers_active?: boolean;
+      } | null;
+      policy?: {
+        platform_fee_percent?: number;
+      } | null;
+      userId: string;
+      currency?: string;
+    }) => {
+      const { plan, club, policy, userId, currency = 'GBP' } = params;
+      if (!plan) return { error: 'Subscription plan not found', status: 404 };
+
+      const planPrice = Number(plan.price);
+      if (isNaN(planPrice) || planPrice <= 0) return { error: 'Invalid plan price', status: 400 };
+
+      const planScope = plan.plan_scope || 'platform';
+      const rawClubId = plan.club_id || null;
+      const clubId = rawClubId && String(rawClubId).trim() !== '' ? String(rawClubId).trim() : null;
+
+      let connectedAccountId: string | null = null;
+      let platformFeePercent = 100;
+      const isSplitPayment = Boolean(planScope === 'club' && clubId);
+
+      if (isSplitPayment) {
+        if (!club) {
+          return { error: 'Assigned partner club not found. Cannot process split payment.', status: 404 };
+        }
+        connectedAccountId = club.stripe_account_id || club.stripeAccountId || null;
+        if (!connectedAccountId) {
+          return { error: 'Partner club has no Stripe connected account. Cannot process split payment.', status: 409 };
+        }
+
+        if (club.transfers_active === false) {
+          return { error: 'Partner account is not yet eligible to receive transfers. Onboarding may be incomplete.', status: 409 };
+        }
+
+        if (plan.platform_fee_percent != null) {
+          platformFeePercent = Number(plan.platform_fee_percent);
+        } else if (policy?.platform_fee_percent != null) {
+          platformFeePercent = Number(policy.platform_fee_percent);
+        } else {
+          platformFeePercent = 20;
+        }
+      }
+
+      const clubSharePercent = isSplitPayment ? (100 - platformFeePercent) : 0;
+      const totalAmountCents = Math.round(planPrice * 100);
+      const applicationFeeCents = isSplitPayment ? Math.round(totalAmountCents * (platformFeePercent / 100)) : 0;
+      const transactionId = `txn_sub_${Date.now()}_${userId}`;
+
+      const metadata: any = {
+        planId: String(plan.id),
+        planScope: isSplitPayment ? 'club' : 'platform',
+        clubId: isSplitPayment ? String(clubId) : null,
+        type: 'plan',
+        platformFeePercent,
+        clubSharePercent,
+        applicationFeeCents,
+        connectedAccountId,
+        isDestinationCharge: isSplitPayment,
+        settlement_model: isSplitPayment ? 'STRIPE_DESTINATION_ROUTED' : 'PLATFORM_DIRECT'
+      };
+
+      const sessionParams: any = {
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: currency.toLowerCase(),
+              product_data: {
+                name: plan.name,
+                description: isSplitPayment
+                  ? `Subscription Pass — ${club?.name || 'Partner Club'}`
+                  : 'Platform All-Access Subscription'
+              },
+              unit_amount: totalAmountCents
+            },
+            quantity: 1
+          }
+        ],
+        mode: 'payment',
+        metadata: {
+          txn_id: transactionId,
+          plan_id: String(plan.id),
+          club_id: isSplitPayment ? String(clubId) : '',
+          user_id: userId,
+          payment_type: 'plan_subscription',
+          settlement_model: isSplitPayment ? 'STRIPE_DESTINATION_ROUTED' : 'PLATFORM_DIRECT'
+        }
+      };
+
+      if (isSplitPayment) {
+        sessionParams.payment_intent_data = {
+          application_fee_amount: applicationFeeCents,
+          transfer_data: {
+            destination: connectedAccountId
+          },
+          metadata: {
+            ...sessionParams.metadata
+          }
+        };
+      }
+
+      return { status: 200, sessionParams, metadata, applicationFeeCents };
+    };
+
+    it('Club Plan with Connected Account: Builds destination charge with proper application fee and account ID', () => {
+      const plan = {
+        id: 'plan-club-1',
+        name: 'FC United Monthly Pass',
+        price: 25.00,
+        plan_scope: 'club' as const,
+        club_id: 'club-101'
+      };
+      const club = {
+        id: 'club-101',
+        name: 'FC United',
+        stripe_account_id: 'acct_101test',
+        transfers_active: true
+      };
+      const policy = { platform_fee_percent: 25 };
+
+      const res = handleConnectPlanCheckout({ plan, club, policy, userId: 'u1' });
+      expect(res.status).toBe(200);
+      expect(res.metadata.isDestinationCharge).toBe(true);
+      expect(res.metadata.settlement_model).toBe('STRIPE_DESTINATION_ROUTED');
+      expect(res.metadata.connectedAccountId).toBe('acct_101test');
+      expect(res.metadata.platformFeePercent).toBe(25);
+      expect(res.applicationFeeCents).toBe(625); // 25% of 2500 cents
+
+      expect(res.sessionParams.payment_intent_data).toBeDefined();
+      expect(res.sessionParams.payment_intent_data.transfer_data.destination).toBe('acct_101test');
+      expect(res.sessionParams.payment_intent_data.application_fee_amount).toBe(625);
+    });
+
+    it('Club Plan without Connected Account: Fails closed with 409', () => {
+      const plan = {
+        id: 'plan-club-2',
+        name: 'Unconnected Club Pass',
+        price: 15.00,
+        plan_scope: 'club' as const,
+        club_id: 'club-unconnected'
+      };
+      const club = {
+        id: 'club-unconnected',
+        name: 'Unconnected Club',
+        stripe_account_id: null
+      };
+
+      const res = handleConnectPlanCheckout({ plan, club, userId: 'u1' });
+      expect(res.status).toBe(409);
+      expect(res.error).toContain('Partner club has no Stripe connected account');
+    });
+
+    it('Club Plan with inactive transfers capability: Fails closed with 409', () => {
+      const plan = {
+        id: 'plan-club-3',
+        name: 'Incomplete Onboarding Pass',
+        price: 15.00,
+        plan_scope: 'club' as const,
+        club_id: 'club-incomplete'
+      };
+      const club = {
+        id: 'club-incomplete',
+        name: 'Incomplete Club',
+        stripe_account_id: 'acct_pending',
+        transfers_active: false
+      };
+
+      const res = handleConnectPlanCheckout({ plan, club, userId: 'u1' });
+      expect(res.status).toBe(409);
+      expect(res.error).toContain('Partner account is not yet eligible to receive transfers');
+    });
+
+    it('Platform-Wide Plan: Routes directly to platform with 0 club transfer', () => {
+      const plan = {
+        id: 'plan-plat-all',
+        name: 'All-Access Platform Pass',
+        price: 30.00,
+        plan_scope: 'platform' as const,
+        club_id: null
+      };
+
+      const res = handleConnectPlanCheckout({ plan, userId: 'u2' });
+      expect(res.status).toBe(200);
+      expect(res.metadata.isDestinationCharge).toBe(false);
+      expect(res.metadata.settlement_model).toBe('PLATFORM_DIRECT');
+      expect(res.metadata.connectedAccountId).toBeNull();
+      expect(res.metadata.platformFeePercent).toBe(100);
+      expect(res.applicationFeeCents).toBe(0);
+      expect(res.sessionParams.payment_intent_data).toBeUndefined();
     });
   });
 });

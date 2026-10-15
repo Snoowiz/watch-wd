@@ -208,7 +208,8 @@ export function MatchDetail() {
   let hasPlanAccess = false;
   if (match && match.access_type === 'plan') {
     const now = new Date();
-    const matchClubId = match.club_id || (match as any).clubId;
+    const rawMatchClubId = match.club_id || (match as any).clubId;
+    const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
 
     // 1. Check primary user.planId
     if (isPlanValid && userPlan) {
@@ -216,7 +217,8 @@ export function MatchDetail() {
       if (userPlan.plan_scope === 'club' && userPlan.club_id) {
         hasPlanAccess = planMatches && Boolean(matchClubId && String(matchClubId) === String(userPlan.club_id));
       } else {
-        hasPlanAccess = planMatches;
+        // Platform-wide plan ONLY grants access to paid matches that are NOT assigned to a partner club
+        hasPlanAccess = planMatches && !matchClubId;
       }
     }
 
@@ -232,20 +234,23 @@ export function MatchDetail() {
 
             if (targetPlan) {
               const scope = targetPlan.plan_scope || 'platform';
-              const clubId = targetPlan.club_id || (p as any).clubId || (p as any).club_id;
+              const rawClubId = targetPlan.club_id || (p as any).clubId || (p as any).club_id;
+              const clubId = rawClubId && String(rawClubId).trim() !== "" ? String(rawClubId).trim() : null;
               if (scope === 'club' && clubId) {
                 if (planMatches && matchClubId && String(matchClubId) === String(clubId)) {
                   hasPlanAccess = true;
                   break;
                 }
               } else if (scope === 'platform') {
-                if (planMatches) {
+                // Platform-wide plan ONLY grants access to paid matches that are NOT assigned to a partner club
+                if (planMatches && !matchClubId) {
                   hasPlanAccess = true;
                   break;
                 }
               }
             } else if ((p as any).clubId || (p as any).club_id) {
-              const clubId = (p as any).clubId || (p as any).club_id;
+              const rawClubId = (p as any).clubId || (p as any).club_id;
+              const clubId = rawClubId && String(rawClubId).trim() !== "" ? String(rawClubId).trim() : null;
               if (planMatches && matchClubId && String(matchClubId) === String(clubId)) {
                 hasPlanAccess = true;
                 break;
@@ -932,10 +937,10 @@ export function MatchDetail() {
                   </h2>
                   <p className="text-slate-400 mb-4 sm:mb-10 max-w-md text-xs sm:text-base md:text-lg leading-relaxed text-balance line-clamp-2 md:line-clamp-none">
                     {match.access_type === 'plan' ? (
-                      userPlan && userPlan.plan_scope === 'club' && userPlan.club_id && String(match.club_id || (match as any).clubId) !== String(userPlan.club_id) ? (
-                        <>This match requires an all-access Platform subscription or a membership for the host club. Your active subscription is for <strong className="text-amber-400">{userPlan.name}</strong>.</>
+                      matchClubId ? (
+                        <>This match is exclusive to subscribers of the host partner club. An active club pass for this club is required to watch.</>
                       ) : (
-                        <>This match is exclusive to subscribers of our premium plans. Subscribe to unlock access and enjoy uninterrupted coverage.</>
+                        <>This match is exclusive to subscribers of our platform plans. Subscribe to unlock access and enjoy uninterrupted coverage.</>
                       )
                     ) : match.access_type === 'ppv' || match.access === 'paid' ? (
                       <>This match is a Pay-Per-View event. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span> and support grassroots sports.</>
