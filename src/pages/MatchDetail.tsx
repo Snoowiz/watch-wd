@@ -10,6 +10,7 @@ import { AddFundsModal } from '../components/AddFundsModal';
 import { AccountGateModal } from '../components/AccountGateModal';
 import { requestNotificationPermission, subscribeToMatch, setupMessageListener, unsubscribeFromMatch, getNotificationPermission } from '../services/notificationService';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
+import { MatchStreamPlayer } from '../components/MatchStreamPlayer';
 
 export function MatchDetail() {
   const { slug } = useParams();
@@ -205,11 +206,12 @@ export function MatchDetail() {
   const userPlan = plans.find(p => String(p.id) === String(user?.planId));
   const isPlanValid = !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date());
   
+  const rawMatchClubId = match?.club_id || (match as any)?.clubId;
+  const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
+
   let hasPlanAccess = false;
   if (match && match.access_type === 'plan') {
     const now = new Date();
-    const rawMatchClubId = match.club_id || (match as any).clubId;
-    const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
 
     // 1. Check primary user.planId
     if (isPlanValid && userPlan) {
@@ -506,13 +508,28 @@ export function MatchDetail() {
     }
   };
 
-  const rawStreamContent = streamData?.embed_code || streamData?.video_url || streamData?.description || match?.description || '';
-
-  useEffect(() => {
-    loadMuxPlayerIfNeeded(rawStreamContent);
-  }, [rawStreamContent]);
-
-  const sanitizedStreamHtml = formatStreamHtml(rawStreamContent, { autoplay: mobileVideoStarted });
+  const rawStreamContent = useMemo(() => {
+    return (
+      streamData?.embed_code ||
+      streamData?.video_url ||
+      streamData?.playback_id ||
+      streamData?.playbackId ||
+      streamData?.description ||
+      match?.playback_id ||
+      match?.playbackId ||
+      match?.description ||
+      ''
+    );
+  }, [
+    streamData?.embed_code,
+    streamData?.video_url,
+    streamData?.playback_id,
+    streamData?.playbackId,
+    streamData?.description,
+    match?.playback_id,
+    match?.playbackId,
+    match?.description,
+  ]);
 
   useEffect(() => {
     if (user && hasAccess && match) {
@@ -800,28 +817,14 @@ export function MatchDetail() {
             </div>
           )}
           {effectiveHasAccess ? (
-            rawStreamContent ? (
-              <div 
-                ref={videoContainerRef}
-                className="w-full h-full absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:border-0 [&_video]:w-full [&_video]:h-full [&_video]:object-contain [&_mux-player]:w-full [&_mux-player]:h-full [&_mux-player]:block flex items-center justify-center bg-slate-900"
-              >
-                {!mobileVideoStarted && isMobile ? (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer bg-slate-900" onClick={handleMobilePlay}>
-                    {match.thumbnail && <img src={match.thumbnail} alt={match.title} className="absolute inset-0 w-full h-full object-cover opacity-50" />}
-                    <PlayCircle className="w-16 h-16 text-white drop-shadow-xl z-20 hover:scale-110 transition-transform" />
-                    <div className="absolute inset-0 -z-10" dangerouslySetInnerHTML={{ __html: sanitizedStreamHtml }} style={{ opacity: 0.1, pointerEvents: 'none' }} />
-                  </div>
-                ) : (
-                  <div className="w-full h-full" dangerouslySetInnerHTML={{ __html: sanitizedStreamHtml }} />
-                )}
-              </div>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900 p-4 text-center">
-                <PlayCircle className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 mx-auto mb-4 sm:mb-6 text-yellow-500/50" />
-                <h3 className="text-base sm:text-lg md:text-xl font-bold text-white/80 tracking-tight">Broadcast will begin shortly</h3>
-                <p className="text-xs sm:text-sm text-slate-500 mt-2">Scheduled for {formatDateSafe(match.date, 'MMM d, h:mm a')}</p>
-              </div>
-            )
+            <MatchStreamPlayer
+              rawStreamContent={rawStreamContent}
+              title={match.title}
+              thumbnail={match.thumbnail}
+              matchDate={formatDateSafe(match.date, 'MMM d, h:mm a')}
+              isLive={dynamicStatus === 'live' || match.status === 'live'}
+              isMobile={isMobile}
+            />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-xl p-3 sm:p-8 text-center overflow-y-auto">
               <Link 

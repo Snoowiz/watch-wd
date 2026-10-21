@@ -677,11 +677,14 @@ class CollectionWrapper {
     });
 
     if (isCacheable) {
-      cacheEngine.set('database', cacheKey, {
-        empty: docs.length === 0,
-        size: docs.length,
-        rows: docs.map(d => ({ __id: d.id, __data: d.data() }))
-      });
+      const shouldSkipCache = this.tableName === 'matches' && docs.length === 0;
+      if (!shouldSkipCache) {
+        cacheEngine.set('database', cacheKey, {
+          empty: docs.length === 0,
+          size: docs.length,
+          rows: docs.map(d => ({ __id: d.id, __data: d.data() }))
+        });
+      }
     }
 
     return { empty: docs.length === 0, size: docs.length, docs };

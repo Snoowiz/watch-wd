@@ -1644,11 +1644,14 @@ var CollectionWrapper = class _CollectionWrapper {
       };
     });
     if (isCacheable) {
-      cacheEngine.set("database", cacheKey, {
-        empty: docs.length === 0,
-        size: docs.length,
-        rows: docs.map((d) => ({ __id: d.id, __data: d.data() }))
-      });
+      const shouldSkipCache = this.tableName === "matches" && docs.length === 0;
+      if (!shouldSkipCache) {
+        cacheEngine.set("database", cacheKey, {
+          empty: docs.length === 0,
+          size: docs.length,
+          rows: docs.map((d) => ({ __id: d.id, __data: d.data() }))
+        });
+      }
     }
     return { empty: docs.length === 0, size: docs.length, docs };
   }
@@ -2686,7 +2689,8 @@ function apiFragmentCache(ttlSeconds) {
     const origJson = res.json;
     res.json = function(body) {
       res.json = origJson;
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      const isEmptyMatches = (req.path?.includes("/matches") || req.originalUrl?.includes("/matches")) && Array.isArray(body) && body.length === 0;
+      if (res.statusCode >= 200 && res.statusCode < 300 && !isEmptyMatches) {
         cacheEngine.set("fragment", key, body, ttlSeconds);
       }
       return origJson.call(this, body);
@@ -2714,7 +2718,8 @@ function cdnEdgeSim(ttlSeconds) {
     const origJson = res.json;
     res.json = function(body) {
       res.json = origJson;
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      const isEmptyMatches = (req.path?.includes("/matches") || req.originalUrl?.includes("/matches")) && Array.isArray(body) && body.length === 0;
+      if (res.statusCode >= 200 && res.statusCode < 300 && !isEmptyMatches) {
         cacheEngine.set("cdn", key, body, ttlSeconds);
       }
       res.setHeader("X-CDN-Cache", "MISS");
@@ -3506,6 +3511,7 @@ async function startServer() {
     }
   });
   app.get("/api/matches", cdnEdgeSim(30), apiFragmentCache(15), async (req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     try {
       let isAdmin = false;
       const authHeader = req.headers.authorization;

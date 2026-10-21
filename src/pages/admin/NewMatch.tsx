@@ -447,7 +447,7 @@ export function NewMatch() {
                       const val = e.target.value.trim();
                       if (val) {
                         const pbId = val.replace(/^https?:\/\/stream\.mux\.com\//i, '').replace(/\.m3u8$/i, '');
-                        setDescription(`<mux-player playback-id="${pbId}" metadata-video-title="${title || 'Match Broadcast'}" stream-type="live" controls></mux-player>`);
+                        setDescription(`<mux-player playback-id="${pbId}" metadata-video-title="${title || 'Match Broadcast'}" stream-type="${status === 'live' ? 'live' : 'on-demand'}" controls playsinline preload="metadata"></mux-player>`);
                       }
                     }}
                   />
@@ -496,7 +496,7 @@ export function NewMatch() {
               </div>
               <div className="bg-slate-100 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
                 {description ? (
-                  <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block" dangerouslySetInnerHTML={{ __html: formatStreamHtml(description) }} />
+                  <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block" dangerouslySetInnerHTML={{ __html: formatStreamHtml(description, { isLive: status === 'live' }) }} />
                 ) : (
                   <>
                     <Eye className="w-8 h-8 text-slate-300 mb-2" />

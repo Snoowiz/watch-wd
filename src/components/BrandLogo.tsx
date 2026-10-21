@@ -3,6 +3,7 @@ import { useSettingsStore, useThemeStore } from '../store';
 
 interface BrandLogoProps {
   className?: string;
+  imgClassName?: string;
   variant?: 'light' | 'dark' | 'auto';
   showText?: boolean;
   scanning?: boolean;
@@ -11,6 +12,7 @@ interface BrandLogoProps {
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',
+  imgClassName = '',
   variant = 'auto',
   scanning = false,
   size = 'md',
@@ -46,7 +48,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       <img
         src={activeLogo}
         alt={platformName || 'WatchWDS Logo'}
-        className={`${sizeClasses} max-w-full object-contain bg-transparent transition-opacity drop-shadow-sm`}
+        className={`${sizeClasses} ${imgClassName} max-w-full object-contain bg-transparent transition-opacity drop-shadow-sm`}
         onError={(e) => {
           const target = e.target as HTMLImageElement;
           if (target.src !== defaultSvg && target.src.indexOf(defaultSvg) === -1) {

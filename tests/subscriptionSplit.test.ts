@@ -777,6 +777,25 @@ describe('Subscription System & Club Revenue Sharing Suite', () => {
       const formatted = formatStreamHtml(muxHtml);
       expect(formatted).toContain('playback-id="xyz987"');
       expect(formatted).toContain('stream-type="live"');
+      expect(formatted).toContain('playsinline');
+      expect(formatted).toContain('preload="metadata"');
+    });
+
+    it('should format bare Mux playback IDs into stable <mux-player> components', () => {
+      const barePlaybackId = 'd54001aBCdE123';
+      const formatted = formatStreamHtml(barePlaybackId);
+      expect(formatted).toContain('<mux-player');
+      expect(formatted).toContain('playback-id="d54001aBCdE123"');
+      expect(formatted).toContain('stream-type="on-demand"');
+      expect(formatted).toContain('preload="metadata"');
+      expect(formatted).toContain('playsinline');
+    });
+
+    it('should normalize stream-type to on-demand for completed/recorded matches', () => {
+      const muxHtml = '<mux-player playback-id="xyz987" stream-type="live" controls></mux-player>';
+      const formatted = formatStreamHtml(muxHtml, { isLive: false });
+      expect(formatted).toContain('stream-type="on-demand"');
+      expect(formatted).not.toContain('stream-type="live"');
     });
 
     it('should preserve custom HTML iframes unaltered', () => {

@@ -116,20 +116,31 @@ export default function App() {
     let authChecked = false;
     let timeoutCompleted = false;
     let adsFetched = false;
+    let matchesLoaded = false;
 
     const checkFinished = () => {
-      if (featuresLoaded && authChecked && timeoutCompleted && adsFetched) {
+      if (featuresLoaded && authChecked && timeoutCompleted && adsFetched && matchesLoaded) {
         setInitialLoading(false);
       }
     };
 
-    // 1. Minimum 1.5s duration timer
+    // 1. Minimum 1.5s duration timer for preloader presentation
     const timer = setTimeout(() => {
       timeoutCompleted = true;
       checkFinished();
     }, 1500);
 
-    // 2. Fetch features
+    // 2. Max 3.5s safety timeout so slow/offline networks never hang the preloader
+    const maxSafetyTimer = setTimeout(() => {
+      featuresLoaded = true;
+      authChecked = true;
+      timeoutCompleted = true;
+      adsFetched = true;
+      matchesLoaded = true;
+      setInitialLoading(false);
+    }, 3500);
+
+    // 3. Fetch features
     fetch('/api/features')
       .then(res => res.json())
       .then(data => {
@@ -149,7 +160,10 @@ export default function App() {
 
     // Fetch database configuration, matches, and blogs
     fetchSettings();
-    fetchMatches();
+    fetchMatches().finally(() => {
+      matchesLoaded = true;
+      checkFinished();
+    });
     fetchMatchCategories();
     fetchSliders();
 
@@ -159,7 +173,7 @@ export default function App() {
       checkFinished();
     });
 
-    // 3. Fetch user if token exists
+    // 4. Fetch user if token exists
     if (token) {
       fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
@@ -189,7 +203,10 @@ export default function App() {
       checkFinished();
     }
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(maxSafetyTimer);
+    };
   }, []);
 
   // Fetch blog data whenever blog visibility is enabled

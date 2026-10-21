@@ -7,7 +7,7 @@ export function loadMuxPlayerIfNeeded(content: string) {
   if (typeof window === 'undefined') return;
   if (!content) return;
 
-  const needsMux = /<mux-player|<mux-video|mux\.com/i.test(content);
+  const needsMux = /<mux-player|<mux-video|mux\.com/i.test(content) || /^[a-zA-Z0-9_-]{10,64}$/.test(content.trim());
   if (!needsMux) return;
 
   if (window.customElements && window.customElements.get('mux-player')) {
@@ -26,20 +26,24 @@ export function loadMuxPlayerIfNeeded(content: string) {
 /**
  * Normalizes and formats video stream content / embed code (YouTube, Mux, Vimeo, HLS, MP4, raw iframes).
  */
-export function formatStreamHtml(raw: string, options?: { autoplay?: boolean }): string {
+export function formatStreamHtml(raw: string, options?: { autoplay?: boolean; isLive?: boolean }): string {
   if (!raw) return '';
   let content = raw.trim();
   const autoplay = options?.autoplay ?? false;
+  const isLive = options?.isLive;
 
   // 1. YouTube URL detection
   const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
   const matchYt = content.match(ytRegex);
 
   // 2. Mux URL detection (e.g. https://stream.mux.com/{playbackId}.m3u8 or https://player.mux.com/{playbackId})
-  const muxStreamRegex = /(?:https?:\/\/)?stream\.mux\.com\/([a-zA-Z0-9]+)(?:\.m3u8)?/i;
-  const muxPlayerRegex = /(?:https?:\/\/)?player\.mux\.com\/([a-zA-Z0-9]+)/i;
+  const muxStreamRegex = /(?:https?:\/\/)?stream\.mux\.com\/([a-zA-Z0-9_-]+)(?:\.m3u8)?/i;
+  const muxPlayerRegex = /(?:https?:\/\/)?player\.mux\.com\/([a-zA-Z0-9_-]+)/i;
   const matchMuxStream = content.match(muxStreamRegex);
   const matchMuxPlayer = content.match(muxPlayerRegex);
+
+  // 2b. Bare Mux Playback ID detection (alphanumeric token 10-64 chars, no HTML tags, no spaces, no slashes, not a URL)
+  const isBarePlaybackId = !content.includes('http') && !content.includes('<') && !content.includes('/') && /^[a-zA-Z0-9_-]{10,64}$/.test(content);
 
   // 3. Vimeo URL detection
   const vimeoRegex = /(?:https?:\/\/)?(?:www\.)?(?:player\.)?vimeo\.com\/(?:video\/)?(\d+)/i;
@@ -49,13 +53,17 @@ export function formatStreamHtml(raw: string, options?: { autoplay?: boolean }):
   const videoFileRegex = /^https?:\/\/[^\s<"']+\.(m3u8|mp4|webm|ogg)(?:\?[^\s<"']*)?$/i;
   const matchVideoFile = content.match(videoFileRegex);
 
+  const streamType = isLive === true ? 'live' : (isLive === false ? 'on-demand' : (content.includes('stream-type="live"') ? 'live' : 'on-demand'));
+
   if (!content.includes('<iframe') && !content.includes('<video') && !content.includes('<mux-player')) {
     if (matchMuxStream && matchMuxStream[1]) {
       const playbackId = matchMuxStream[1];
-      content = `<mux-player playback-id="${playbackId}" stream-type="on-demand" controls playsinline ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${playbackId}" stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (matchMuxPlayer && matchMuxPlayer[1]) {
       const playbackId = matchMuxPlayer[1];
-      content = `<mux-player playback-id="${playbackId}" stream-type="on-demand" controls playsinline ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${playbackId}" stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+    } else if (isBarePlaybackId) {
+      content = `<mux-player playback-id="${content}" stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (matchYt && matchYt[1]) {
       const videoId = matchYt[1];
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -66,7 +74,7 @@ export function formatStreamHtml(raw: string, options?: { autoplay?: boolean }):
     } else if (matchVideoFile) {
       const ext = (matchVideoFile[1] || '').toLowerCase();
       if (ext === 'm3u8') {
-        content = `<mux-player src="${content}" controls playsinline ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+        content = `<mux-player src="${content}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
       } else {
         content = `<video src="${content}" controls playsinline ${autoplay ? 'autoplay muted' : ''} style="width: 100%; height: 100%; object-fit: contain;"></video>`;
       }
@@ -94,9 +102,24 @@ export function formatStreamHtml(raw: string, options?: { autoplay?: boolean }):
       }
     }
 
-    // Ensure mux-player styling if style is missing
-    if (content.includes('<mux-player') && !content.includes('style=')) {
-      content = content.replace(/<mux-player\s/i, '<mux-player style="width: 100%; height: 100%; display: block;" ');
+    // Ensure mux-player styling, playsinline, and preload if missing
+    if (content.includes('<mux-player')) {
+      if (!content.includes('style=')) {
+        content = content.replace(/<mux-player\s/i, '<mux-player style="width: 100%; height: 100%; display: block;" ');
+      }
+      if (!content.includes('playsinline')) {
+        content = content.replace(/<mux-player\s/i, '<mux-player playsinline ');
+      }
+      if (!content.includes('preload=')) {
+        content = content.replace(/<mux-player\s/i, '<mux-player preload="metadata" ');
+      }
+      if (isLive !== undefined) {
+        if (isLive === false && content.includes('stream-type="live"')) {
+          content = content.replace(/stream-type="live"/gi, 'stream-type="on-demand"');
+        } else if (isLive === true && content.includes('stream-type="on-demand"')) {
+          content = content.replace(/stream-type="on-demand"/gi, 'stream-type="live"');
+        }
+      }
     }
 
     if (autoplay && content) {

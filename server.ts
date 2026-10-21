@@ -342,7 +342,8 @@ function apiFragmentCache(ttlSeconds: number) {
     const origJson = res.json;
     res.json = function(body: any) {
       res.json = origJson;
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      const isEmptyMatches = (req.path?.includes('/matches') || req.originalUrl?.includes('/matches')) && Array.isArray(body) && body.length === 0;
+      if (res.statusCode >= 200 && res.statusCode < 300 && !isEmptyMatches) {
         cacheEngine.set('fragment', key, body, ttlSeconds);
       }
       return origJson.call(this, body);
@@ -377,7 +378,8 @@ function cdnEdgeSim(ttlSeconds: number) {
     const origJson = res.json;
     res.json = function(body: any) {
       res.json = origJson;
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      const isEmptyMatches = (req.path?.includes('/matches') || req.originalUrl?.includes('/matches')) && Array.isArray(body) && body.length === 0;
+      if (res.statusCode >= 200 && res.statusCode < 300 && !isEmptyMatches) {
         cacheEngine.set('cdn', key, body, ttlSeconds);
       }
       res.setHeader('X-CDN-Cache', 'MISS');
@@ -1291,6 +1293,7 @@ async function startServer() {
   });
 
   app.get("/api/matches", cdnEdgeSim(30), apiFragmentCache(15), async (req: any, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     try {
       // Check if caller is admin or operator
       let isAdmin = false;

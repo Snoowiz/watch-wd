@@ -38,7 +38,7 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
     if (matches.length === 0) {
       fetchMatches();
     }
-  }, []);
+  }, [matches.length, fetchMatches]);
 
   const handleToggleSave = (e: React.MouseEvent, matchId: number) => {
     e.preventDefault();
@@ -190,13 +190,26 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
           ))}
         </div>
       ) : displayedMatches.length === 0 ? (
-        <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 p-8 space-y-2">
+        <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 p-8 space-y-3">
           <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
-            No matches scheduled in this category right now.
+            {matches.length === 0
+              ? 'No live or scheduled fixtures available right now.'
+              : 'No matches scheduled in this category right now.'}
           </p>
-          <Link to="/matches" className="text-xs font-black text-yellow-500 hover:underline uppercase tracking-wider inline-block">
-            Browse All Available Matches →
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            {matches.length === 0 && (
+              <button
+                type="button"
+                onClick={() => fetchMatches()}
+                className="text-xs font-black text-yellow-500 hover:text-yellow-400 uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer bg-yellow-500/10 px-3 py-1.5 rounded-lg border border-yellow-500/20"
+              >
+                ↻ Refresh Fixtures
+              </button>
+            )}
+            <Link to="/matches" className="text-xs font-black text-yellow-500 hover:underline uppercase tracking-wider inline-block">
+              Browse All Available Matches →
+            </Link>
+          </div>
         </div>
       ) : layout === 'carousel' ? (
         /* Carousel Layout */

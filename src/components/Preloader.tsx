@@ -101,7 +101,7 @@ export function Preloader({ forceStyle }: PreloaderProps = {}) {
         /* 2. Horizontal Scanning Laser / Light Beam Sweep */
         .scan-container {
           position: relative;
-          padding: 24px 36px;
+          padding: 20px 32px;
           border-radius: 24px;
           display: flex;
           flex-direction: column;
@@ -113,8 +113,8 @@ export function Preloader({ forceStyle }: PreloaderProps = {}) {
           position: relative;
           display: inline-block;
           overflow: hidden;
-          padding: 12px 18px;
-          border-radius: 16px;
+          padding: 8px 16px;
+          border-radius: 14px;
         }
 
         /* Moving laser line & gradient beam sweep horizontally */
@@ -171,9 +171,9 @@ export function Preloader({ forceStyle }: PreloaderProps = {}) {
         /* Logo pulse & ambient glow */
         .logo-scan-ambient {
           position: absolute;
-          width: 260px;
-          height: 90px;
-          background: radial-gradient(ellipse, rgba(37, 99, 235, 0.25) 0%, rgba(37, 99, 235, 0) 75%);
+          width: 200px;
+          height: 70px;
+          background: radial-gradient(ellipse, rgba(37, 99, 235, 0.22) 0%, rgba(37, 99, 235, 0) 75%);
           border-radius: 50%;
           animation: ambient-pulse 2s infinite ease-in-out;
           pointer-events: none;
@@ -193,13 +193,13 @@ export function Preloader({ forceStyle }: PreloaderProps = {}) {
 
         /* Subtle scan bar indicator at the bottom */
         .scan-progress-bar {
-          width: 140px;
-          height: 3px;
+          width: 120px;
+          height: 2px;
           background: rgba(148, 163, 184, 0.2);
           border-radius: 9999px;
           overflow: hidden;
           position: relative;
-          margin-top: 18px;
+          margin-top: 14px;
         }
 
         .scan-progress-fill {
@@ -266,7 +266,7 @@ export function Preloader({ forceStyle }: PreloaderProps = {}) {
 
           {/* Logo Wrapper with Horizontal Scanning Shimmer Beam */}
           <div className="scan-wrapper relative z-10 flex items-center justify-center">
-            <BrandLogo size="xl" scanning={true} variant={isDarkMode ? 'light' : 'dark'} />
+            <BrandLogo size="lg" scanning={true} variant={isDarkMode ? 'light' : 'dark'} />
           </div>
 
           {/* Futuristic horizontal scanner progress track */}

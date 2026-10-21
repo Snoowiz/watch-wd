@@ -1272,26 +1272,85 @@ interface MatchState {
   addToWatchHistory: (userId: number, matchId: number) => void;
 }
 
+const getInitialCachedMatches = (): Match[] => {
+  try {
+    const raw = localStorage.getItem('watchwds_cached_matches');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return [];
+};
+
+let activeFetchMatchesPromise: Promise<void> | null = null;
+
+const initialCachedMatches = getInitialCachedMatches();
+
 export const useMatchStore = create<MatchState>((set, get) => ({
-  matches: [],
-  isLoading: true,
+  matches: initialCachedMatches,
+  isLoading: initialCachedMatches.length === 0,
   adminMatches: [],
   fetchMatches: async () => {
-    try {
-      set({ isLoading: true });
-      const res = await fetch('/api/matches', { 
-        cache: 'no-store'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        set({ matches: Array.isArray(data) ? data : [], isLoading: false });
-      } else {
-        set({ isLoading: false });
-      }
-    } catch (err) {
-      console.error('Failed to fetch matches', err);
-      set({ isLoading: false });
+    // If a request is already in-flight, return the existing promise to avoid race conditions
+    if (activeFetchMatchesPromise) {
+      return activeFetchMatchesPromise;
     }
+
+    activeFetchMatchesPromise = (async () => {
+      const attemptFetch = async (retriesLeft = 2, delayMs = 600): Promise<any[]> => {
+        try {
+          const res = await fetch('/api/matches', { cache: 'no-store' });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            return data;
+          }
+          throw new Error('Invalid format');
+        } catch (err) {
+          if (retriesLeft > 0) {
+            await new Promise(r => setTimeout(r, delayMs));
+            return attemptFetch(retriesLeft - 1, delayMs * 1.5);
+          }
+          throw err;
+        }
+      };
+
+      try {
+        if (get().matches.length === 0) {
+          set({ isLoading: true });
+        }
+        const data = await attemptFetch();
+        if (Array.isArray(data)) {
+          // If the server returns empty array but we already have cached matches in state,
+          // retain our matches to prevent an accidental empty state flash
+          if (data.length === 0 && get().matches.length > 0) {
+            set({ isLoading: false });
+          } else {
+            set({ matches: data, isLoading: false });
+            if (data.length > 0) {
+              try {
+                localStorage.setItem('watchwds_cached_matches', JSON.stringify(data));
+              } catch (e) {}
+            }
+          }
+        } else {
+          set({ isLoading: false });
+        }
+      } catch (err) {
+        console.error('Failed to fetch matches after retries', err);
+        // Retain existing cached matches if available
+        set({ isLoading: false });
+      } finally {
+        activeFetchMatchesPromise = null;
+      }
+    })();
+
+    return activeFetchMatchesPromise;
   },
   fetchMatchBySlugOrId: async (slugOrId: string) => {
     const clean = decodeURIComponent(slugOrId || '').trim();
@@ -1360,7 +1419,12 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       console.error('Failed to add match', err);
     }
   },
-  setMatches: (matches) => set({ matches, adminMatches: matches }),
+  setMatches: (matches) => {
+    set({ matches, adminMatches: matches });
+    try {
+      localStorage.setItem('watchwds_cached_matches', JSON.stringify(matches));
+    } catch (e) {}
+  },
   updateMatch: async (id, updates) => {
     try {
       const res = await fetch(`/api/matches/${id}`, {
