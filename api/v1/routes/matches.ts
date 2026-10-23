@@ -53,6 +53,8 @@ export function createMatchRouter({ db, cacheEngine }: MatchRouterDeps): Router 
         access_type: parsed.access_type || (parsed.access === "subscription" ? "plan" : (parsed.price > 0 || parsed.access === "ppv" ? "ppv" : "free")),
         ppv_price: parsed.ppv_price ?? (parsed.price > 0 ? parsed.price : null),
         required_plan_id: parsed.required_plan_id || null,
+        club_id: parsed.club_id || null,
+        competition_id: parsed.competition_id || null,
         thumbnail: parsed.thumbnail || null,
         categories: parsed.categories
           ? JSON.stringify(parsed.categories)

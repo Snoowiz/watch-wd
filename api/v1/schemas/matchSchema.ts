@@ -57,6 +57,8 @@ export const createMatchSchema = z.object({
   categories: z.array(z.union([z.string(), z.number()])).optional(),
   live_commenting: z.boolean().optional(),
   comment_alignment: z.enum(["left", "right"]).optional(),
+  club_id: z.string().max(100).nullable().optional(),
+  competition_id: z.string().max(100).nullable().optional(),
 });
 
 /** TypeScript type inferred from the schema */

@@ -173,6 +173,31 @@ async function migrate() {
     console.log('  ✓ Incremental update: Added access_status to purchases.');
   } catch (err: any) {}
 
+  // Competitions system
+  try {
+    await rootConn.query(`
+      CREATE TABLE IF NOT EXISTS \`competitions\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`name\` VARCHAR(255) NOT NULL,
+        \`slug\` VARCHAR(255) NOT NULL UNIQUE,
+        \`description\` TEXT DEFAULT NULL,
+        \`logo\` TEXT DEFAULT NULL,
+        \`season\` VARCHAR(100) DEFAULT NULL,
+        \`is_active\` TINYINT(1) DEFAULT 1,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_competition_slug\` (\`slug\`),
+        INDEX \`idx_competition_active\` (\`is_active\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    console.log('  ✓ Incremental update: Ensured competitions table exists.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`competition_id\` VARCHAR(100) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added competition_id to matches.');
+  } catch (err: any) {}
+
   // Step 3: Seed default data
   console.log('[4/4] Seeding default data...');
 

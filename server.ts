@@ -6483,6 +6483,97 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     }
   });
 
+  // === COMPETITIONS MANAGEMENT ===
+  app.get("/api/competitions", async (req, res) => {
+    try {
+      const rows = await query(`
+        SELECT c.*, COUNT(m.id) as match_count
+        FROM competitions c
+        LEFT JOIN matches m ON m.competition_id = c.id
+        GROUP BY c.id
+        ORDER BY c.name ASC
+      `);
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/competitions/active", async (req, res) => {
+    try {
+      const rows = await query(`
+        SELECT id, name, slug, logo, season, description
+        FROM competitions
+        WHERE is_active = 1
+        ORDER BY name ASC
+      `);
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/competitions", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = Date.now().toString();
+      const rawSlug = (req.body.slug || req.body.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const slug = rawSlug || id;
+
+      const compData = {
+        id,
+        name: req.body.name,
+        slug,
+        description: req.body.description || null,
+        logo: req.body.logo || null,
+        season: req.body.season || null,
+        isActive: req.body.isActive !== undefined ? (req.body.isActive ? 1 : 0) : 1,
+        createdAt: new Date().toISOString()
+      };
+
+      await db.collection("competitions").doc(id).set(compData);
+      cacheEngine.invalidateCollection("competitions");
+      res.json({ success: true, ...compData });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/admin/competitions/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updateData: any = {};
+      if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.slug !== undefined) {
+        const rawSlug = (req.body.slug || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        if (rawSlug) updateData.slug = rawSlug;
+      }
+      if (req.body.description !== undefined) updateData.description = req.body.description;
+      if (req.body.logo !== undefined) updateData.logo = req.body.logo;
+      if (req.body.season !== undefined) updateData.season = req.body.season;
+      if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive ? 1 : 0;
+
+      await db.collection("competitions").doc(id).update(updateData);
+      cacheEngine.invalidateCollection("competitions");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/admin/competitions/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      // In accordance with DB safety: unassign matches from this competition, do NOT delete matches
+      await execute("UPDATE matches SET competition_id = NULL WHERE competition_id = ?", [id]);
+      await db.collection("competitions").doc(id).delete();
+      cacheEngine.invalidateCollection("competitions");
+      cacheEngine.invalidateCollection("matches");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // === PARTNER CLUBS MANAGEMENT ===
   app.get("/api/admin/clubs", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
@@ -9850,6 +9941,33 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const msg = err.message || '';
       if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
         console.error("Failed to ensure matches club_id column exists:", err);
+      }
+    });
+
+    // Ensure competitions table exists
+    execute(`
+      CREATE TABLE IF NOT EXISTS \`competitions\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`name\` VARCHAR(255) NOT NULL,
+        \`slug\` VARCHAR(255) NOT NULL UNIQUE,
+        \`description\` TEXT DEFAULT NULL,
+        \`logo\` TEXT DEFAULT NULL,
+        \`season\` VARCHAR(100) DEFAULT NULL,
+        \`is_active\` TINYINT(1) DEFAULT 1,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_competition_slug\` (\`slug\`),
+        INDEX \`idx_competition_active\` (\`is_active\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(err => console.error("Failed to ensure competitions table exists:", err));
+
+    // Ensure competition_id column exists on matches table (safe incremental upgrade)
+    execute(`
+      ALTER TABLE \`matches\` ADD COLUMN \`competition_id\` VARCHAR(100) DEFAULT NULL
+    `).catch((err: any) => {
+      const msg = err.message || '';
+      if (!msg.includes('Duplicate column') && !msg.includes('1060')) {
+        console.error("Failed to ensure matches competition_id column exists:", err);
       }
     });
 

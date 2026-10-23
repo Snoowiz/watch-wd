@@ -6,7 +6,8 @@ import {
   Save, X, Image as ImageIcon, Globe, Lock, DollarSign, 
   Calendar, Tag, ChevronRight, Eye, Code, Layout, Type, Plus, 
   MessageSquare, Clock, Loader2, Play, Video, Info, CheckCircle, 
-  ExternalLink, Sparkles, Layers, FileText, Check, Shield, HelpCircle
+  ExternalLink, Sparkles, Layers, FileText, Check, Shield, HelpCircle,
+  Trophy, Building2
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
@@ -71,12 +72,14 @@ export function NewMatch() {
   const [ppvPrice, setPpvPrice] = useState(existingMatch?.ppv_price || 50);
   const [requiredPlanId, setRequiredPlanId] = useState<string | number | null>(existingMatch?.required_plan_id || null);
   const [clubId, setClubId] = useState<string | null>(existingMatch?.club_id || (existingMatch as any)?.clubId || null);
+  const [competitionId, setCompetitionId] = useState<string | null>(existingMatch?.competition_id || (existingMatch as any)?.competitionId || null);
   const [streamProvider, setStreamProvider] = useState<'youtube' | 'mux' | 'custom'>(
     existingMatch?.stream_provider || 
     (existingMatch?.description?.toLowerCase().includes('mux') ? 'mux' : 'youtube')
   );
   const [plans, setPlans] = useState<any[]>([]);
   const [clubs, setClubs] = useState<any[]>([]);
+  const [competitions, setCompetitions] = useState<any[]>([]);
 
   const [adSettingsEnabled, setAdSettingsEnabled] = useState(existingMatch?.adSettings?.enabled ?? true);
   const [adFrequencyOverride, setAdFrequencyOverride] = useState(existingMatch?.adSettings?.frequencyOverride || '');
@@ -139,6 +142,13 @@ export function NewMatch() {
         if (Array.isArray(data)) setClubs(data);
       })
       .catch(console.error);
+
+    fetch('/api/competitions/active')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setCompetitions(data);
+      })
+      .catch(console.error);
   }, []);
 
   // Auto-generate slug from title (only when creating a new match)
@@ -175,6 +185,7 @@ export function NewMatch() {
       setPpvPrice(existingMatch.ppv_price || (existingMatch as any).ppvPrice || 50);
       setRequiredPlanId(existingMatch.required_plan_id || (existingMatch as any).requiredPlanId || null);
       setClubId(existingMatch.club_id || (existingMatch as any).clubId || null);
+      setCompetitionId(existingMatch.competition_id || (existingMatch as any).competitionId || null);
       setStreamProvider(
         existingMatch.stream_provider || 
         (existingMatch.description?.toLowerCase().includes('mux') ? 'mux' : 'youtube')
@@ -280,6 +291,7 @@ export function NewMatch() {
         ppv_price: ppvPrice,
         required_plan_id: requiredPlanId,
         club_id: clubId,
+        competition_id: competitionId,
         stream_provider: streamProvider,
         embedPrice: ppvPrice * 10,
         status: computedStatus as any,
@@ -356,6 +368,12 @@ export function NewMatch() {
     const found = clubs.find(c => String(c.id) === String(clubId));
     return found ? found.name : `Club #${clubId}`;
   }, [clubId, clubs]);
+
+  const assignedCompetitionName = useMemo(() => {
+    if (!competitionId) return null;
+    const found = competitions.find(c => String(c.id) === String(competitionId));
+    return found ? found.name : `Competition #${competitionId}`;
+  }, [competitionId, competitions]);
 
   const TABS: { id: TabId; label: string }[] = [
     { id: 'details', label: 'Details' },
@@ -510,17 +528,113 @@ export function NewMatch() {
                   </div>
                 </div>
 
+                {/* Content Type & Sport Row */}
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                      Content type
+                    </label>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value as any)}
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                      id="select-content-type"
+                    >
+                      <option value="upcoming">Upcoming Match</option>
+                      <option value="live">Live broadcast</option>
+                      <option value="full_match">Full Match</option>
+                      <option value="highlights">Highlights</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                      Sport
+                    </label>
+                    <select
+                      value={selectedCategories[0] || ''}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (val) {
+                          setSelectedCategories(prev => prev.includes(val) ? prev : [val, ...prev.filter(id => id !== val)]);
+                        }
+                      }}
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                      id="select-primary-sport"
+                    >
+                      <option value="">Select sport / category...</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Clubs / Organisation Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      Clubs / organisation
+                    </label>
+                    <span className="text-[11px] font-semibold text-slate-400">Optional</span>
+                  </div>
+                  <select
+                    value={clubId || ''}
+                    onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                    id="select-match-club"
+                  >
+                    <option value="">No club or organisation assigned</option>
+                    {clubs.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.stripe_account_id ? '• Partner' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1.5">
+                    Assigning a club displays club branding and enables filtering. Does not alter billing or payouts unless set as PPV.
+                  </p>
+                </div>
+
+                {/* Competition Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5 text-slate-400" />
+                      Competition
+                    </label>
+                    <span className="text-[11px] font-semibold text-slate-400">Optional</span>
+                  </div>
+                  <select
+                    value={competitionId || ''}
+                    onChange={(e) => setCompetitionId(e.target.value ? e.target.value : null)}
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                    id="select-match-competition"
+                  >
+                    <option value="">No competition assigned</option>
+                    {competitions.map(comp => (
+                      <option key={comp.id} value={comp.id}>
+                        {comp.name} {comp.season ? `(${comp.season})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1.5">
+                    Assigning a competition links this match to tournament schedules and enables competition filters.
+                  </p>
+                </div>
+
                 {/* Rich Text Editor */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                    Match description (rich-text editor)
+                    Description
                   </label>
                   <div className="prose-editor border border-slate-200 dark:border-slate-800/80 rounded-xl overflow-hidden bg-white dark:bg-slate-950/40 transition-colors">
                     <ReactQuill
                       theme="snow"
                       value={content}
                       onChange={setContent}
-                      placeholder="Add a match introduction or coverage description for supporters..."
+                      placeholder="Add a short introduction for supporters..."
                       className="bg-white dark:bg-slate-950/40 text-slate-900 dark:text-slate-100"
                       modules={{
                         toolbar: [
@@ -1366,6 +1480,18 @@ export function NewMatch() {
                   <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                     <span className="font-semibold text-slate-500 dark:text-slate-400">Categories</span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">{selectedCategoryNames}</span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Club / Organisation</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {assignedClubName || 'None assigned'}
+                    </span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Competition</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {assignedCompetitionName || 'None assigned'}
+                    </span>
                   </div>
                   <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                     <span className="font-semibold text-slate-500 dark:text-slate-400">Video source</span>

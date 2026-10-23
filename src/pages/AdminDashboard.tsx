@@ -5,7 +5,7 @@ import {
   Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
   Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
-  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid, Palette
+  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid, Palette, Trophy
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -19,6 +19,7 @@ import { AdminMatches } from './admin/AdminMatches';
 import { NewMatch } from './admin/NewMatch';
 import { Categories } from './admin/Categories';
 import { AdminClubs } from './admin/AdminClubs';
+import { AdminCompetitions } from './admin/AdminCompetitions';
 
 import { AdminCreators } from './admin/AdminCreators';
 import { CreatorDetail } from './admin/CreatorDetail';
@@ -102,6 +103,7 @@ export function AdminDashboard() {
     { id: 'free-audience-gate', type: 'analytics', title: 'Free Match Audience Gate & Analytics', subtitle: 'Unique viewers, watch time, viewing journeys & gate conversion', icon: Eye, path: '#free-audience-analytics' },
     { id: 'partner-applications', type: 'partner', title: 'Partner Club Applications', subtitle: 'Review, approve, and manage pending partner club applications', icon: Building2, path: '/admin/clubs?tab=applications' },
     { id: 'partner-onboarding-fields', type: 'partner', title: 'Partner Onboarding Form Fields', subtitle: 'Dynamic questions, requirements, and custom onboarding schema', icon: Sliders, path: '/admin/clubs?tab=fields' },
+    { id: 'competitions-mgmt', type: 'competition', title: 'Competitions Management', subtitle: 'Leagues, tournaments, cups & match organization', icon: Trophy, path: '/admin/competitions' },
     { id: 'media-library', type: 'media', title: 'Media Library & Uploads', subtitle: 'Centralized images, thumbnails & assets', icon: Image, path: '/admin/media' },
     { id: 'feature-1', type: 'feature', title: 'Wallet System', subtitle: 'Feature Toggle', icon: Settings, path: '/admin/features' },
   ];
@@ -125,6 +127,7 @@ export function AdminDashboard() {
     { path: '/admin/homepage', icon: LayoutGrid, label: 'Homepage Builder' },
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/matches', icon: Video, label: 'Matches' },
+    { path: '/admin/competitions', icon: Trophy, label: 'Competitions' },
     { path: '/admin/feedback', icon: MessageSquare, label: 'User Feedback' },
     { path: '/admin/seo', icon: Globe, label: 'SEO Manager' },
     { path: '/admin/media', icon: ImageIcon, label: 'Media' },
@@ -341,6 +344,7 @@ export function AdminDashboard() {
               <Route path="/tasks" element={<AdminTasks />} />
               <Route path="/plans" element={<AdminPlans />} />
               <Route path="/clubs" element={<AdminClubs />} />
+              <Route path="/competitions" element={<AdminCompetitions />} />
               <Route path="/finance" element={<AdminPayoutSettings />} />
               <Route path="/ads" element={<AdManager />} />
               <Route path="/settings" element={<AdminSettings />} />
@@ -569,6 +573,7 @@ function AdminOverview() {
     ...(revokedMatchesCount > 0 ? [{ name: 'Revoked Matches', count: revokedMatchesCount, label: 'Under Review', icon: Shield, path: '/admin/matches', status: 'Retention Active', color: 'text-amber-500' }] : []),
     { name: 'Partner Applications', count: partnerAppsStats.pending, label: 'Pending Review', icon: Building2, path: '/admin/clubs?tab=applications', status: partnerAppsStats.pending > 0 ? `${partnerAppsStats.pending} Pending` : 'All Reviewed', color: partnerAppsStats.pending > 0 ? 'text-amber-500' : 'text-emerald-500' },
     { name: 'Partner Clubs', count: 1, label: 'Portals & Split', icon: Building2, path: '/admin/clubs', status: 'Active', color: 'text-amber-500' },
+    { name: 'Competitions', count: 1, label: 'Leagues & Cups', icon: Trophy, path: '/admin/competitions', status: 'Active', color: 'text-yellow-500' },
     { name: 'SEO Engine', count: perPageSeo.length, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
     ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
     { name: 'Creator Hub', count: users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },

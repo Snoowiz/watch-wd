@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `duration` INT DEFAULT 120,
   `stream_provider` VARCHAR(50) DEFAULT 'youtube',
   `club_id` VARCHAR(100) DEFAULT NULL,
+  `competition_id` VARCHAR(100) DEFAULT NULL,
   `event_access_enabled` TINYINT(1) DEFAULT 0,
   `event_access_duration` INT DEFAULT NULL,
   `event_access_duration_label` VARCHAR(50) DEFAULT NULL,
@@ -75,7 +76,9 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `revoked_by` VARCHAR(100) DEFAULT NULL,
   `original_status` VARCHAR(50) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_matches_competition` (`competition_id`),
+  INDEX `idx_matches_club` (`club_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
@@ -439,6 +442,23 @@ CREATE TABLE IF NOT EXISTS `clubs` (
   `is_active` TINYINT(1) DEFAULT 1,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- COMPETITIONS (Tournaments, Leagues & Cups)
+-- ============================================
+CREATE TABLE IF NOT EXISTS `competitions` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `name` VARCHAR(255) NOT NULL,
+  `slug` VARCHAR(255) NOT NULL UNIQUE,
+  `description` TEXT DEFAULT NULL,
+  `logo` TEXT DEFAULT NULL,
+  `season` VARCHAR(100) DEFAULT NULL,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_competition_slug` (`slug`),
+  INDEX `idx_competition_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================

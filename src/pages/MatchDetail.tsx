@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import DOMPurify from 'dompurify';
-import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore } from '../store';
-import { Lock, Play, PlayCircle, LogIn, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing, RefreshCw, Loader2, ShieldAlert, Shield, Sparkles, RotateCcw } from 'lucide-react';
+import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore, useClubStore, useCompetitionStore } from '../store';
+import { Lock, Play, PlayCircle, LogIn, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing, RefreshCw, Loader2, ShieldAlert, Shield, Sparkles, RotateCcw, Trophy, Building2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { MatchComments } from '../components/MatchComments';
 import { AdOverlay } from '../components/AdOverlay';
@@ -27,8 +27,15 @@ export function MatchDetail() {
   const [directMatch, setDirectMatch] = useState<any>(null);
   const [isResolvingMatch, setIsResolvingMatch] = useState<boolean>(true);
   const { categories = [] } = useCategoryStore();
+  const { clubs = [], fetchClubs } = useClubStore();
+  const { competitions = [], fetchCompetitions } = useCompetitionStore();
   const { purchases = [], addPurchase, addTransaction, fetchPurchases } = usePurchaseStore();
   const { savedMatches = [], saveMatch, unsaveMatch, fetchSavedMatches } = useSavedMatchesStore();
+
+  useEffect(() => {
+    fetchClubs();
+    fetchCompetitions();
+  }, [fetchClubs, fetchCompetitions]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -1044,6 +1051,36 @@ export function MatchDetail() {
                }`}>
                  {formatMatchStatus(dynamicStatus)}
                </span>
+               {(() => {
+                 const compId = match.competition_id || (match as any).competitionId;
+                 const assignedComp = competitions.find(c => String(c.id) === String(compId));
+                 if (!assignedComp) return null;
+                 return (
+                   <Link
+                     to={`/matches?competition=${encodeURIComponent(assignedComp.slug || assignedComp.id)}`}
+                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors shadow-sm"
+                     title={`Competition: ${assignedComp.name}`}
+                   >
+                     <Trophy className="w-3.5 h-3.5" />
+                     <span>{assignedComp.name}</span>
+                   </Link>
+                 );
+               })()}
+               {(() => {
+                 const rawClub = match.club_id || (match as any).clubId;
+                 const assignedClub = clubs.find(c => String(c.id) === String(rawClub));
+                 if (!assignedClub) return null;
+                 return (
+                   <Link
+                     to={`/matches?club=${encodeURIComponent(assignedClub.id)}`}
+                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors shadow-sm"
+                     title={`Club / Organisation: ${assignedClub.name}`}
+                   >
+                     <Building2 className="w-3.5 h-3.5" />
+                     <span>{assignedClub.name}</span>
+                   </Link>
+                 );
+               })()}
                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
                  <Calendar className="w-3.5 h-3.5" />
                  {formatDateSafe(match.date, 'MMM d, yyyy')}

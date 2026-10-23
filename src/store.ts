@@ -1212,6 +1212,7 @@ export interface Match {
   ppv_price?: number;
   required_plan_id?: string | number | null;
   club_id?: string | null;
+  competition_id?: string | null;
   seo: {
     keywords: string;
     metaDescription: string;
@@ -2784,3 +2785,181 @@ export const useHomepageBuilderStore = create<HomepageBuilderStore>()((set, get)
     set({ draftBlocks: DEFAULT_HOMEPAGE_BLOCKS, isDirty: true });
   }
 }));
+
+// ============================================
+// COMPETITIONS & CLUBS STORE
+// ============================================
+export interface Competition {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  logo?: string | null;
+  season?: string | null;
+  is_active?: boolean | number;
+  match_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface CompetitionState {
+  competitions: Competition[];
+  activeCompetitions: Competition[];
+  isLoading: boolean;
+  fetchCompetitions: () => Promise<void>;
+  fetchActiveCompetitions: () => Promise<void>;
+  addCompetition: (comp: Partial<Competition>) => Promise<Competition | null>;
+  updateCompetition: (id: string, comp: Partial<Competition>) => Promise<boolean>;
+  deleteCompetition: (id: string) => Promise<boolean>;
+}
+
+export const useCompetitionStore = create<CompetitionState>((set, get) => ({
+  competitions: [],
+  activeCompetitions: [],
+  isLoading: false,
+  fetchCompetitions: async () => {
+    try {
+      set({ isLoading: true });
+      const res = await fetch('/api/competitions');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          set({ competitions: data, isLoading: false });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch competitions', e);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  fetchActiveCompetitions: async () => {
+    try {
+      const res = await fetch('/api/competitions/active');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          set({ activeCompetitions: data });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch active competitions', e);
+    }
+  },
+  addCompetition: async (comp) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/competitions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(comp)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await get().fetchCompetitions();
+        await get().fetchActiveCompetitions();
+        return data;
+      }
+    } catch (e) {
+      console.error('Failed to add competition', e);
+    }
+    return null;
+  },
+  updateCompetition: async (id, comp) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/admin/competitions/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(comp)
+      });
+      if (res.ok) {
+        await get().fetchCompetitions();
+        await get().fetchActiveCompetitions();
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to update competition', e);
+    }
+    return false;
+  },
+  deleteCompetition: async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/admin/competitions/${id}`, {
+        method: 'DELETE',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (res.ok) {
+        await get().fetchCompetitions();
+        await get().fetchActiveCompetitions();
+        return true;
+      }
+    } catch (e) {
+      console.error('Failed to delete competition', e);
+    }
+    return false;
+  }
+}));
+
+export interface Club {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+  contactEmail?: string | null;
+  stripeAccountId?: string | null;
+  stripeOnboardingComplete?: boolean | number;
+  isActive?: boolean | number;
+  is_active?: boolean | number;
+  stripe_account_id?: string | null;
+  stripe_onboarding_complete?: boolean | number;
+}
+
+interface ClubState {
+  clubs: Club[];
+  activeClubs: Club[];
+  isLoading: boolean;
+  fetchClubs: () => Promise<void>;
+  fetchActiveClubs: () => Promise<void>;
+}
+
+export const useClubStore = create<ClubState>((set) => ({
+  clubs: [],
+  activeClubs: [],
+  isLoading: false,
+  fetchClubs: async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/clubs', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) set({ clubs: data });
+      }
+    } catch (e) {
+      console.error('Failed to fetch clubs', e);
+    }
+  },
+  fetchActiveClubs: async () => {
+    try {
+      const res = await fetch('/api/clubs/active');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) set({ activeClubs: data });
+      }
+    } catch (e) {
+      console.error('Failed to fetch active clubs', e);
+    }
+  }
+}));
+
