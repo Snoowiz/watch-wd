@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { PlayCircle, Calendar, Clock, Video, LayoutGrid, List as ListIcon, Tag, Bookmark, Search, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { useSettingsStore, useMatchStore, useCategoryStore, useAuthStore, useSavedMatchesStore } from '../store';
+import { formatMatchStatus } from '../utils/statusHelper';
 
 export function Matches() {
   const navigate = useNavigate();
@@ -160,9 +161,12 @@ export function Matches() {
                   
                   <div className="absolute top-4 left-4 flex gap-2">
                     <div className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest shadow-lg ${
-                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-white'
+                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' :
+                      match.status === 'highlights' ? 'bg-purple-600 text-white' :
+                      (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700 text-white' :
+                      'bg-yellow-500 text-white'
                     }`}>
-                      {match.status}
+                      {formatMatchStatus(match.status)}
                     </div>
                   </div>
                   <button 
@@ -258,9 +262,12 @@ export function Matches() {
                     {/* Badges row */}
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1 sm:mb-2 text-slate-100">
                       <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-widest ${
-                        match.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'
+                        match.status === 'live' ? 'bg-red-500 text-white animate-pulse' :
+                        match.status === 'highlights' ? 'bg-purple-600 text-white' :
+                        (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700 text-white' :
+                        'bg-yellow-500 text-white'
                       }`}>
-                        {match.status}
+                        {formatMatchStatus(match.status)}
                       </span>
                       <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-widest ${
                         match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0)

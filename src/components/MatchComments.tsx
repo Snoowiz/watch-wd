@@ -109,7 +109,7 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
           ) : (
             <span className="flex items-center gap-1 text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
               <Clock className="w-3 h-3" />
-              {match.status === 'completed' ? 'Ended' : 'Offline'}
+              {(match.status === 'completed' || match.status === 'full_match') ? 'Ended' : 'Offline'}
             </span>
           )}
           <button 

@@ -38,8 +38,8 @@ export const createMatchSchema = z.object({
     .number({ error: "price is required and must be a number" })
     .min(0, "price must be 0 or greater"),
 
-  status: z.enum(["upcoming", "live", "completed", "cancelled", "postponed"], {
-    error: "status must be one of: upcoming, live, completed, cancelled, postponed",
+  status: z.enum(["upcoming", "live", "completed", "full_match", "highlights", "cancelled", "postponed"], {
+    error: "status must be one of: upcoming, live, full_match, completed, highlights, cancelled, postponed",
   }),
 
   // === Optional fields (aligned with matches table) ===

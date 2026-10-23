@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useMatchStore, useCategoryStore, useSettingsStore } from '../store';
 import { PlayCircle, Calendar, Clock, Video, LayoutGrid, List as ListIcon } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatMatchStatus } from '../utils/statusHelper';
 
 export function CategoryPage() {
   const { slug } = useParams();
@@ -69,9 +70,12 @@ export function CategoryPage() {
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent"></div>
                   <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
                     <div className={`text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider ${
-                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-yellow-500 text-white'
+                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' :
+                      match.status === 'highlights' ? 'bg-purple-600 text-white' :
+                      (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700 text-white' :
+                      'bg-yellow-500 text-white'
                     }`}>
-                      {match.status}
+                      {formatMatchStatus(match.status)}
                     </div>
                     {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
                       <div className="bg-indigo-600/90 backdrop-blur-sm text-white text-sm font-bold px-3 py-1 rounded-lg shadow-xl uppercase tracking-wider">
@@ -129,9 +133,12 @@ export function CategoryPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                      match.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'
+                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' :
+                      match.status === 'highlights' ? 'bg-purple-600 text-white' :
+                      (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700 text-white' :
+                      'bg-yellow-500 text-white'
                     }`}>
-                      {match.status}
+                      {formatMatchStatus(match.status)}
                     </span>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                       match.access === 'free' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400'

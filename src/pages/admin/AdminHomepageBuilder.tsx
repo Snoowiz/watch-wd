@@ -1005,26 +1005,37 @@ function SortableBlockItem({
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 mb-2">Match Status Filter</label>
                 <div className="flex flex-wrap gap-2">
-                  {(['live', 'upcoming', 'completed'] as const).map(st => {
+                  {([
+                    { id: 'live', label: 'Live Now' },
+                    { id: 'upcoming', label: 'Upcoming' },
+                    { id: 'full_match', label: 'Full Match' },
+                    { id: 'highlights', label: 'Highlights' }
+                  ] as const).map(item => {
                     const activeStatuses = block.filters?.status || [];
-                    const isSelected = activeStatuses.includes(st);
+                    const isSelected = activeStatuses.includes(item.id as any) || (item.id === 'full_match' && activeStatuses.includes('completed' as any));
                     return (
                       <button
-                        key={st}
+                        key={item.id}
                         type="button"
                         onClick={() => {
-                          const next = isSelected
-                            ? activeStatuses.filter(s => s !== st)
-                            : [...activeStatuses, st];
+                          let next: any[];
+                          if (isSelected) {
+                            next = activeStatuses.filter(s => s !== item.id && (item.id !== 'full_match' || s !== 'completed'));
+                          } else {
+                            next = [...activeStatuses, item.id];
+                            if (item.id === 'full_match' && !next.includes('completed' as any)) {
+                              next.push('completed' as any);
+                            }
+                          }
                           onUpdate({ filters: { ...block.filters, status: next } });
                         }}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-colors ${
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
                           isSelected
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                         }`}
                       >
-                        {st}
+                        {item.label}
                       </button>
                     );
                   })}

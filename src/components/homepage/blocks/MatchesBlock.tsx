@@ -19,6 +19,7 @@ import {
   useSettingsStore,
   Match
 } from '../../../store';
+import { formatMatchStatus } from '../../../utils/statusHelper';
 
 function formatSafeDate(dateVal: any, formatStr: string): string {
   if (!dateVal || dateVal === 'Invalid Date') return 'TBA';
@@ -73,9 +74,15 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
   } else if (block.type === 'upcoming_matches') {
     filtered = filtered.filter(m => m.status === 'upcoming');
   } else if (block.type === 'completed_matches') {
-    filtered = filtered.filter(m => m.status === 'completed');
+    filtered = filtered.filter(m => m.status === 'completed' || m.status === 'full_match');
   } else if (block.filters?.status && block.filters.status.length > 0) {
-    filtered = filtered.filter(m => block.filters!.status!.includes(m.status as any));
+    filtered = filtered.filter(m => {
+      const active = block.filters!.status!;
+      if ((active.includes('full_match' as any) || active.includes('completed' as any)) && (m.status === 'full_match' || m.status === 'completed')) {
+        return true;
+      }
+      return active.includes(m.status as any);
+    });
   }
 
   // Category filter
@@ -288,13 +295,18 @@ function MatchCard({
             <div
               className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${
                 match.status === 'live' ? 'animate-pulse' : ''
-              } ${!colors?.statusBgColor ? (match.status === 'live' ? 'bg-red-500' : 'bg-yellow-500') : ''} ${!colors?.statusTextColor ? 'text-white' : ''}`}
+              } ${!colors?.statusBgColor ? (
+                match.status === 'live' ? 'bg-red-500' :
+                match.status === 'highlights' ? 'bg-purple-600' :
+                (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700' :
+                'bg-yellow-500'
+              ) : ''} ${!colors?.statusTextColor ? 'text-white' : ''}`}
               style={{
                 ...(colors?.statusBgColor ? { backgroundColor: colors.statusBgColor } : {}),
                 ...(colors?.statusTextColor ? { color: colors.statusTextColor } : {})
               }}
             >
-              {match.status}
+              {formatMatchStatus(match.status)}
             </div>
             {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
               <div className="bg-indigo-600/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xl uppercase tracking-wider">
@@ -383,13 +395,18 @@ function MatchListItem({
           <div
             className={`absolute top-1 left-1 text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
               match.status === 'live' ? 'animate-pulse' : ''
-            } ${!colors?.statusBgColor ? (match.status === 'live' ? 'bg-red-500' : 'bg-yellow-500') : ''} ${!colors?.statusTextColor ? 'text-white' : ''}`}
+            } ${!colors?.statusBgColor ? (
+              match.status === 'live' ? 'bg-red-500' :
+              match.status === 'highlights' ? 'bg-purple-600' :
+              (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700' :
+              'bg-yellow-500'
+            ) : ''} ${!colors?.statusTextColor ? 'text-white' : ''}`}
             style={{
               ...(colors?.statusBgColor ? { backgroundColor: colors.statusBgColor } : {}),
               ...(colors?.statusTextColor ? { color: colors.statusTextColor } : {})
             }}
           >
-            {match.status}
+            {formatMatchStatus(match.status)}
           </div>
         </div>
         <div>

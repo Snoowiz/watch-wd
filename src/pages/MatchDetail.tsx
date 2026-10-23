@@ -10,6 +10,7 @@ import { AddFundsModal } from '../components/AddFundsModal';
 import { AccountGateModal } from '../components/AccountGateModal';
 import { requestNotificationPermission, subscribeToMatch, setupMessageListener, unsubscribeFromMatch, getNotificationPermission } from '../services/notificationService';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
+import { formatMatchStatus } from '../utils/statusHelper';
 import { MatchStreamPlayer } from '../components/MatchStreamPlayer';
 
 export function MatchDetail() {
@@ -173,7 +174,7 @@ export function MatchDetail() {
   const formatDateSafe = (dateStr: string | undefined, formatStr: string) => {
     let effectiveDate = dateStr;
     if (!effectiveDate || effectiveDate === 'Invalid Date') {
-      if (match?.status === 'completed' || (match as any)?.status === 'live') {
+      if (match?.status === 'completed' || match?.status === 'full_match' || match?.status === 'highlights' || (match as any)?.status === 'live') {
         effectiveDate = (match as any)?.createdAt || (match as any)?.created_at || (match as any)?.startTime || (match as any)?.start_time || new Date().toISOString();
       } else {
         return 'TBA';
@@ -181,7 +182,7 @@ export function MatchDetail() {
     }
     const date = new Date(effectiveDate);
     if (isNaN(date.getTime())) {
-      if (match?.status === 'completed' || (match as any)?.status === 'live') {
+      if (match?.status === 'completed' || match?.status === 'full_match' || match?.status === 'highlights' || (match as any)?.status === 'live') {
         return format(new Date(), formatStr);
       }
       return 'TBA';
@@ -590,7 +591,9 @@ export function MatchDetail() {
     }
   }, [user, match?.id]);
 
-  const [dynamicStatus, setDynamicStatus] = useState<string>(match?.status || 'upcoming');
+  const [dynamicStatus, setDynamicStatus] = useState<string>(
+    match?.status === 'completed' ? 'full_match' : (match?.status || 'upcoming')
+  );
 
   useEffect(() => {
     if (!match?.date) {
@@ -611,7 +614,13 @@ export function MatchDetail() {
       const nowMs = Date.now();
 
       if (nowMs < kickoffMs) {
-        setDynamicStatus(match.status === 'completed' ? 'completed' : 'upcoming');
+        setDynamicStatus(
+          match.status === 'completed' || match.status === 'full_match'
+            ? 'full_match'
+            : match.status === 'highlights'
+            ? 'highlights'
+            : 'upcoming'
+        );
         const distance = kickoffMs - nowMs;
         const days = Math.floor(distance / (1000 * 60 * 60 * 24));
         const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -619,13 +628,23 @@ export function MatchDetail() {
         const seconds = Math.floor((distance % (1000 * 60)) / 1000);
         setTimeRemaining({ days, hours, minutes, seconds });
       } else if (nowMs >= kickoffMs && nowMs < kickoffMs + durationMs) {
-        setDynamicStatus(match.status === 'completed' ? 'completed' : 'live');
+        setDynamicStatus(
+          match.status === 'completed' || match.status === 'full_match'
+            ? 'full_match'
+            : match.status === 'highlights'
+            ? 'highlights'
+            : 'live'
+        );
         const elapsed = nowMs - kickoffMs;
         const minutes = Math.floor(elapsed / (1000 * 60));
         const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
         setTimeRemaining({ days: 0, hours: 0, minutes, seconds });
       } else {
-        setDynamicStatus(match.status === 'upcoming' || match.status === 'live' ? 'completed' : match.status);
+        setDynamicStatus(
+          match.status === 'upcoming' || match.status === 'live'
+            ? 'full_match'
+            : (match.status === 'completed' ? 'full_match' : match.status)
+        );
         setTimeRemaining(null);
       }
     };
@@ -1017,9 +1036,13 @@ export function MatchDetail() {
             
             <div className="flex flex-wrap items-center justify-start gap-3 w-full mt-2">
                <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest ${
-                 dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' : dynamicStatus === 'upcoming' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                 dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' :
+                 dynamicStatus === 'highlights' ? 'bg-purple-600 text-white' :
+                 (dynamicStatus === 'full_match' || dynamicStatus === 'completed') ? 'bg-slate-700 text-white' :
+                 dynamicStatus === 'upcoming' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' :
+                 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                }`}>
-                 {dynamicStatus}
+                 {formatMatchStatus(dynamicStatus)}
                </span>
                <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
                  <Calendar className="w-3.5 h-3.5" />

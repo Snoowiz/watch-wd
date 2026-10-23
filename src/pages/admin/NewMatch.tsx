@@ -1,35 +1,44 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore } from '../../store';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore, useMediaStore } from '../../store';
 import { useUIStore } from '../../store/uiStore';
 import { 
   Save, X, Image as ImageIcon, Globe, Lock, DollarSign, 
-  Calendar, Tag, ChevronRight, Bold, Italic, List, Link as LinkIcon,
-  Eye, Code, Layout, Type, Plus, MessageSquare, Clock, Loader2
+  Calendar, Tag, ChevronRight, Eye, Code, Layout, Type, Plus, 
+  MessageSquare, Clock, Loader2, Play, Video, Info, CheckCircle, 
+  ExternalLink, Sparkles, Layers, FileText, Check, Shield, HelpCircle
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { MediaPicker } from '../../components/MediaPicker';
 import { compressImage } from '../../lib/imageCompressor';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../../utils/embedHelper';
-import { useMediaStore } from '../../store';
+import { formatMatchStatus } from '../../utils/statusHelper';
+
+type TabId = 'details' | 'video' | 'pricing' | 'promotion' | 'review';
 
 export function NewMatch() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { matches = [], addMatch, updateMatch } = useMatchStore();
   const { categories = [] } = useCategoryStore();
-  const { currency } = useSettingsStore();
+  const { currency, currencySymbol = '£' } = useSettingsStore();
   
   const isEditing = !!id;
   const existingMatch = isEditing ? matches.find(m => String(m.id) === String(id)) : null;
 
+  // Active navigation tab
+  const [activeTab, setActiveTab] = useState<TabId>('details');
+
+  // Form states
   const [title, setTitle] = useState(existingMatch?.title || '');
   const [slug, setSlug] = useState(existingMatch?.slug || '');
   const [content, setContent] = useState(existingMatch?.content || '');
   const [description, setDescription] = useState(existingMatch?.description || '');
   const [thumbnail, setThumbnail] = useState(existingMatch?.thumbnail || '');
-  const [status, setStatus] = useState<Match['status']>(existingMatch?.status || 'upcoming');
+  const [status, setStatus] = useState<Match['status']>(
+    existingMatch?.status === 'completed' ? 'full_match' : (existingMatch?.status || 'upcoming')
+  );
   const [accessType, setAccessType] = useState<'free' | 'ppv' | 'plan'>(existingMatch?.access_type || 'free');
   const [ppvPrice, setPpvPrice] = useState(existingMatch?.ppv_price || 50);
   const [requiredPlanId, setRequiredPlanId] = useState<string | number | null>(existingMatch?.required_plan_id || null);
@@ -47,23 +56,6 @@ export function NewMatch() {
 
   const { ads = [] } = useAdStore();
 
-  useEffect(() => {
-    // Fetch plans
-    fetch('/api/plans')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setPlans(data);
-      })
-      .catch(console.error);
-
-    // Fetch active partner clubs
-    fetch('/api/clubs/active')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setClubs(data);
-      })
-      .catch(console.error);
-  }, []);
   const safeIsoDateSlice = (val: any): string => {
     if (!val || val === 'Invalid Date') return '';
     const d = new Date(val);
@@ -85,7 +77,7 @@ export function NewMatch() {
   const [commentAlignment, setCommentAlignment] = useState<'left' | 'center' | 'right'>(existingMatch?.commentAlignment || 'center');
   const [duration, setDuration] = useState<number>(existingMatch?.duration || 120);
 
-  // Event Access Duration System (Task 2)
+  // Event Access Duration System
   const [eventAccessEnabled, setEventAccessEnabled] = useState(
     Boolean(Number(existingMatch?.event_access_enabled ?? (existingMatch as any)?.eventAccessEnabled ?? 0))
   );
@@ -97,11 +89,29 @@ export function NewMatch() {
   
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { addToast, updateToast } = useUIStore();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
+
+  const [isManualOverride, setIsManualOverride] = useState(
+    existingMatch?.status === 'completed' || existingMatch?.status === 'full_match' || existingMatch?.status === 'live' || existingMatch?.status === 'highlights'
+  );
+
+  // Fetch plans and clubs
+  useEffect(() => {
+    fetch('/api/plans')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setPlans(data);
+      })
+      .catch(console.error);
+
+    fetch('/api/clubs/active')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setClubs(data);
+      })
+      .catch(console.error);
+  }, []);
 
   // Auto-generate slug from title (only when creating a new match)
   useEffect(() => {
@@ -124,7 +134,7 @@ export function NewMatch() {
     }
   }, [isEditing]);
 
-  // Sync form state when existingMatch loads (useful when page is refreshed)
+  // Sync form state when existingMatch loads
   useEffect(() => {
     if (existingMatch) {
       setTitle(existingMatch.title || '');
@@ -132,7 +142,7 @@ export function NewMatch() {
       setContent(existingMatch.content || '');
       setDescription(existingMatch.description || '');
       setThumbnail(existingMatch.thumbnail || '');
-      setStatus(existingMatch.status || 'upcoming');
+      setStatus(existingMatch.status === 'completed' ? 'full_match' : (existingMatch.status || 'upcoming'));
       setAccessType((existingMatch.access_type || (existingMatch as any).accessType || 'free') as any);
       setPpvPrice(existingMatch.ppv_price || (existingMatch as any).ppvPrice || 50);
       setRequiredPlanId(existingMatch.required_plan_id || (existingMatch as any).requiredPlanId || null);
@@ -154,7 +164,7 @@ export function NewMatch() {
       setDuration(existingMatch.duration || 120);
       setEventAccessEnabled(Boolean(Number(existingMatch.event_access_enabled ?? (existingMatch as any).eventAccessEnabled ?? 0)));
       setEventAccessPreset(((existingMatch.event_access_duration_label || '3d') as any));
-      if (existingMatch.status === 'completed' || existingMatch.status === 'live') {
+      if (existingMatch.status === 'completed' || existingMatch.status === 'full_match' || existingMatch.status === 'live' || existingMatch.status === 'highlights') {
         setIsManualOverride(true);
       }
     }
@@ -164,9 +174,7 @@ export function NewMatch() {
     loadMuxPlayerIfNeeded(description);
   }, [description]);
 
-  const [isManualOverride, setIsManualOverride] = useState(existingMatch?.status === 'completed' || existingMatch?.status === 'live');
-
-  const getCalculatedStatus = (): 'upcoming' | 'live' | 'completed' => {
+  const getCalculatedStatus = (): 'upcoming' | 'live' | 'full_match' => {
     let targetDateStr = customDate;
     if (!targetDateStr && publishMode === 'scheduled' && scheduledDate) {
       targetDateStr = scheduledDate;
@@ -185,25 +193,24 @@ export function NewMatch() {
 
     if (nowMs < matchMs) return 'upcoming';
     if (nowMs >= matchMs && nowMs < matchMs + durMs) return 'live';
-    return 'completed';
+    return 'full_match';
   };
+
+  const currentEffectiveStatus = isManualOverride ? status : getCalculatedStatus();
 
   const handleSave = async () => {
     if (!title || !slug) {
       addToast('Please fill in the title and slug.', 'error');
+      setActiveTab('details');
       return;
     }
-
-
 
     setIsSaving(true);
     const toastId = addToast(isEditing ? 'Updating match...' : 'Creating match...', 'loading');
 
     try {
-      // Simulate brief latency for high-quality feel of the spinner
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
-      // Resolve final date. If date was not entered, default to now!
       let finalDate = resolveValidIsoDate(customDate);
       if (!finalDate && publishMode === 'scheduled' && scheduledDate) {
         finalDate = resolveValidIsoDate(scheduledDate);
@@ -213,7 +220,6 @@ export function NewMatch() {
                     resolveValidIsoDate((existingMatch as any)?.start_time) ||
                     resolveValidIsoDate((existingMatch as any)?.startTime);
       }
-      // If still not entered or invalid, use current date (now)
       if (!finalDate) {
         finalDate = new Date().toISOString();
       }
@@ -241,13 +247,13 @@ export function NewMatch() {
         title,
         slug,
         date: finalDate,
-        price: accessType === 'ppv' ? ppvPrice : 0, // Fallback for old stores
+        price: accessType === 'ppv' ? ppvPrice : 0,
         access_type: accessType,
         ppv_price: ppvPrice,
         required_plan_id: requiredPlanId,
         club_id: clubId,
         stream_provider: streamProvider,
-        embedPrice: ppvPrice * 10, // Default multiplier
+        embedPrice: ppvPrice * 10,
         status: computedStatus as any,
         duration: Number(duration) || 120,
         event_access_enabled: eventAccessEnabled ? 1 : 0,
@@ -279,7 +285,6 @@ export function NewMatch() {
 
       if (isEditing) {
         await updateMatch(String(id) as any, matchData);
-        // Re-fetch matches to ensure store has the latest data from DB
         await useMatchStore.getState().fetchMatches();
         updateToast(toastId, { message: 'Match updated successfully!', type: 'success' });
       } else {
@@ -304,758 +309,1247 @@ export function NewMatch() {
     );
   };
 
+  const selectedCategoryNames = useMemo(() => {
+    if (!selectedCategories || selectedCategories.length === 0) return 'None';
+    const names = selectedCategories
+      .map(id => categories.find(c => Number(c.id) === Number(id))?.name)
+      .filter(Boolean);
+    return names.length > 0 ? names.join(', ') : 'None';
+  }, [selectedCategories, categories]);
+
+  const assignedPlanName = useMemo(() => {
+    if (!requiredPlanId) return null;
+    const found = plans.find(p => String(p.id) === String(requiredPlanId));
+    return found ? found.name : `Plan #${requiredPlanId}`;
+  }, [requiredPlanId, plans]);
+
+  const assignedClubName = useMemo(() => {
+    if (!clubId) return null;
+    const found = clubs.find(c => String(c.id) === String(clubId));
+    return found ? found.name : `Club #${clubId}`;
+  }, [clubId, clubs]);
+
+  const TABS: { id: TabId; label: string }[] = [
+    { id: 'details', label: 'Details' },
+    { id: 'video', label: 'Video & broadcast' },
+    { id: 'pricing', label: 'Pricing & access' },
+    { id: 'promotion', label: 'Promotion' },
+    { id: 'review', label: 'Review & publish' },
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-20">
-      {/* Top Bar */}
-      <div className="sticky top-0 z-30 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => navigate('/admin/matches')}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-slate-500" />
-          </button>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-            {isEditing ? 'Edit Match' : 'New Match'}
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setIsPreviewMode(!isPreviewMode)}
-            className="px-4 py-2 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors flex items-center gap-2"
-          >
-            {isPreviewMode ? <Code className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {isPreviewMode ? 'Edit Mode' : 'Preview'}
-          </button>
-          <button 
-            onClick={handleSave}
-            disabled={isSaving}
-            className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-70 text-slate-900 font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-yellow-500/20 flex items-center gap-2"
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            {isSaving 
-              ? (isEditing ? 'Updating...' : 'Publishing...') 
-              : (isEditing ? 'Update Match' : 'Post Match')}
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-8 grid lg:grid-cols-12 gap-8">
-        {/* Main Content Area */}
-        <div className="lg:col-span-8 space-y-8">
-          {/* Title & Slug */}
-          <div className="space-y-4">
-            <input 
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter match title..."
-              className="w-full bg-transparent border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-4xl font-black text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all"
-            />
-            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700">
-              <Globe className="w-4 h-4" />
-              <span>Permalink:</span>
-              <span className="text-slate-400">https://watchwds.com/matches/</span>
-              <input 
-                type="text"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                onBlur={() => setSlug(prev => prev.replace(/(^-|-$)/g, '').replace(/-+/g, '-'))}
-                className="bg-transparent border-none p-0 text-indigo-500 font-medium focus:ring-0 w-auto min-w-[100px]"
-              />
-            </div>
+    <div className="min-h-screen bg-[#070b14] text-slate-100 pb-24">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
+        
+        {/* Top Header Card */}
+        <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-xl mb-6">
+          <div className="flex items-center gap-3">
+            <button 
+              type="button"
+              onClick={() => navigate('/admin/matches')}
+              className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-colors"
+              title="Back to Match Management"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h1 className="text-xl font-bold text-white tracking-tight">
+              {isEditing ? 'Edit Match' : 'New Match'}
+            </h1>
           </div>
-
-          {/* Rich Text Editor */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden prose-editor">
-            <ReactQuill
-              theme="snow"
-              value={content}
-              onChange={setContent}
-              className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-              modules={{
-                toolbar: [
-                  [{ 'header': [1, 2, 3, false] }],
-                  ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-                  [{'list': 'ordered'}, {'list': 'bullet'}, {'indent': '-1'}, {'indent': '+1'}],
-                  ['link', 'image', 'video'],
-                  ['clean']
-                ],
-              }}
-            />
+          <div className="flex items-center gap-3">
+            <button 
+              type="button"
+              onClick={() => setIsPreviewMode(!isPreviewMode)}
+              className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 border ${
+                isPreviewMode 
+                  ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' 
+                  : 'bg-[#0a0f1d] text-slate-300 hover:text-white border-slate-800 hover:bg-slate-800/80'
+              }`}
+            >
+              <Eye className="w-4 h-4" />
+              <span>Preview</span>
+            </button>
+            <button 
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-blue-600/25 flex items-center gap-2 text-xs sm:text-sm"
+            >
+              {isSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              <span>
+                {isSaving 
+                  ? (isEditing ? 'Updating...' : 'Publishing...') 
+                  : (isEditing ? 'Update Match' : 'Post Match')}
+              </span>
+            </button>
           </div>
+        </div>
 
-          {/* Description & Embeds */}
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
-                <Code className="w-5 h-5 text-indigo-500" />
-                <h2>Broadcast Stream & Embeds</h2>
-              </div>
-              <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setStreamProvider('youtube')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    streamProvider === 'youtube'
-                      ? 'bg-red-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  YouTube
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStreamProvider('mux')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    streamProvider === 'mux'
-                      ? 'bg-purple-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  Mux Video / Live
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStreamProvider('custom')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    streamProvider === 'custom'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-                >
-                  Custom Embed
-                </button>
-              </div>
-            </div>
+        {/* Five Navigation Tabs */}
+        <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-2 flex gap-2 overflow-x-auto no-scrollbar shadow-lg mb-8">
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 min-w-[140px] py-3 px-4 rounded-xl text-xs sm:text-sm font-bold text-center transition-all ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'bg-[#0a0f1d] hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 border border-slate-800/60'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
 
-            {streamProvider === 'mux' && (
-              <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-4 rounded-xl space-y-2">
-                <label className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider block">
-                  Mux Quick Setup (Playback ID or HLS URL)
-                </label>
-                <div className="flex gap-2">
-                  <input
+        {/* Section Header Title & Subtitle */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-6">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              {activeTab === 'details' && 'Details'}
+              {activeTab === 'video' && 'Video & broadcast'}
+              {activeTab === 'pricing' && 'Pricing & access'}
+              {activeTab === 'promotion' && 'Promotion'}
+              {activeTab === 'review' && 'Review & publish'}
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              {activeTab === 'details' && 'Basic match information, description, cover image and existing categories.'}
+              {activeTab === 'video' && 'Existing video provider, stream embed, match timing, status and comments.'}
+              {activeTab === 'pricing' && 'Existing viewing access, PPV, subscription, club association and timed access.'}
+              {activeTab === 'promotion' && 'Search metadata and current match advertising controls.'}
+              {activeTab === 'review' && 'Read-only summary of current form values with existing publication controls.'}
+            </p>
+          </div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest self-start sm:self-end">
+            LAYOUT REFERENCE · CURRENT FIELDS ONLY
+          </span>
+        </div>
+
+        {/* ===================== TAB 1: DETAILS ===================== */}
+        {activeTab === 'details' && (
+          <div className="grid lg:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Match Details & Rich Text Editor */}
+            <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Layout className="w-5 h-5 text-blue-500" />
+                  <h3>Match details</h3>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Match title
+                  </label>
+                  <input 
                     type="text"
-                    placeholder="e.g., d54001aBCdE123 or https://stream.mux.com/YOUR_PLAYBACK_ID.m3u8"
-                    className="flex-1 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-purple-500 dark:text-white"
-                    onChange={(e) => {
-                      const val = e.target.value.trim();
-                      if (val) {
-                        const pbId = val.replace(/^https?:\/\/stream\.mux\.com\//i, '').replace(/\.m3u8$/i, '');
-                        setDescription(`<mux-player playback-id="${pbId}" metadata-video-title="${title || 'Match Broadcast'}" stream-type="${status === 'live' ? 'live' : 'on-demand'}" controls playsinline preload="metadata"></mux-player>`);
-                      }
-                    }}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Home Club v Away Club"
+                    className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-colors"
                   />
                 </div>
-                <p className="text-[11px] text-purple-700 dark:text-purple-400">
-                  Enter a Mux Playback ID or Stream URL to automatically configure an accelerated, adaptive HLS player.
+
+                {/* Permalink / Slug */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Permalink / slug
+                  </label>
+                  <div className="flex items-center bg-[#0a0f1d] border border-slate-800 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 rounded-xl px-4 py-3 text-sm transition-colors">
+                    <span className="text-slate-500 font-mono text-xs select-none shrink-0">
+                      https://watchwds.com/matches/
+                    </span>
+                    <input 
+                      type="text"
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                      onBlur={() => setSlug(prev => prev.replace(/(^-|-$)/g, '').replace(/-+/g, '-'))}
+                      placeholder="home-club-v-away-club"
+                      className="bg-transparent border-none text-blue-400 font-mono text-xs font-bold focus:ring-0 p-0 flex-1 ml-1 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Rich Text Editor */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Match description (rich-text editor)
+                  </label>
+                  <div className="border border-slate-800 rounded-xl overflow-hidden bg-[#0a0f1d]">
+                    <ReactQuill
+                      theme="snow"
+                      value={content}
+                      onChange={setContent}
+                      placeholder="Add a match introduction or coverage description for supporters..."
+                      className="bg-[#0a0f1d] text-slate-100"
+                      modules={{
+                        toolbar: [
+                          [{ 'header': [1, 2, 3, false] }],
+                          ['bold', 'italic', 'underline', 'strike', 'blockquote'],
+                          [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                          ['link', 'image', 'video'],
+                          ['clean']
+                        ],
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-500 pt-1">
+                  Existing ReactQuill editor, formatting and saved content remain unchanged.
                 </p>
               </div>
-            )}
+            </div>
 
-            {streamProvider === 'youtube' && (
-              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-4 rounded-xl space-y-2">
-                <label className="text-xs font-bold text-red-900 dark:text-red-300 uppercase tracking-wider block">
-                  YouTube Quick Setup (Watch URL or Embed)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                    className="flex-1 bg-white dark:bg-slate-900 border border-red-300 dark:border-red-700 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-red-500 dark:text-white"
-                    onChange={(e) => {
-                      const val = e.target.value.trim();
-                      if (val) {
-                        setDescription(val);
-                      }
-                    }}
+            {/* Right Column: Thumbnail & Categories */}
+            <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+              {/* Match Thumbnail Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <ImageIcon className="w-5 h-5 text-blue-500" />
+                  <h3>Match thumbnail</h3>
+                </div>
+
+                <div
+                  onClick={() => setShowMediaPicker(true)}
+                  className="w-full relative aspect-video rounded-xl border-2 border-dashed border-slate-800 hover:border-blue-500/60 bg-[#0a0f1d] transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center text-center p-4 group"
+                >
+                  {thumbnail ? (
+                    <>
+                      <img src={thumbnail} alt="Match Thumbnail" className="absolute inset-0 w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+                        <p className="text-white text-xs font-bold bg-blue-600 px-3 py-1.5 rounded-lg shadow">Change Image</p>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setThumbnail('');
+                          }}
+                          className="text-[11px] text-red-400 hover:text-red-300 font-semibold underline"
+                        >
+                          Remove thumbnail
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-blue-400 transition-colors">
+                      <Plus className="w-8 h-8 mb-2 text-slate-400 group-hover:text-blue-400 transition-colors" />
+                      <p className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">
+                        Select from existing media library
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">16:9 cover image</p>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  Preserve existing MediaPicker and 16:9 preview.
+                </p>
+              </div>
+
+              {/* Categories Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Tag className="w-5 h-5 text-blue-500" />
+                  <h3>Categories</h3>
+                </div>
+
+                <div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                  {categories.map((cat) => {
+                    const isChecked = selectedCategories.some(id => Number(id) === Number(cat.id));
+                    return (
+                      <label 
+                        key={cat.id} 
+                        className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                          isChecked 
+                            ? 'bg-blue-600/10 border-blue-500/40 text-white' 
+                            : 'bg-[#0a0f1d] border-slate-800/80 text-slate-400 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleCategory(cat.id)}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-0"
+                        />
+                        <span className="text-xs sm:text-sm font-semibold">{cat.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={() => navigate('/admin/categories')}
+                  className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 pt-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add New Category
+                </button>
+
+                <p className="text-xs text-slate-500 pt-1">
+                  Multiple existing categories; no new content-type or tags fields.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB 2: VIDEO & BROADCAST ===================== */}
+        {activeTab === 'video' && (
+          <div className="grid lg:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Video Provider, Markup & Live Preview */}
+            <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Play className="w-5 h-5 text-blue-500" />
+                  <h3>Broadcast stream & embeds</h3>
+                </div>
+
+                {/* Video Source Segmented Buttons */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Video source
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setStreamProvider('youtube')}
+                      className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                        streamProvider === 'youtube'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      YouTube
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStreamProvider('mux')}
+                      className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                        streamProvider === 'mux'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Mux Video / Live
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStreamProvider('custom')}
+                      className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                        streamProvider === 'custom'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Custom Embed
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Setup for YouTube */}
+                {streamProvider === 'youtube' && (
+                  <div className="space-y-2 animate-in fade-in">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      YouTube quick setup (watch URL or embed)
+                    </label>
+                    <input 
+                      type="text"
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 outline-none font-mono transition-colors"
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        if (val) setDescription(val);
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Quick Setup for Mux */}
+                {streamProvider === 'mux' && (
+                  <div className="space-y-2 animate-in fade-in">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Mux quick setup (playback ID or stream URL)
+                    </label>
+                    <input 
+                      type="text"
+                      placeholder="e.g. d54001aBCdE123 or https://stream.mux.com/PLAYBACK_ID.m3u8"
+                      className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 outline-none font-mono transition-colors"
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        if (val) {
+                          const pbId = val.replace(/^https?:\/\/stream\.mux\.com\//i, '').replace(/\.m3u8$/i, '');
+                          setDescription(`<mux-player playback-id="${pbId}" metadata-video-title="${title || 'Match Broadcast'}" stream-type="${currentEffectiveStatus === 'live' ? 'live' : 'on-demand'}" controls playsinline preload="metadata"></mux-player>`);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Stream HTML / Embed Markup */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Stream HTML / Embed Markup
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                    placeholder="Existing embed markup remains editable..."
+                    className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl p-4 text-xs sm:text-sm font-mono text-white placeholder-slate-500 outline-none resize-y leading-relaxed transition-colors"
                   />
                 </div>
-                <p className="text-[11px] text-red-700 dark:text-red-400">
-                  Paste any YouTube URL or iframe code. It will be seamlessly embedded with responsive aspect ratios.
+
+                <p className="text-xs text-slate-500">
+                  Keep provider-specific inputs and existing conversion / embed logic.
                 </p>
               </div>
-            )}
 
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden min-h-[200px] flex flex-col">
-                <div className="bg-slate-50 dark:bg-slate-900/60 px-4 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-500">
-                  Stream HTML / Embed Markup
+              {/* Stream Embed Live Preview Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Video className="w-5 h-5 text-blue-500" />
+                  <h3>Stream embed preview</h3>
                 </div>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full h-full min-h-[170px] p-4 bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none resize-none font-mono text-sm leading-relaxed"
-                  placeholder='Paste your embed code here (e.g., <iframe src="..."></iframe> or <mux-player playback-id="..."></mux-player>)...'
-                />
+
+                <div className="w-full aspect-video rounded-xl border-2 border-dashed border-slate-800 bg-[#0a0f1d] overflow-hidden flex flex-col items-center justify-center p-2 text-center">
+                  {description ? (
+                    <div 
+                      className="w-full h-full overflow-hidden [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block"
+                      dangerouslySetInnerHTML={{ __html: formatStreamHtml(description, { isLive: currentEffectiveStatus === 'live' }) }}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-500">
+                      <div className="w-10 h-10 rounded-full border-2 border-slate-700 flex items-center justify-center mb-2">
+                        <div className="w-3 h-3 rounded-full bg-slate-600" />
+                      </div>
+                      <p className="text-xs font-semibold text-slate-400">Existing stream preview renders here</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="bg-slate-100 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
-                {description ? (
-                  <div className="w-full h-full overflow-y-auto custom-scrollbar [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block" dangerouslySetInnerHTML={{ __html: formatStreamHtml(description, { isLive: status === 'live' }) }} />
-                ) : (
-                  <>
-                    <Eye className="w-8 h-8 text-slate-300 mb-2" />
-                    <p className="text-sm text-slate-400">Stream Embed Preview</p>
-                  </>
+            </div>
+
+            {/* Right Column: Timing, Status & Commenting */}
+            <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+              {/* Match Timing & Status Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Clock className="w-5 h-5 text-blue-500" />
+                  <h3>Match timing & status</h3>
+                </div>
+
+                {/* Original Creation / Match Date */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Original Creation / Match Date
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCustomDate(new Date().toISOString().slice(0, 16))}
+                      className="text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:underline"
+                    >
+                      Set to Current Time
+                    </button>
+                  </div>
+                  <input 
+                    type="datetime-local"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-xs sm:text-sm text-white outline-none transition-colors"
+                  />
+                </div>
+
+                {/* Match Status */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Match status
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextOverride = !isManualOverride;
+                        setIsManualOverride(nextOverride);
+                        if (nextOverride && !customDate) {
+                          setCustomDate(new Date().toISOString().slice(0, 16));
+                        }
+                      }}
+                      className="text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:underline"
+                    >
+                      {isManualOverride ? 'Use Automated Detection' : 'Manual Override'}
+                    </button>
+                  </div>
+
+                  {!isManualOverride ? (
+                    <div className="bg-[#0a0f1d] border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {getCalculatedStatus() === 'upcoming' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                            <Clock className="w-3 h-3" /> UPCOMING (Auto)
+                          </span>
+                        )}
+                        {getCalculatedStatus() === 'live' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> LIVE NOW (Auto)
+                          </span>
+                        )}
+                        {getCalculatedStatus() === 'full_match' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-500/10 text-slate-300 border border-slate-500/30">
+                            ✓ FULL MATCH (Auto)
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-medium text-slate-500">From date & duration</span>
+                    </div>
+                  ) : (
+                    <select 
+                      value={status === 'completed' ? 'full_match' : status}
+                      onChange={(e) => {
+                        const newStatus = e.target.value as any;
+                        setStatus(newStatus);
+                        if ((newStatus === 'full_match' || newStatus === 'completed' || newStatus === 'live' || newStatus === 'highlights') && !customDate) {
+                          setCustomDate(new Date().toISOString().slice(0, 16));
+                        }
+                      }}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-xs sm:text-sm text-white outline-none transition-colors"
+                    >
+                      <option value="upcoming">Upcoming</option>
+                      <option value="live">Live Now</option>
+                      <option value="full_match">Full Match</option>
+                      <option value="highlights">Highlights</option>
+                    </select>
+                  )}
+                </div>
+
+                {/* Match Duration */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Match duration (minutes)
+                  </label>
+                  <div className="grid grid-cols-4 gap-2 mb-2">
+                    {[90, 120, 150, 180].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setDuration(mins)}
+                        className={`py-2 text-xs font-bold rounded-lg border transition-all ${
+                          Number(duration) === mins
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-[#0a0f1d] text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    ))}
+                  </div>
+                  <input 
+                    type="number"
+                    min="15"
+                    max="600"
+                    value={duration}
+                    onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
+                    className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white outline-none transition-colors font-mono"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    Existing auto/manual status rules stay as they are.
+                  </p>
+                </div>
+              </div>
+
+              {/* Live Commenting Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <MessageSquare className="w-5 h-5 text-blue-500" />
+                  <h3>Live commenting</h3>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-semibold text-slate-300">Enable comments</span>
+                  <button
+                    type="button"
+                    onClick={() => setLiveCommenting(!liveCommenting)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      liveCommenting
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {liveCommenting ? 'On' : 'Off'}
+                  </button>
+                </div>
+
+                {liveCommenting && (
+                  <div className="pt-2 animate-in fade-in">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                      Comment alignment
+                    </label>
+                    <select 
+                      value={commentAlignment}
+                      onChange={(e) => setCommentAlignment(e.target.value as any)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white outline-none capitalize transition-colors"
+                    >
+                      <option value="center">Centre</option>
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                    </select>
+                  </div>
                 )}
               </div>
             </div>
           </div>
+        )}
 
-          {/* SEO Settings */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-8 space-y-6">
-            <div className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
-              <Globe className="w-5 h-5 text-green-500" />
-              <h2>SEO Settings</h2>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Focus Keywords</label>
-                <input 
-                  type="text"
-                  value={seo.keywords}
-                  onChange={(e) => setSeo({ ...seo, keywords: e.target.value })}
-                  placeholder="e.g., football, live match, grassroots"
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Meta Description</label>
-                <textarea 
-                  value={seo.metaDescription}
-                  onChange={(e) => setSeo({ ...seo, metaDescription: e.target.value })}
-                  placeholder="Brief summary for search results..."
-                  rows={3}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors resize-none"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="lg:col-span-4 space-y-8">
-          {/* Thumbnail Section */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-4">
-            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-              <ImageIcon className="w-5 h-5 text-yellow-500" />
-              <h3>Match Thumbnail</h3>
-            </div>
-            
-            <button
-              onClick={() => setShowMediaPicker(true)}
-              className="w-full relative aspect-video rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500 transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center text-center p-4"
-            >
-              {thumbnail ? (
-                <>
-                  <img src={thumbnail} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <p className="text-white text-xs font-bold">Change Image</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Plus className="w-8 h-8 text-slate-300 mb-2" />
-                  <p className="text-xs text-slate-400">Drag & drop or click to upload<br/>(16:9 Aspect Ratio)</p>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Access & Pricing */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-6">
-            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-              <Lock className="w-5 h-5 text-indigo-500" />
-              <h3>Access Control</h3>
-            </div>
-            <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl">
-              <button 
-                onClick={() => setAccessType('free')}
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${accessType === 'free' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-              >
-                Free
-              </button>
-              <button 
-                onClick={() => {
-                  if (accessType === 'free') setAccessType('ppv');
-                }}
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${accessType !== 'free' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-              >
-                Paid
-              </button>
-            </div>
-
-            {accessType !== 'free' && (
-              <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl mt-4 animate-in fade-in slide-in-from-top-2">
-                <button 
-                  onClick={() => setAccessType('ppv')}
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${accessType === 'ppv' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                >
-                  Pay-Per-View
-                </button>
-                <button 
-                  onClick={() => setAccessType('plan')}
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${accessType === 'plan' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                >
-                  Plan / Subscription
-                </button>
-              </div>
-            )}
-
-            {accessType === 'ppv' && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Price (Requires one-time payment for access)</label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input 
-                      type="number"
-                      step="0.01"
-                      value={ppvPrice}
-                      onChange={(e) => setPpvPrice(Number(e.target.value))}
-                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-                    />
-                  </div>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Entering a custom PPV amount means users without a covering plan must pay this amount.
-                  </p>
+        {/* ===================== TAB 3: PRICING & ACCESS ===================== */}
+        {activeTab === 'pricing' && (
+          <div className="grid lg:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Viewing Access, PPV, Subscription, Partner Club */}
+            <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Lock className="w-5 h-5 text-blue-500" />
+                  <h3>Access control</h3>
                 </div>
 
+                {/* Viewing Access: Free vs Paid */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    Partner Club (For PPV Revenue Split)
-                    <span className="text-slate-400 font-medium ml-1">— Optional</span>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Viewing access
                   </label>
-                  <select
-                    value={clubId || ''}
-                    onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-                  >
-                    <option value="">No club — Platform keeps 100%</option>
-                    {clubs.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  {!clubId ? (
-                    <p className="mt-1.5 text-xs text-emerald-500 font-medium bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg">
-                      💰 No partner club assigned — the platform will retain 100% of PPV revenue from this match.
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-xs text-slate-400">
-                      Revenue will be automatically split with the selected club via Stripe Connect based on the configured revenue policy.
-                    </p>
-                  )}
+                  <div className="grid grid-cols-2 gap-2 bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setAccessType('free')}
+                      className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                        accessType === 'free'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Free
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (accessType === 'free') setAccessType('ppv');
+                      }}
+                      className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                        accessType !== 'free'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Paid
+                    </button>
+                  </div>
+                </div>
+
+                {/* Paid Options */}
+                {accessType !== 'free' && (
+                  <div className="space-y-5 animate-in fade-in">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                        Paid access type
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setAccessType('ppv')}
+                          className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                            accessType === 'ppv'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Pay-Per-View
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAccessType('plan')}
+                          className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                            accessType === 'plan'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Plan / Subscription
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Pay-Per-View Price */}
+                    {accessType === 'ppv' && (
+                      <div className="space-y-4 animate-in fade-in">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                            Pay-Per-View price
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">
+                              {currencySymbol}
+                            </span>
+                            <input 
+                              type="number"
+                              step="0.01"
+                              value={ppvPrice}
+                              onChange={(e) => setPpvPrice(Number(e.target.value))}
+                              className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl pl-9 pr-4 py-3 text-sm text-white font-mono outline-none transition-colors"
+                            />
+                          </div>
+                          <p className="text-xs text-slate-500 mt-2">
+                            Example existing default value, not a proposed commercial price.
+                          </p>
+                        </div>
+
+                        {/* Partner Club Selector */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                            Partner club (for PPV revenue split) · Optional
+                          </label>
+                          <select
+                            value={clubId || ''}
+                            onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
+                            className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-xs sm:text-sm text-white outline-none transition-colors"
+                          >
+                            <option value="">No club — choose an existing partner club</option>
+                            {clubs.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Required Subscription Plan */}
+                    {accessType === 'plan' && (
+                      <div className="space-y-2 animate-in fade-in">
+                        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                          Required subscription plan
+                        </label>
+                        <select
+                          value={requiredPlanId || ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? e.target.value : null;
+                            setRequiredPlanId(val);
+                            if (val) {
+                              const chosen = plans.find(p => String(p.id) === String(val));
+                              if (chosen?.plan_scope === 'club' && chosen?.club_id && !clubId) {
+                                setClubId(String(chosen.club_id));
+                              }
+                            }
+                          }}
+                          className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-xs sm:text-sm text-white outline-none transition-colors"
+                        >
+                          <option value="" disabled>Select a plan...</option>
+                          {plans.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} — {p.plan_scope === 'club' ? `Club Plan (Club #${p.club_id})` : 'Platform-Wide Plan'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Bottom Callout Notice */}
+                <div className="bg-[#0a0f1d] border border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-400 leading-relaxed">
+                  <strong className="text-slate-300">Conditional fields:</strong> Free hides paid fields. Plan / Subscription shows the existing Required Plan selector instead of PPV pricing. Preserve the present access-type storage values.
                 </div>
               </div>
-            )}
+            </div>
 
-            {accessType === 'plan' && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Required Plan</label>
-                  <select
-                    value={requiredPlanId || ''}
-                    onChange={(e) => {
-                      const selectedVal = e.target.value ? e.target.value : null;
-                      setRequiredPlanId(selectedVal);
-                      if (selectedVal) {
-                        const chosenPlan = plans.find(p => String(p.id) === String(selectedVal));
-                        if (chosenPlan?.plan_scope === 'club' && chosenPlan?.club_id && !clubId) {
-                          setClubId(String(chosenPlan.club_id));
-                        }
-                      }
-                    }}
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-                  >
-                     <option value="" disabled>Select a plan...</option>
-                     {plans.map(p => (
-                       <option key={p.id} value={p.id}>
-                         {p.name} — {p.plan_scope === 'club' ? `Club Plan (Club #${p.club_id})` : 'Platform-Wide Plan'}
-                       </option>
-                     ))}
-                  </select>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Subscribers with active access to this plan will automatically unlock this match stream.
-                  </p>
+            {/* Right Column: Time-Limited Event Access & Existing Behavior */}
+            <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+              {/* Time-Limited Event Access Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Clock className="w-5 h-5 text-blue-500" />
+                  <h3>Time-limited event access</h3>
                 </div>
-              </div>
-            )}
 
-            {/* Time-Limited Event Access Duration System (Universal: Free, Plan & PPV) */}
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-amber-500" />
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      Time-Limited Event Access
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs sm:text-sm font-semibold text-slate-200 block">
+                      Enable event access duration
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      Existing feature applies to Free, Plan and PPV.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEventAccessEnabled(!eventAccessEnabled)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      eventAccessEnabled
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {eventAccessEnabled ? 'On' : 'Off'}
+                  </button>
+                </div>
+
+                {eventAccessEnabled && (
+                  <div className="space-y-3 pt-2 animate-in fade-in">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Access duration window
                     </label>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                      {[
+                        { id: '3d', label: '3 Days' },
+                        { id: '7d', label: '7 Days' },
+                        { id: '30d', label: '30 Days' },
+                        { id: '1y', label: '1 Year' },
+                        { id: 'custom', label: 'Custom' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setEventAccessPreset(preset.id as any)}
+                          className={`py-2 px-1 text-[11px] font-bold rounded-lg border text-center transition-all ${
+                            eventAccessPreset === preset.id
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                              : 'bg-[#0a0f1d] text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {eventAccessPreset === 'custom' && (
+                      <div className="flex items-center gap-2 pt-1 animate-in fade-in">
+                        <input
+                          type="number"
+                          min="1"
+                          value={customDurationVal}
+                          onChange={(e) => setCustomDurationVal(Math.max(1, Number(e.target.value)))}
+                          className="w-24 bg-[#0a0f1d] border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono"
+                        />
+                        <select
+                          value={customDurationUnit}
+                          onChange={(e) => setCustomDurationUnit(e.target.value as any)}
+                          className="bg-[#0a0f1d] border border-slate-800 rounded-lg px-3 py-2 text-xs text-white"
+                        >
+                          <option value="hours">Hours</option>
+                          <option value="days">Days</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="bg-blue-950/20 border border-blue-900/40 rounded-xl p-3 text-xs text-blue-300 leading-relaxed">
+                      The existing event-access countdown and expiry logic must not change as part of this styling task.
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Limit event access to a countdown window (Free, Plan, or PPV). When expired, the match automatically switches to revoked status.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={eventAccessEnabled}
-                    onChange={(e) => setEventAccessEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                </label>
+                )}
               </div>
 
-              {eventAccessEnabled && (
-                <div className="mt-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
-                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">
-                    Access Duration Window
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {[
-                      { id: '3d', label: '3 Days' },
-                      { id: '7d', label: '7 Days' },
-                      { id: '30d', label: '30 Days' },
-                      { id: '1y', label: '1 Year' },
-                      { id: 'custom', label: 'Custom' },
-                    ].map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => setEventAccessPreset(preset.id as any)}
-                        className={`py-2 px-3 rounded-lg text-xs font-bold transition-all border ${
-                          eventAccessPreset === preset.id
-                            ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
-                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
+              {/* Existing Behavior Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-3 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Info className="w-5 h-5 text-blue-500" />
+                  <h3>Existing behaviour</h3>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Keep the current one-choice model: Free, PPV or required subscription plan. Do not add the PDF's simultaneous purchase and subscription options, expiry date controls or new entitlements.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
-                  {eventAccessPreset === 'custom' && (
-                    <div className="flex items-center gap-3 pt-2">
+        {/* ===================== TAB 4: PROMOTION ===================== */}
+        {activeTab === 'promotion' && (
+          <div className="grid lg:grid-cols-12 gap-6 items-start">
+            {/* Left Column: SEO Settings */}
+            <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Globe className="w-5 h-5 text-blue-500" />
+                  <h3>SEO settings</h3>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Focus keywords
+                  </label>
+                  <input 
+                    type="text"
+                    value={seo.keywords}
+                    onChange={(e) => setSeo({ ...seo, keywords: e.target.value })}
+                    placeholder="football, live match, grassroots"
+                    className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Meta description
+                  </label>
+                  <textarea 
+                    rows={4}
+                    value={seo.metaDescription}
+                    onChange={(e) => setSeo({ ...seo, metaDescription: e.target.value })}
+                    placeholder="Brief summary for search results..."
+                    className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl p-4 text-xs sm:text-sm text-white placeholder-slate-500 outline-none resize-none leading-relaxed transition-colors"
+                  />
+                </div>
+
+                <div className="bg-[#0a0f1d] border border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-400 leading-relaxed">
+                  Only reuse existing saved SEO fields: keywords and metaDescription. The permalink remains on Details. Do not introduce a search-title field or new metadata schema.
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Advertisement Settings */}
+            <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <DollarSign className="w-5 h-5 text-blue-500" />
+                  <h3>Advertisement settings</h3>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs sm:text-sm font-semibold text-slate-200 block">
+                      Enable Ads for Free Viewers
+                    </span>
+                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                      Uses the current enabled flag
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAdSettingsEnabled(!adSettingsEnabled)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      adSettingsEnabled
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {adSettingsEnabled ? 'On' : 'Off'}
+                  </button>
+                </div>
+
+                {adSettingsEnabled && (
+                  <div className="space-y-4 pt-2 animate-in fade-in">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                        Display frequency override (minutes)
+                      </label>
                       <input
                         type="number"
-                        min="1"
-                        value={customDurationVal}
-                        onChange={(e) => setCustomDurationVal(Math.max(1, Number(e.target.value)))}
-                        className="w-28 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white"
+                        value={adFrequencyOverride}
+                        onChange={(e) => setAdFrequencyOverride(e.target.value)}
+                        placeholder="Global settings used by default"
+                        className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition-colors"
                       />
-                      <select
-                        value={customDurationUnit}
-                        onChange={(e) => setCustomDurationUnit(e.target.value as any)}
-                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-white font-medium"
-                      >
-                        <option value="hours">Hours</option>
-                        <option value="days">Days</option>
-                      </select>
                     </div>
-                  )}
 
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg space-y-1">
-                    <p><strong>• Upcoming Matches:</strong> Countdown timer begins when the match status transitions to LIVE.</p>
-                    <p><strong>• Free &amp; Plan Matches:</strong> Event window counts from kickoff; automatically switches to revoked on expiration.</p>
-                    <p><strong>• PPV Matches:</strong> Individual countdown starts on purchase or match kickoff.</p>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                        Select campaign overrides (optional)
+                      </label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-2 bg-[#0a0f1d] rounded-xl border border-slate-800">
+                        {ads.filter(a => a.status === 'active').map(ad => (
+                          <label key={ad.id} className="flex items-center gap-2.5 cursor-pointer p-1.5 hover:bg-slate-800/40 rounded-lg">
+                            <input
+                              type="checkbox"
+                              checked={adCampaignIds.includes(ad.id)}
+                              onChange={(e) => setAdCampaignIds(prev =>
+                                e.target.checked ? [...prev, ad.id] : prev.filter(id => id !== ad.id)
+                              )}
+                              className="rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs text-slate-300 font-medium">{ad.campaignName}</span>
+                          </label>
+                        ))}
+                        {ads.filter(a => a.status === 'active').length === 0 && (
+                          <p className="text-xs text-slate-500 p-2">Existing active campaigns appear here</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                <p className="text-xs text-slate-500 pt-1">
+                  Preserve existing campaign selection and defaults. No new advertising products or formats.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB 5: REVIEW & PUBLISH ===================== */}
+        {activeTab === 'review' && (
+          <div className="grid lg:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Read-Only Match Summary */}
+            <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                  <h3>Review match details</h3>
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Categories */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-4">
-            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-              <Tag className="w-5 h-5 text-green-500" />
-              <h3>Categories</h3>
-            </div>
-            <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
-              {categories.map(cat => (
-                <label key={cat.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-900/50 rounded-lg cursor-pointer transition-colors group">
-                  <input 
-                    type="checkbox"
-                    checked={selectedCategories.some(id => Number(id) === Number(cat.id))}
-                    onChange={() => toggleCategory(cat.id)}
-                    className="w-4 h-4 rounded border-slate-300 text-yellow-500 focus:ring-yellow-500"
-                  />
-                  <span className="text-sm text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{cat.name}</span>
-                </label>
-              ))}
-            </div>
-            <button 
-              onClick={() => navigate('/admin/categories')}
-              className="text-xs font-bold text-indigo-500 hover:text-indigo-400 transition-colors flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" />
-              Add New Category
-            </button>
-          </div>
-
-          {/* Scheduling */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-                <Calendar className="w-5 h-5 text-indigo-500" />
-              </div>
-              <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl w-48">
-                <button 
-                  onClick={() => setPublishMode('now')}
-                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${publishMode === 'now' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                >
-                  Now
-                </button>
-                <button 
-                  onClick={() => setPublishMode('scheduled')}
-                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${publishMode === 'scheduled' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                >
-                  Scheduled
-                </button>
-              </div>
-            </div>
-
-            {publishMode === 'scheduled' ? (
-              <div className="animate-in fade-in slide-in-from-top-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Match Date & Time</label>
-                <input 
-                  type="datetime-local"
-                  value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-                />
-              </div>
-            ) : (
-              <div className="bg-yellow-50 dark:bg-yellow-500/10 p-4 rounded-xl border border-yellow-100 dark:border-yellow-500/20 animate-in fade-in slide-in-from-top-2 flex items-center gap-3">
-                 <div className="w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-500/20 flex items-center justify-center shrink-0">
-                    <Clock className="w-4 h-4 text-yellow-600 dark:text-yellow-500" />
-                 </div>
-                 <p className="text-xs font-bold text-yellow-800 dark:text-yellow-500 leading-tight">
-                    Match will be published immediately with current time.
-                 </p>
-              </div>
-            )}
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Match Status</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextOverride = !isManualOverride;
-                    setIsManualOverride(nextOverride);
-                    if (nextOverride && !customDate) {
-                      setCustomDate(new Date().toISOString().slice(0, 16));
-                    }
-                  }}
-                  className="text-[11px] font-semibold text-yellow-600 dark:text-yellow-400 hover:underline"
-                >
-                  {isManualOverride ? 'Use Automated Detection' : 'Manual Override'}
-                </button>
-              </div>
-
-              {!isManualOverride ? (
-                <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    {getCalculatedStatus() === 'upcoming' && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
-                        <Clock className="w-3.5 h-3.5" /> UPCOMING (Auto)
-                      </span>
-                    )}
-                    {getCalculatedStatus() === 'live' && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20">
-                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> LIVE NOW (Auto)
-                      </span>
-                    )}
-                    {getCalculatedStatus() === 'completed' && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20">
-                        ✓ COMPLETED (Auto)
-                      </span>
-                    )}
-                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      Calculated from kickoff & duration
+                <div className="divide-y divide-slate-800/80 text-xs sm:text-sm">
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Title</span>
+                    <span className="font-bold text-white">{title || 'Untitled Match'}</span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Permalink</span>
+                    <code className="font-mono text-xs text-blue-400 bg-[#0a0f1d] px-2 py-0.5 rounded">
+                      /matches/{slug || '...'}
+                    </code>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Categories</span>
+                    <span className="font-medium text-slate-200">{selectedCategoryNames}</span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Video source</span>
+                    <span className="font-bold text-white capitalize">
+                      {streamProvider === 'mux' ? 'Mux Video / Live' : streamProvider === 'youtube' ? 'YouTube' : 'Custom Embed'}
+                    </span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Match status</span>
+                    <span className="inline-flex items-center gap-1.5 font-bold text-blue-400">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      {formatMatchStatus(currentEffectiveStatus)} ({isManualOverride ? 'Manual' : 'Automatic'})
+                    </span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Match date</span>
+                    <span className="font-mono text-xs text-slate-200">
+                      {customDate ? new Date(customDate).toLocaleString() : 'Current Date/Time'}
+                    </span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Duration</span>
+                    <span className="font-medium text-slate-200">{duration || 120} minutes</span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Viewing access</span>
+                    <span className="font-bold text-white">
+                      {accessType === 'free' && 'Free Access'}
+                      {accessType === 'ppv' && `Pay-Per-View (${currencySymbol}${Number(ppvPrice || 0).toFixed(2)})${assignedClubName ? ` • Club: ${assignedClubName}` : ''}`}
+                      {accessType === 'plan' && `Plan / Subscription (${assignedPlanName || 'Required Plan'})`}
+                    </span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Event access duration</span>
+                    <span className="font-medium text-slate-200">
+                      {eventAccessEnabled ? `Enabled (${eventAccessPreset})` : 'Disabled'}
+                    </span>
+                  </div>
+                  <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="font-semibold text-slate-400">Advertising</span>
+                    <span className="font-medium text-slate-200">
+                      {adSettingsEnabled ? 'Enabled' : 'Disabled'}
                     </span>
                   </div>
                 </div>
-              ) : (
-                <select 
-                  value={status}
-                  onChange={(e) => {
-                    const newStatus = e.target.value as any;
-                    setStatus(newStatus);
-                    if ((newStatus === 'completed' || newStatus === 'live') && !customDate) {
-                      setCustomDate(new Date().toISOString().slice(0, 16));
-                    }
-                  }}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
+
+                <div className="bg-[#0a0f1d] border border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-400 leading-relaxed">
+                  Summary is display-only and must always reflect the editor's current values; no new backend data fields.
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Publication Timing & Ready to Submit */}
+            <div className="lg:col-span-5 xl:col-span-4 space-y-6">
+              {/* Publication Timing Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <Clock className="w-5 h-5 text-blue-500" />
+                  <h3>Publication timing</h3>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                    Publish match
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setPublishMode('now')}
+                      className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                        publishMode === 'now'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPublishMode('scheduled')}
+                      className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+                        publishMode === 'scheduled'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Scheduled
+                    </button>
+                  </div>
+                </div>
+
+                {publishMode === 'scheduled' ? (
+                  <div className="space-y-2 animate-in fade-in">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      Scheduled date & time
+                    </label>
+                    <input 
+                      type="datetime-local"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white outline-none transition-colors"
+                    />
+                  </div>
+                ) : (
+                  <div className="bg-blue-950/20 border border-blue-900/40 rounded-xl p-3 text-xs text-blue-300 leading-relaxed">
+                    Match will be published immediately with current time.
+                  </div>
+                )}
+
+                <p className="text-xs text-slate-500">
+                  Retain the current publication workflow; separate drafts are not confirmed.
+                </p>
+              </div>
+
+              {/* Ready to Submit Card */}
+              <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2.5 text-base font-bold text-white border-b border-slate-800/80 pb-4">
+                  <CheckCircle className="w-5 h-5 text-blue-500" />
+                  <h3>Ready to submit?</h3>
+                </div>
+
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Review the current fields. Missing required values should direct an operator to the relevant tab.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="w-full py-3.5 px-6 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
                 >
-                  <option value="upcoming">Upcoming</option>
-                  <option value="live">Live Now</option>
-                  <option value="completed">Completed</option>
-                </select>
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>
+                    {isSaving 
+                      ? (isEditing ? 'Updating Match...' : 'Publishing Match...') 
+                      : (isEditing ? 'Update Match' : 'Post Match')}
+                  </span>
+                </button>
+
+                <p className="text-xs text-slate-500 text-center">
+                  The same existing save action as the header. Edit mode: Update Match.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* Media Picker Modal */}
+      {showMediaPicker && (
+        <MediaPicker
+          onSelect={(url) => {
+            setThumbnail(url);
+            setShowMediaPicker(false);
+          }}
+          onClose={() => setShowMediaPicker(false)}
+        />
+      )}
+
+      {/* Live Preview Modal Overlay when Preview is toggled in Header */}
+      {isPreviewMode && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
+          <div className="bg-[#0f172a] border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2">
+                <Eye className="w-5 h-5 text-blue-500" />
+                <h3 className="text-lg font-bold text-white">Live Match Preview</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsPreviewMode(false)}
+                className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Stream Player Preview */}
+            <div className="aspect-video w-full rounded-xl bg-black border border-slate-800 overflow-hidden relative">
+              {description ? (
+                <div 
+                  className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>video]:w-full [&>video]:h-full [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:block"
+                  dangerouslySetInnerHTML={{ __html: formatStreamHtml(description, { isLive: currentEffectiveStatus === 'live' }) }}
+                />
+              ) : thumbnail ? (
+                <img src={thumbnail} alt="Match Preview" className="w-full h-full object-cover" />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                  <Play className="w-12 h-12 mb-2 text-slate-600" />
+                  <p className="text-sm font-semibold">No stream or thumbnail configured yet</p>
+                </div>
               )}
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Match Duration (Minutes)</label>
-              <div className="flex items-center gap-2 mb-2">
-                {[90, 120, 150, 180].map((mins) => (
-                  <button
-                    key={mins}
-                    type="button"
-                    onClick={() => setDuration(mins)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                      Number(duration) === mins
-                        ? 'bg-yellow-500 text-slate-900 border-yellow-500 shadow-sm'
-                        : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-yellow-500/50'
-                    }`}
-                  >
-                    {mins}m
-                  </button>
-                ))}
+            {/* Match Information Preview */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-blue-600 text-white">
+                  {formatMatchStatus(currentEffectiveStatus)}
+                </span>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider bg-slate-800 text-slate-300">
+                  {accessType === 'free' ? 'Free Access' : accessType === 'ppv' ? `PPV (${currencySymbol}${ppvPrice})` : 'Plan Required'}
+                </span>
+                <span className="text-xs text-slate-400 font-medium ml-auto">
+                  {customDate ? new Date(customDate).toLocaleDateString() : 'Today'} • {duration} mins
+                </span>
               </div>
-              <input 
-                type="number"
-                min="15"
-                max="600"
-                value={duration}
-                onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
-                placeholder="e.g. 120"
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-              />
-              <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-1">
-                Match will stay 'Live' for this duration after kick-off before automatically marking as 'Completed'.
-              </p>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Original Creation / Match Date</label>
-                <button
-                  type="button"
-                  onClick={() => setCustomDate(new Date().toISOString().slice(0, 16))}
-                  className="text-[11px] font-semibold text-yellow-600 dark:text-yellow-400 hover:underline"
-                >
-                  Set to Current Time
-                </button>
-              </div>
-              <input 
-                type="datetime-local"
-                value={customDate}
-                onChange={(e) => setCustomDate(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-              />
-              <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-1">
-                Customize the timestamp displayed to users. If not entered, the current date/time is automatically used.
-              </p>
-            </div>
-          </div>
-
-          {/* Commenting Settings */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-4">
-            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-              <MessageSquare className="w-5 h-5 text-pink-500" />
-              <h3>Live Commenting</h3>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-slate-600 dark:text-slate-400">Enable Comments</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer"
-                  checked={liveCommenting}
-                  onChange={(e) => setLiveCommenting(e.target.checked)}
+              <h2 className="text-2xl font-black text-white">{title || 'Untitled Match Preview'}</h2>
+              {content && (
+                <div 
+                  className="text-xs sm:text-sm text-slate-300 prose prose-invert max-w-none pt-2"
+                  dangerouslySetInnerHTML={{ __html: content }}
                 />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 dark:peer-focus:ring-yellow-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-yellow-500"></div>
-              </label>
+              )}
             </div>
-            
-            {liveCommenting && (
-              <div className="animate-in fade-in slide-in-from-top-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Comment Alignment</label>
-                <select 
-                  value={commentAlignment}
-                  onChange={(e) => setCommentAlignment(e.target.value as 'left' | 'center' | 'right')}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
-                >
-                  <option value="left">Left</option>
-                  <option value="center">Center</option>
-                  <option value="right">Right</option>
-                </select>
-              </div>
-            )}
-          </div>
 
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-6">
-            <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-              <DollarSign className="w-5 h-5 text-emerald-500" />
-              <h3>Advertisement Settings</h3>
+            <div className="flex justify-end pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsPreviewMode(false)}
+                className="px-5 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-white transition-colors"
+              >
+                Close Preview
+              </button>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-slate-600 dark:text-slate-400">Enable Ads for Free Viewers</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer"
-                  checked={adSettingsEnabled}
-                  onChange={(e) => setAdSettingsEnabled(e.target.checked)}
-                />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 dark:peer-focus:ring-emerald-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-500"></div>
-              </label>
-            </div>
-            
-            {adSettingsEnabled && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Display Frequency Override (Minutes)</label>
-                  <input
-                    type="number"
-                    value={adFrequencyOverride}
-                    onChange={(e) => setAdFrequencyOverride(e.target.value)}
-                    placeholder="Global settings used by default"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white transition-colors placeholder:text-slate-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Select Campaign Overrides (Optional)</label>
-                  <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
-                    {ads.filter(a => a.status === 'active').map(ad => (
-                      <label key={ad.id} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={adCampaignIds.includes(ad.id)}
-                          onChange={(e) => setAdCampaignIds(prev =>
-                            e.target.checked ? [...prev, ad.id] : prev.filter(id => id !== ad.id)
-                          )}
-                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <span className="text-sm text-slate-600 dark:text-slate-400">{ad.campaignName}</span>
-                      </label>
-                    ))}
-                    {ads.filter(a => a.status === 'active').length === 0 && (
-                      <p className="text-sm text-slate-500">No active campaigns available.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
-      </div>
-
-      {showMediaPicker && (
-        <MediaPicker
-            onSelect={(url) => {
-              setThumbnail(url);
-              setShowMediaPicker(false);
-            }}
-            onClose={() => setShowMediaPicker(false)}
-        />
       )}
+
     </div>
   );
 }

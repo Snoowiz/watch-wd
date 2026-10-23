@@ -7,6 +7,7 @@ import {
   Tv, Eye
 } from 'lucide-react';
 import { useAuthStore } from '../../store';
+import { formatMatchStatus } from '../../utils/statusHelper';
 
 interface ClubInfo {
   id: string;
@@ -518,11 +519,13 @@ export function PartnerDashboard() {
                         <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[10px] ${
                           m.status === 'live'
                             ? 'bg-red-500/10 text-red-500 border border-red-500/20 animate-pulse'
-                            : m.status === 'finished' || m.status === 'completed'
+                            : m.status === 'finished' || m.status === 'completed' || m.status === 'full_match'
                             ? 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                            : m.status === 'highlights'
+                            ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
                             : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                         }`}>
-                          {m.status || 'scheduled'}
+                          {formatMatchStatus(m.status) || 'Scheduled'}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 uppercase font-bold text-slate-600 dark:text-slate-300">

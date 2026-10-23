@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore, useSavedMatchesStore, Match } from '../store';
 import { Play, Calendar, Users, Star, ArrowLeft, Bookmark } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatMatchStatus } from '../utils/statusHelper';
 
 export function SavedMatches() {
   const { user } = useAuthStore();
@@ -94,9 +95,10 @@ export function SavedMatches() {
                   <span className={`px-2 py-1 rounded text-xs font-bold text-white shadow-sm ${
                     match.status === 'live' ? 'bg-red-500 animate-pulse' :
                     match.status === 'upcoming' ? 'bg-blue-500' :
+                    match.status === 'highlights' ? 'bg-purple-600' :
                     'bg-slate-600'
                   }`}>
-                    {match.status.toUpperCase()}
+                    {formatMatchStatus(match.status).toUpperCase()}
                   </span>
                 </div>
 

@@ -62,7 +62,7 @@ export function CreatorDashboard() {
       date: new Date().toISOString(),
       price: uploadData.price,
       embedPrice: 0,
-      status: 'completed',
+      status: 'full_match',
       publishStatus: 'pending',
       creatorId: user.id,
       thumbnail: finalThumbnail || 'https://picsum.photos/seed/creatorvid/800/450',

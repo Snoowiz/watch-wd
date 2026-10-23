@@ -438,7 +438,7 @@ export type BlockType =
 export interface HomepageBlockFilter {
   categoryIds?: number[];
   clubIds?: string[];
-  status?: ('upcoming' | 'live' | 'completed')[];
+  status?: ('upcoming' | 'live' | 'completed' | 'full_match' | 'highlights')[];
   access?: ('free' | 'paid')[];
   dateRange?: { start?: string; end?: string };
 }
@@ -1200,7 +1200,7 @@ export interface Match {
   date: string;
   price: number;
   embedPrice: number; // Price for creators to embed
-  status: 'upcoming' | 'live' | 'completed';
+  status: 'upcoming' | 'live' | 'completed' | 'full_match' | 'highlights';
   publishStatus?: 'pending' | 'approved' | 'rejected' | 'published' | 'draft' | 'scheduled'; // For creator uploaded videos
   creatorId?: number;
   thumbnail: string;
@@ -2468,7 +2468,7 @@ export function createDefaultBlock(type: BlockType): HomepageBlock {
         maxItems: 6,
         showViewAll: true,
         viewAllUrl: '/matches',
-        filters: { status: ['completed'] }
+        filters: { status: ['full_match', 'completed', 'highlights'] }
       };
     case 'latest_blogs':
       return {
