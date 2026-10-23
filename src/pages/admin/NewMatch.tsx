@@ -366,16 +366,16 @@ export function NewMatch() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 pb-24 transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 pb-24 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
         
         {/* Top Header Card */}
-        <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-sm dark:shadow-xl mb-6 transition-colors">
+        <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 flex items-center justify-between shadow-sm dark:shadow-xl mb-6 transition-all">
           <div className="flex items-center gap-3">
             <button 
               type="button"
               onClick={() => navigate('/admin/matches')}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition-colors"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition-colors"
               title="Back to Match Management"
             >
               <X className="w-5 h-5" />
@@ -392,7 +392,7 @@ export function NewMatch() {
               className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 border ${
                 isPreviewMode 
                   ? 'border-current' 
-                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#0a0f1d] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border-slate-200 dark:border-slate-800 dark:hover:bg-slate-800/80'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-950/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border-slate-200 dark:border-slate-800/80 dark:hover:bg-slate-800/60'
               }`}
             >
               <Eye className="w-4 h-4" />
@@ -420,7 +420,7 @@ export function NewMatch() {
         </div>
 
         {/* Five Navigation Tabs */}
-        <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-2 flex gap-2 overflow-x-auto no-scrollbar shadow-sm dark:shadow-lg mb-8 transition-colors">
+        <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-2 flex gap-2 overflow-x-auto no-scrollbar shadow-sm dark:shadow-lg mb-8 transition-all">
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -432,7 +432,7 @@ export function NewMatch() {
                 className={`flex-1 min-w-[140px] py-3 px-4 rounded-xl text-xs sm:text-sm font-bold text-center transition-all ${
                   isActive
                     ? ''
-                    : 'bg-slate-50 hover:bg-slate-100 dark:bg-[#0a0f1d] dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-800/60'
+                    : 'bg-slate-50/80 hover:bg-slate-100/80 dark:bg-slate-950/40 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200/80 dark:border-slate-800/60'
                 }`}
               >
                 {tab.label}
@@ -469,7 +469,7 @@ export function NewMatch() {
           <div className="grid lg:grid-cols-12 gap-6 items-start">
             {/* Left Column: Match Details & Rich Text Editor */}
             <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Layout className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Match details</h3>
@@ -485,7 +485,7 @@ export function NewMatch() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Home Club v Away Club"
-                    className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -494,7 +494,7 @@ export function NewMatch() {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                     Permalink / slug
                   </label>
-                  <div className="flex items-center bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus-within:border-[var(--primary-500)] focus-within:ring-1 focus-within:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm transition-colors">
+                  <div className="flex items-center bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus-within:border-[var(--primary-500)] focus-within:ring-1 focus-within:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm transition-colors">
                     <span className="text-slate-400 dark:text-slate-500 font-mono text-xs select-none shrink-0">
                       https://watchwds.com/matches/
                     </span>
@@ -515,13 +515,13 @@ export function NewMatch() {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                     Match description (rich-text editor)
                   </label>
-                  <div className="prose-editor border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-[#0a0f1d] transition-colors">
+                  <div className="prose-editor border border-slate-200 dark:border-slate-800/80 rounded-xl overflow-hidden bg-white dark:bg-slate-950/40 transition-colors">
                     <ReactQuill
                       theme="snow"
                       value={content}
                       onChange={setContent}
                       placeholder="Add a match introduction or coverage description for supporters..."
-                      className="bg-white dark:bg-[#0a0f1d] text-slate-900 dark:text-slate-100"
+                      className="bg-white dark:bg-slate-950/40 text-slate-900 dark:text-slate-100"
                       modules={{
                         toolbar: [
                           [{ 'header': [1, 2, 3, false] }],
@@ -544,7 +544,7 @@ export function NewMatch() {
             {/* Right Column: Thumbnail & Categories */}
             <div className="lg:col-span-5 xl:col-span-4 space-y-6">
               {/* Match Thumbnail Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <ImageIcon className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Match thumbnail</h3>
@@ -552,7 +552,7 @@ export function NewMatch() {
 
                 <div
                   onClick={() => setShowMediaPicker(true)}
-                  className="w-full relative aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800 hover:border-[var(--primary-500)] bg-slate-50 dark:bg-[#0a0f1d] transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center text-center p-4 group"
+                  className="w-full relative aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800/80 hover:border-[var(--primary-500)] bg-slate-50/80 dark:bg-slate-950/40 transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center text-center p-4 group"
                 >
                   {thumbnail ? (
                     <>
@@ -588,7 +588,7 @@ export function NewMatch() {
               </div>
 
               {/* Categories Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Tag className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Categories</h3>
@@ -604,7 +604,7 @@ export function NewMatch() {
                         className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
                           isChecked 
                             ? 'text-slate-900 dark:text-white shadow-xs' 
-                            : 'bg-slate-50 dark:bg-[#0a0f1d] border-slate-200 dark:border-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
+                            : 'bg-slate-50/80 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
                         <input 
@@ -643,7 +643,7 @@ export function NewMatch() {
           <div className="grid lg:grid-cols-12 gap-6 items-start">
             {/* Left Column: Video Provider, Markup & Live Preview */}
             <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Play className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Broadcast stream & embeds</h3>
@@ -654,7 +654,7 @@ export function NewMatch() {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                     Video source
                   </label>
-                  <div className="grid grid-cols-3 gap-2 bg-slate-100 dark:bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <div className="grid grid-cols-3 gap-2 bg-slate-100/80 dark:bg-slate-950/40 p-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
                     <button
                       type="button"
                       onClick={() => setStreamProvider('youtube')}
@@ -703,7 +703,7 @@ export function NewMatch() {
                     <input 
                       type="text"
                       placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
                       onChange={(e) => {
                         const val = e.target.value.trim();
                         if (val) setDescription(val);
@@ -721,7 +721,7 @@ export function NewMatch() {
                     <input 
                       type="text"
                       placeholder="e.g. d54001aBCdE123 or https://stream.mux.com/PLAYBACK_ID.m3u8"
-                      className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
                       onChange={(e) => {
                         const val = e.target.value.trim();
                         if (val) {
@@ -743,7 +743,7 @@ export function NewMatch() {
                     onChange={(e) => setDescription(e.target.value)}
                     rows={4}
                     placeholder="Existing embed markup remains editable..."
-                    className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl p-4 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none resize-y leading-relaxed transition-colors"
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl p-4 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none resize-y leading-relaxed transition-colors"
                   />
                 </div>
 
@@ -753,13 +753,13 @@ export function NewMatch() {
               </div>
 
               {/* Stream Embed Live Preview Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Video className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Stream embed preview</h3>
                 </div>
 
-                <div className="w-full aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-[#0a0f1d] overflow-hidden flex flex-col items-center justify-center p-2 text-center transition-colors">
+                <div className="w-full aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800/80 bg-slate-100/80 dark:bg-slate-950/40 overflow-hidden flex flex-col items-center justify-center p-2 text-center transition-colors">
                   {description ? (
                     <div 
                       className="w-full h-full overflow-hidden [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block"
@@ -780,7 +780,7 @@ export function NewMatch() {
             {/* Right Column: Timing, Status & Commenting */}
             <div className="lg:col-span-5 xl:col-span-4 space-y-6">
               {/* Match Timing & Status Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Clock className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Match timing & status</h3>
@@ -805,7 +805,7 @@ export function NewMatch() {
                     type="datetime-local"
                     value={customDate}
                     onChange={(e) => setCustomDate(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                   />
                 </div>
 
@@ -832,7 +832,7 @@ export function NewMatch() {
                   </div>
 
                   {!isManualOverride ? (
-                    <div className="bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-xl p-3 flex items-center justify-between transition-colors">
+                    <div className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 flex items-center justify-between transition-colors">
                       <div className="flex items-center gap-2">
                         {getCalculatedStatus() === 'upcoming' && (
                           <span style={primaryBadgeStyle} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border">
@@ -862,7 +862,7 @@ export function NewMatch() {
                           setCustomDate(new Date().toISOString().slice(0, 16));
                         }
                       }}
-                      className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                     >
                       <option value="upcoming">Upcoming</option>
                       <option value="live">Live Now</option>
@@ -887,7 +887,7 @@ export function NewMatch() {
                         className={`py-2 text-xs font-bold rounded-lg border transition-all ${
                           Number(duration) === mins
                             ? 'border-transparent shadow-sm'
-                            : 'bg-slate-100 dark:bg-[#0a0f1d] text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
+                            : 'bg-slate-100/80 dark:bg-slate-950/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-800/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
                         {mins}m
@@ -900,7 +900,7 @@ export function NewMatch() {
                     max="600"
                     value={duration}
                     onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors font-mono"
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors font-mono"
                   />
                   <p className="text-[11px] text-slate-500 mt-2">
                     Existing auto/manual status rules stay as they are.
@@ -909,7 +909,7 @@ export function NewMatch() {
               </div>
 
               {/* Live Commenting Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <MessageSquare className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Live commenting</h3>
@@ -939,7 +939,7 @@ export function NewMatch() {
                     <select 
                       value={commentAlignment}
                       onChange={(e) => setCommentAlignment(e.target.value as any)}
-                      className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none capitalize transition-colors"
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none capitalize transition-colors"
                     >
                       <option value="center">Centre</option>
                       <option value="left">Left</option>
@@ -957,7 +957,7 @@ export function NewMatch() {
           <div className="grid lg:grid-cols-12 gap-6 items-start">
             {/* Left Column: Viewing Access, PPV, Subscription, Partner Club */}
             <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Lock className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Access control</h3>
@@ -968,7 +968,7 @@ export function NewMatch() {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                     Viewing access
                   </label>
-                  <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <div className="grid grid-cols-2 gap-2 bg-slate-100/80 dark:bg-slate-950/40 p-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
                     <button
                       type="button"
                       onClick={() => setAccessType('free')}
@@ -1005,7 +1005,7 @@ export function NewMatch() {
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                         Paid access type
                       </label>
-                      <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <div className="grid grid-cols-2 gap-2 bg-slate-100/80 dark:bg-slate-950/40 p-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
                         <button
                           type="button"
                           onClick={() => setAccessType('ppv')}
@@ -1049,7 +1049,7 @@ export function NewMatch() {
                               step="0.01"
                               value={ppvPrice}
                               onChange={(e) => setPpvPrice(Number(e.target.value))}
-                              className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl pl-9 pr-4 py-3 text-sm text-slate-900 dark:text-white font-mono outline-none transition-colors"
+                              className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl pl-9 pr-4 py-3 text-sm text-slate-900 dark:text-white font-mono outline-none transition-colors"
                             />
                           </div>
                           <p className="text-xs text-slate-500 mt-2">
@@ -1065,7 +1065,7 @@ export function NewMatch() {
                           <select
                             value={clubId || ''}
                             onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
-                            className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                            className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                           >
                             <option value="">No club — choose an existing partner club</option>
                             {clubs.map(c => (
@@ -1094,7 +1094,7 @@ export function NewMatch() {
                               }
                             }
                           }}
-                          className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                          className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                         >
                           <option value="" disabled>Select a plan...</option>
                           {plans.map(p => (
@@ -1109,7 +1109,7 @@ export function NewMatch() {
                 )}
 
                 {/* Bottom Callout Notice */}
-                <div className="bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
+                <div className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
                   <strong className="text-slate-900 dark:text-slate-300">Conditional fields:</strong> Free hides paid fields. Plan / Subscription shows the existing Required Plan selector instead of PPV pricing. Preserve the present access-type storage values.
                 </div>
               </div>
@@ -1118,7 +1118,7 @@ export function NewMatch() {
             {/* Right Column: Time-Limited Event Access & Existing Behavior */}
             <div className="lg:col-span-5 xl:col-span-4 space-y-6">
               {/* Time-Limited Event Access Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Clock className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Time-limited event access</h3>
@@ -1168,7 +1168,7 @@ export function NewMatch() {
                           className={`py-2 px-1 text-[11px] font-bold rounded-lg border text-center transition-all ${
                             eventAccessPreset === preset.id
                               ? 'border-transparent shadow-sm'
-                              : 'bg-slate-100 dark:bg-[#0a0f1d] text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
+                              : 'bg-slate-100/80 dark:bg-slate-950/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-800/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
                           }`}
                         >
                           {preset.label}
@@ -1183,12 +1183,12 @@ export function NewMatch() {
                           min="1"
                           value={customDurationVal}
                           onChange={(e) => setCustomDurationVal(Math.max(1, Number(e.target.value)))}
-                          className="w-24 bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white font-mono"
+                          className="w-24 bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white font-mono"
                         />
                         <select
                           value={customDurationUnit}
                           onChange={(e) => setCustomDurationUnit(e.target.value as any)}
-                          className="bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white"
+                          className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white"
                         >
                           <option value="hours">Hours</option>
                           <option value="days">Days</option>
@@ -1204,7 +1204,7 @@ export function NewMatch() {
               </div>
 
               {/* Existing Behavior Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-3 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-3 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Info className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Existing behaviour</h3>
@@ -1222,7 +1222,7 @@ export function NewMatch() {
           <div className="grid lg:grid-cols-12 gap-6 items-start">
             {/* Left Column: SEO Settings */}
             <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Globe className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>SEO settings</h3>
@@ -1237,7 +1237,7 @@ export function NewMatch() {
                     value={seo.keywords}
                     onChange={(e) => setSeo({ ...seo, keywords: e.target.value })}
                     placeholder="football, live match, grassroots"
-                    className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
                   />
                 </div>
 
@@ -1250,11 +1250,11 @@ export function NewMatch() {
                     value={seo.metaDescription}
                     onChange={(e) => setSeo({ ...seo, metaDescription: e.target.value })}
                     placeholder="Brief summary for search results..."
-                    className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl p-4 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none resize-none leading-relaxed transition-colors"
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl p-4 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none resize-none leading-relaxed transition-colors"
                   />
                 </div>
 
-                <div className="bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
+                <div className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
                   Only reuse existing saved SEO fields: keywords and metaDescription. The permalink remains on Details. Do not introduce a search-title field or new metadata schema.
                 </div>
               </div>
@@ -1262,7 +1262,7 @@ export function NewMatch() {
 
             {/* Right Column: Advertisement Settings */}
             <div className="lg:col-span-5 xl:col-span-4 space-y-6">
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <DollarSign className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Advertisement settings</h3>
@@ -1302,7 +1302,7 @@ export function NewMatch() {
                         value={adFrequencyOverride}
                         onChange={(e) => setAdFrequencyOverride(e.target.value)}
                         placeholder="Global settings used by default"
-                        className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
+                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
                       />
                     </div>
 
@@ -1310,9 +1310,9 @@ export function NewMatch() {
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                         Select campaign overrides (optional)
                       </label>
-                      <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-2 bg-slate-50 dark:bg-[#0a0f1d] rounded-xl border border-slate-200 dark:border-slate-800 transition-colors">
+                      <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-2 bg-slate-50/80 dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800/80 transition-colors">
                         {ads.filter(a => a.status === 'active').map(ad => (
-                          <label key={ad.id} className="flex items-center gap-2.5 cursor-pointer p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800/40 rounded-lg">
+                          <label key={ad.id} className="flex items-center gap-2.5 cursor-pointer p-1.5 hover:bg-slate-100/80 dark:hover:bg-slate-800/40 rounded-lg">
                             <input
                               type="checkbox"
                               checked={adCampaignIds.includes(ad.id)}
@@ -1346,7 +1346,7 @@ export function NewMatch() {
           <div className="grid lg:grid-cols-12 gap-6 items-start">
             {/* Left Column: Read-Only Match Summary */}
             <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-5 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <FileText className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Review match details</h3>
@@ -1359,7 +1359,7 @@ export function NewMatch() {
                   </div>
                   <div className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                     <span className="font-semibold text-slate-500 dark:text-slate-400">Permalink</span>
-                    <code style={{ color: primaryColor }} className="font-mono text-xs bg-slate-100 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded">
+                    <code style={{ color: primaryColor }} className="font-mono text-xs bg-slate-100/80 dark:bg-slate-950/40 border border-slate-200/80 dark:border-slate-800/80 px-2 py-0.5 rounded">
                       /matches/{slug || '...'}
                     </code>
                   </div>
@@ -1412,7 +1412,7 @@ export function NewMatch() {
                   </div>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
+                <div className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
                   Summary is display-only and must always reflect the editor's current values; no new backend data fields.
                 </div>
               </div>
@@ -1421,7 +1421,7 @@ export function NewMatch() {
             {/* Right Column: Publication Timing & Ready to Submit */}
             <div className="lg:col-span-5 xl:col-span-4 space-y-6">
               {/* Publication Timing Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Clock className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Publication timing</h3>
@@ -1431,7 +1431,7 @@ export function NewMatch() {
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                     Publish match
                   </label>
-                  <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-[#0a0f1d] p-1.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <div className="grid grid-cols-2 gap-2 bg-slate-100/80 dark:bg-slate-950/40 p-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
                     <button
                       type="button"
                       onClick={() => setPublishMode('now')}
@@ -1468,7 +1468,7 @@ export function NewMatch() {
                       type="datetime-local"
                       value={scheduledDate}
                       onChange={(e) => setScheduledDate(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                     />
                   </div>
                 )}
@@ -1483,7 +1483,7 @@ export function NewMatch() {
               </div>
 
               {/* Ready to Submit Card */}
-              <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm transition-colors">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <CheckCircle className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Ready to submit?</h3>
@@ -1536,7 +1536,7 @@ export function NewMatch() {
       {/* Live Preview Modal Overlay when Preview is toggled in Header */}
       {isPreviewMode && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
-          <div className="bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 space-y-6 shadow-2xl transition-colors">
+          <div className="bg-white/95 dark:bg-[#0f172a]/90 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar p-6 space-y-6 shadow-2xl transition-all">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-2">
                 <Eye className="w-5 h-5" style={{ color: primaryColor }} />
