@@ -1021,10 +1021,24 @@ interface UsersState {
   deleteUser: (id: string | number) => void;
 }
 
+export const sortUsersNewestFirst = (list: User[]): User[] => {
+  return [...list].sort((a: any, b: any) => {
+    const dateA = new Date((a as any).created_at || a.createdAt || 0).getTime();
+    const dateB = new Date((b as any).created_at || b.createdAt || 0).getTime();
+    if (!isNaN(dateA) && !isNaN(dateB) && dateA !== dateB) {
+      return dateB - dateA;
+    }
+    const numA = Number(a.id) || 0;
+    const numB = Number(b.id) || 0;
+    if (numA && numB && numA !== numB) return numB - numA;
+    return String(b.id || '').localeCompare(String(a.id || ''));
+  });
+};
+
 export const useUsersStore = create<UsersState>((set) => ({
   users: [],
-  setUsers: (users) => set({ users }),
-  addUser: (user) => set((state) => ({ users: [...state.users, user] })),
+  setUsers: (users) => set({ users: sortUsersNewestFirst(users) }),
+  addUser: (user) => set((state) => ({ users: sortUsersNewestFirst([user, ...state.users]) })),
   updateUser: (id, updates) => set((state) => ({
     users: state.users.map(u => u.id === id ? { ...u, ...updates } : u)
   })),

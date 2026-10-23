@@ -2881,7 +2881,9 @@ async function startServer() {
       avatar: data.avatar || data.user_avatar || null,
       phone: data.phone || data.phone_number || "",
       dob: data.dob || "",
-      gender: data.gender || ""
+      gender: data.gender || "",
+      created_at: data.created_at || data.createdAt || null,
+      createdAt: data.createdAt || data.created_at || null
     };
     if (normalized.balance === void 0) {
       normalized.balance = normalized.points !== void 0 ? Number(normalized.points) : 0;
@@ -7100,10 +7102,25 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.get("/api/admin/users", authenticate, requireRole(["admin"]), async (req, res) => {
+  app.get("/api/admin/users", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
     try {
       const users = await db.collection("users").get();
-      res.json(users.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const userList = users.docs.map((d) => {
+        const norm = normalizeUser(d.id, d.data());
+        return norm || { id: d.id, ...d.data() };
+      });
+      userList.sort((a, b) => {
+        const dateA = new Date(a.created_at || a.createdAt || 0).getTime();
+        const dateB = new Date(b.created_at || b.createdAt || 0).getTime();
+        if (!isNaN(dateA) && !isNaN(dateB) && dateA !== dateB) {
+          return dateB - dateA;
+        }
+        const numA = Number(a.id) || 0;
+        const numB = Number(b.id) || 0;
+        if (numA && numB && numA !== numB) return numB - numA;
+        return String(b.id || "").localeCompare(String(a.id || ""));
+      });
+      res.json(userList);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

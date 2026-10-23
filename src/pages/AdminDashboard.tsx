@@ -1289,6 +1289,20 @@ function AdminUsers() {
 
   const [userToConfirmAction, setUserToConfirmAction] = useState<{ user: any, action: 'ban' | 'unban' | 'delete' } | null>(null);
 
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a: any, b: any) => {
+      const dateA = new Date((a as any).created_at || a.createdAt || 0).getTime();
+      const dateB = new Date((b as any).created_at || b.createdAt || 0).getTime();
+      if (!isNaN(dateA) && !isNaN(dateB) && dateA !== dateB) {
+        return dateB - dateA;
+      }
+      const numA = Number(a.id) || 0;
+      const numB = Number(b.id) || 0;
+      if (numA && numB && numA !== numB) return numB - numA;
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
+  }, [users]);
+
   const handleToggleBan = async (user: any) => {
     setUserToConfirmAction({
       user,
@@ -1334,8 +1348,8 @@ function AdminUsers() {
 
   const handleExportData = () => {
     const csvContent = "data:text/csv;charset=utf-8,"
-      + "ID,Name,Email,Role,Status,Balance\n"
-      + users.map(u => `${u.id},${u.name},${u.email},${u.role},${u.status},${u.balance || 0}`).join("\n");
+      + "ID,Name,Email,Role,Status,Balance,Signup Date\n"
+      + sortedUsers.map(u => `${u.id},${u.name},${u.email},${u.role},${u.status},${u.balance || 0},${(u as any).created_at || u.createdAt || ''}`).join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -1416,7 +1430,7 @@ function AdminUsers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {users.map((u) => (
+              {sortedUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
@@ -1432,6 +1446,11 @@ function AdminUsers() {
                           {u.verified && <CheckCircle className="w-4 h-4 text-blue-500" />}
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400">{u.email}</div>
+                        {Boolean((u as any).created_at || u.createdAt) && (
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
+                            Joined {new Date((u as any).created_at || u.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>
