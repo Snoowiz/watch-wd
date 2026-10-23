@@ -201,13 +201,22 @@ export function AdminDashboard() {
               <Link
                 key={item.label}
                 to={item.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${isActive
-                    ? 'bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-white shadow-sm relative before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:bg-yellow-500 before:rounded-r-full'
-                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white'
+                className={`group flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all relative ${isActive
+                    ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-900 dark:text-white font-semibold shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/40 hover:text-slate-900 dark:hover:text-white'
                   }`}
               >
-                <Icon className={`w-5 h-5 ${isActive ? 'text-yellow-500' : ''}`} />
-                {item.label}
+                {isActive && (
+                  <span
+                    className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-yellow-500"
+                    style={{ backgroundColor: 'var(--primary-500, var(--color-yellow-500))' }}
+                  />
+                )}
+                <Icon
+                  className={`w-5 h-5 shrink-0 transition-colors ${isActive ? 'text-yellow-500' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200'}`}
+                  style={isActive ? { color: 'var(--primary-500, var(--color-yellow-500))' } : undefined}
+                />
+                <span className="truncate">{item.label}</span>
               </Link>
             );
           })}
@@ -1185,14 +1194,14 @@ function AdminOverview() {
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <Users className="w-5 h-5 text-slate-400 dark:text-slate-505" />
+                  <Users className="w-5 h-5 text-slate-400 dark:text-slate-500" />
                   <span className="font-medium text-sm text-slate-700 dark:text-slate-300">Creator Requests</span>
                 </div>
                 <span className="font-bold text-slate-900 dark:text-white text-xs font-mono">0 Queue</span>
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <Shield className="w-5 h-5 text-slate-400 dark:text-slate-505" />
+                  <Shield className="w-5 h-5 text-slate-400 dark:text-slate-500" />
                   <span className="font-medium text-sm text-slate-700 dark:text-slate-300">Operator Approvals</span>
                 </div>
                 <span className="font-bold text-slate-900 dark:text-white text-xs font-mono">0 Queue</span>
@@ -1213,7 +1222,7 @@ function AdminOverview() {
                 <div className="text-[9px] font-bold text-slate-400 mt-1 font-mono">10:45 AM</div>
               </div>
               <div className="relative">
-                <div className="absolute -left-[21px] top-1.5 w-3 h-3 rounded-full bg-white dark:bg-slate-800 border-2 border-slate-350 dark:border-slate-600"></div>
+                <div className="absolute -left-[21px] top-1.5 w-3 h-3 rounded-full bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600"></div>
                 <div className="font-bold text-sm text-slate-900 dark:text-white text-xs">Match Feed Updated</div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Final metrics successfully calculated from active streams.</div>
                 <div className="text-[9px] font-bold text-slate-400 mt-1 font-mono">09:12 AM</div>

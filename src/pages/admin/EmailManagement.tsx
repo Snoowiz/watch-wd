@@ -780,7 +780,7 @@ export function EmailManagement() {
                     <div className="flex items-start justify-between gap-2">
                       <h4 className="font-bold text-xs text-slate-900 dark:text-white truncate max-w-[80%]">{template.name}</h4>
                       {template.is_custom && (
-                        <span className="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-350 px-1.5 py-0.5 rounded text-[8px] font-black uppercase">Custom</span>
+                        <span className="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-1.5 py-0.5 rounded text-[8px] font-black uppercase">Custom</span>
                       )}
                     </div>
                     <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1 uppercase font-bold tracking-wider truncate">{template.slug.replace(/_/g, ' ')}</p>
@@ -814,7 +814,7 @@ export function EmailManagement() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button 
                       onClick={() => handleDuplicateTemplate(selectedTemplate.slug)}
-                      className="bg-slate-50 hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700 dark:text-slate-350 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5"
+                      className="bg-slate-50 hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:hover:bg-slate-700 dark:text-slate-300 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5"
                       title="Duplicate Template"
                     >
                       <Copy className="w-3.5 h-3.5" /> Duplicate
@@ -915,7 +915,7 @@ export function EmailManagement() {
                           value={selectedTemplate.body}
                           onChange={(e) => setSelectedTemplate({...selectedTemplate, body: e.target.value})}
                           rows={16}
-                          className="w-full bg-slate-950 text-slate-100 font-mono text-xs rounded-xl p-5 border border-slate-350 focus:ring-1 focus:ring-yellow-500 transition-all focus:outline-none"
+                          className="w-full bg-slate-950 text-slate-100 font-mono text-xs rounded-xl p-5 border border-slate-700 focus:ring-1 focus:ring-yellow-500 transition-all focus:outline-none"
                         />
                       </div>
                     )}
@@ -946,28 +946,28 @@ export function EmailManagement() {
                           <button 
                             type="button"
                             onClick={() => insertVisualSnippet('button')}
-                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-350 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
+                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
                           >
                             + CTA Button
                           </button>
                           <button 
                             type="button"
                             onClick={() => insertVisualSnippet('table')}
-                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-350 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
+                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
                           >
                             + Invoice Table
                           </button>
                           <button 
                             type="button"
                             onClick={() => insertVisualSnippet('divider')}
-                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-350 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
+                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
                           >
                             + Line Separator
                           </button>
                           <button 
                             type="button"
                             onClick={() => insertVisualSnippet('callout')}
-                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-350 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
+                            className="bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-slate-200 dark:border-slate-800 text-3xs font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
                           >
                             + Highlight Callout
                           </button>
@@ -1663,7 +1663,7 @@ export function EmailManagement() {
                       <button 
                         type="button"
                         onClick={() => setSettings({...settings, secure: !settings.secure})}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all border ${settings.secure ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-600' : 'bg-slate-100 dark:bg-slate-900 border-transparent text-slate-505'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all border ${settings.secure ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-600 dark:text-yellow-400' : 'bg-slate-100 dark:bg-slate-900 border-transparent text-slate-500 dark:text-slate-400'}`}
                       >
                         <LockIcon className="w-3.5 h-3.5" /> Use SSL/TLS protocol
                       </button>
@@ -1671,7 +1671,7 @@ export function EmailManagement() {
                   </div>
                 ) : (
                   <div className="bg-slate-50 dark:bg-slate-950/40 p-6 rounded-2xl border border-slate-200/50 space-y-4">
-                    <div className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-350 uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       <Globe className="w-4 h-4 text-cyan-500" /> Web API Configuration
                     </div>
                     <p className="text-2xs text-slate-400 leading-relaxed">
@@ -1852,9 +1852,9 @@ export function EmailManagement() {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-slate-600 dark:text-slate-350">
+                  <table className="w-full text-left border-collapse text-slate-600 dark:text-slate-300">
                     <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-900/50 text-[10px] font-black uppercase text-slate-450 tracking-wider border-b border-slate-100 dark:border-slate-700">
+                      <tr className="bg-slate-50 dark:bg-slate-900/50 text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider border-b border-slate-100 dark:border-slate-700">
                         <th className="p-4 px-6">Name</th>
                         <th className="p-4">Category</th>
                         <th className="p-4 text-center">Sends</th>

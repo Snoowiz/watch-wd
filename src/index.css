@@ -148,34 +148,31 @@
   justify-content: center;
 }
 
-/* Ensure primary and action buttons use crisp white text by default */
+/* Ensure solid primary action buttons use crisp text and icons */
+.btn-primary,
+.btn-solid-primary,
+.btn-rotating-border-inner,
+.play-rotating-border-inner,
 button.bg-yellow-500,
 a.bg-yellow-500,
 button.bg-yellow-400,
 a.bg-yellow-400,
 button.bg-amber-500,
 a.bg-amber-500,
-.btn-primary,
-.btn-solid-primary,
-.btn-rotating-border-inner,
-.play-rotating-border-inner,
-button[class*="bg-yellow-500"],
-a[class*="bg-yellow-500"],
-button[class*="bg-yellow-400"],
-a[class*="bg-yellow-400"],
-[role="button"].bg-yellow-500,
-[role="button"][class*="bg-yellow-500"] {
+[role="button"].bg-yellow-500 {
   color: var(--button-text-color, #ffffff) !important;
 }
 
+.btn-primary svg,
+.btn-solid-primary svg,
+.btn-rotating-border-inner svg,
+.play-rotating-border-inner svg,
 button.bg-yellow-500 svg,
 a.bg-yellow-500 svg,
 button.bg-yellow-400 svg,
 a.bg-yellow-400 svg,
-.btn-rotating-border-inner svg,
-.play-rotating-border-inner svg,
-button[class*="bg-yellow-500"] svg,
-a[class*="bg-yellow-500"] svg,
+button.bg-amber-500 svg,
+a.bg-amber-500 svg,
 [role="button"].bg-yellow-500 svg {
   color: var(--button-text-color, #ffffff) !important;
 }

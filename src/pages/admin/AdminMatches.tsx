@@ -264,6 +264,7 @@ export function AdminMatches() {
               ? 'border-yellow-500 text-yellow-500'
               : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
+          style={activeTab === 'matches' ? { borderColor: 'var(--primary-500, var(--color-yellow-500))', color: 'var(--primary-500, var(--color-yellow-500))' } : undefined}
         >
           <div className="flex items-center gap-2">
             <Video className="w-4 h-4" />
@@ -277,6 +278,7 @@ export function AdminMatches() {
               ? 'border-yellow-500 text-yellow-500'
               : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
+          style={activeTab === 'comments' ? { borderColor: 'var(--primary-500, var(--color-yellow-500))', color: 'var(--primary-500, var(--color-yellow-500))' } : undefined}
         >
           <div className="flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
@@ -500,21 +502,22 @@ export function AdminMatches() {
                           
                           <button 
                             onClick={() => navigate(`/matches/${match.slug}`)}
-                            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 rounded-lg transition-colors"
+                            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg transition-colors"
                             title="View Live"
                           >
                             <ExternalLink className="w-4 h-4" />
                           </button>
                           <button 
                             onClick={() => navigate(`/admin/matches/${match.id}/edit`)}
-                            className="p-2 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 text-yellow-600 dark:text-yellow-500 rounded-lg transition-colors"
+                            className="p-2 hover:bg-yellow-50 dark:hover:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-300 rounded-lg transition-colors"
+                            style={{ color: 'var(--primary-600, var(--color-yellow-600))' }}
                             title="Edit"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button 
                             onClick={() => handleDelete(match.id)}
-                            className="p-2 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-500 rounded-lg transition-colors"
+                            className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 rounded-lg transition-colors"
                             title="Delete"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -644,7 +647,8 @@ export function AdminMatches() {
                               setEditingComment(comment);
                               setEditText(comment.content);
                             }}
-                            className="p-1.5 hover:bg-yellow-100 dark:hover:bg-yellow-500/20 text-yellow-600 dark:text-yellow-500 rounded-lg transition-colors"
+                            className="p-1.5 hover:bg-yellow-50 dark:hover:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded-lg transition-colors"
+                            style={{ color: 'var(--primary-600, var(--color-yellow-600))' }}
                             title="Edit Comment Text"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -653,8 +657,8 @@ export function AdminMatches() {
                             onClick={() => handleToggleSpam(comment)}
                             className={`p-1.5 rounded-lg transition-colors font-bold text-xs ${
                               comment.status === 'spam'
-                                ? 'hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-500'
-                                : 'hover:bg-rose-100 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-500'
+                                ? 'hover:bg-emerald-50 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                                : 'hover:bg-rose-50 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
                             }`}
                             title={comment.status === 'spam' ? "Approve Comment" : "Mark as Spam"}
                           >

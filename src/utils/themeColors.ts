@@ -226,44 +226,32 @@ export function applyThemeColors(
     }
 
     /* Primary and action button text colors configured by admin */
+    .btn-primary,
+    .btn-solid-primary,
+    .btn-rotating-border-inner,
+    .play-rotating-border-inner,
     button.bg-yellow-500,
     a.bg-yellow-500,
     button.bg-yellow-400,
     a.bg-yellow-400,
     button.bg-amber-500,
     a.bg-amber-500,
-    .btn-primary,
-    .btn-solid-primary,
-    .btn-rotating-border-inner,
-    .play-rotating-border-inner,
-    button[class*="bg-yellow-500"],
-    a[class*="bg-yellow-500"],
-    button[class*="bg-yellow-400"],
-    a[class*="bg-yellow-400"],
-    button[class*="bg-amber-500"],
-    a[class*="bg-amber-500"],
-    [role="button"].bg-yellow-500,
-    [role="button"][class*="bg-yellow-500"] {
+    [role="button"].bg-yellow-500 {
       color: var(--button-text-color) !important;
     }
 
     /* Ensure icons inside these primary buttons match the button text color */
+    .btn-primary svg,
+    .btn-solid-primary svg,
+    .btn-rotating-border-inner svg,
+    .play-rotating-border-inner svg,
     button.bg-yellow-500 svg,
     a.bg-yellow-500 svg,
     button.bg-yellow-400 svg,
     a.bg-yellow-400 svg,
     button.bg-amber-500 svg,
     a.bg-amber-500 svg,
-    .btn-primary svg,
-    .btn-solid-primary svg,
-    .btn-rotating-border-inner svg,
-    .play-rotating-border-inner svg,
-    button[class*="bg-yellow-500"] svg,
-    a[class*="bg-yellow-500"] svg,
-    button[class*="bg-yellow-400"] svg,
-    a[class*="bg-yellow-400"] svg,
-    [role="button"].bg-yellow-500 svg,
-    [role="button"][class*="bg-yellow-500"] svg {
+    [role="button"].bg-yellow-500 svg {
       color: var(--button-text-color) !important;
     }
 
