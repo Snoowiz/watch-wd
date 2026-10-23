@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMatchStore, useCategoryStore, useSettingsStore, useCommentStore } from '../../store';
 import { useUIStore } from '../../store/uiStore';
@@ -70,21 +70,106 @@ export function AdminMatches() {
     }
   }, [activeTab]);
 
-  const filteredMatches = effectiveMatches.filter(m => {
-    const matchesSearch = (m.title || '').toLowerCase().includes((searchQuery || '').toLowerCase()) || 
-                         (m.slug || '').toLowerCase().includes((searchQuery || '').toLowerCase());
-    const isRevoked = m.revoke_status === 'revoked';
-    const matchesStatus = filterStatus === 'all' 
-      ? true 
-      : filterStatus === 'revoked'
-      ? isRevoked
-      : !isRevoked && (
-          m.status === filterStatus || 
-          ((filterStatus === 'full_match' || (filterStatus as any) === 'completed') && (m.status === 'full_match' || m.status === 'completed')) ||
-          (filterStatus === 'upcoming' && m.publishStatus === 'pending')
-        );
-    return matchesSearch && matchesStatus;
-  });
+  const isRevokedMatch = (m: any): boolean => {
+    return m.revoke_status === 'revoked' || m.revokeStatus === 'revoked';
+  };
+
+  const isHighlightMatch = (m: any): boolean => {
+    const status = String(m.status || '').toLowerCase().trim();
+    const type = String(m.type || m.match_type || '').toLowerCase().trim();
+    if (status === 'highlights' || status === 'highlight' || type === 'highlight' || type === 'highlights') return true;
+    if (Array.isArray(m.categories)) {
+      const hasHighlightCat = m.categories.some((catId: any) => {
+        const cat = categories.find(c => Number(c.id) === Number(catId) || String(c.id) === String(catId));
+        return cat && (cat.name || '').toLowerCase().includes('highlight');
+      });
+      if (hasHighlightCat) return true;
+    }
+    return false;
+  };
+
+  const isFullMatchStatus = (m: any): boolean => {
+    const status = String(m.status || '').toLowerCase().trim();
+    return status === 'full_match' || status === 'completed' || status === 'replay' || status === 'finished';
+  };
+
+  const isLiveMatch = (m: any): boolean => {
+    const status = String(m.status || '').toLowerCase().trim();
+    if (status === 'live') return true;
+    if (m.status_mode !== 'manual' && m.date) {
+      const kickoff = new Date(m.date).getTime();
+      if (!isNaN(kickoff)) {
+        const durationMs = (Number(m.duration) || 120) * 60 * 1000;
+        const now = Date.now();
+        if (now >= kickoff && now < kickoff + durationMs && !isHighlightMatch(m) && !isFullMatchStatus(m)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  const isUpcomingMatch = (m: any): boolean => {
+    const status = String(m.status || '').toLowerCase().trim();
+    const pubStatus = String(m.publish_status || m.publishStatus || '').toLowerCase().trim();
+    if (pubStatus === 'pending') return true;
+    if (status === 'upcoming') return true;
+    if (m.status_mode !== 'manual' && m.date) {
+      const kickoff = new Date(m.date).getTime();
+      if (!isNaN(kickoff) && Date.now() < kickoff && !isHighlightMatch(m) && !isFullMatchStatus(m)) {
+        return true;
+      }
+    }
+    return !isLiveMatch(m) && !isFullMatchStatus(m) && !isHighlightMatch(m) && !isRevokedMatch(m);
+  };
+
+  // Live count badges for each filter tab
+  const counts = useMemo(() => {
+    let all = 0;
+    let upcoming = 0;
+    let live = 0;
+    let full_match = 0;
+    let highlights = 0;
+    let revoked = 0;
+
+    for (const m of effectiveMatches) {
+      all++;
+      if (isRevokedMatch(m)) {
+        revoked++;
+        continue;
+      }
+      if (isHighlightMatch(m)) {
+        highlights++;
+      } else if (isLiveMatch(m)) {
+        live++;
+      } else if (isFullMatchStatus(m)) {
+        full_match++;
+      } else if (isUpcomingMatch(m)) {
+        upcoming++;
+      }
+    }
+
+    return { all, upcoming, live, full_match, highlights, revoked };
+  }, [effectiveMatches, categories]);
+
+  const filteredMatches = useMemo(() => {
+    return effectiveMatches.filter(m => {
+      const matchesSearch = (m.title || '').toLowerCase().includes((searchQuery || '').toLowerCase()) || 
+                           (m.slug || '').toLowerCase().includes((searchQuery || '').toLowerCase());
+      if (!matchesSearch) return false;
+
+      if (filterStatus === 'all') return true;
+      if (filterStatus === 'revoked') return isRevokedMatch(m);
+      if (isRevokedMatch(m)) return false;
+
+      if (filterStatus === 'highlights') return isHighlightMatch(m);
+      if (filterStatus === 'live') return isLiveMatch(m);
+      if (filterStatus === 'full_match' || (filterStatus as any) === 'completed') return isFullMatchStatus(m);
+      if (filterStatus === 'upcoming') return isUpcomingMatch(m);
+
+      return true;
+    });
+  }, [effectiveMatches, filterStatus, searchQuery, categories]);
 
   const handleRevokeMatch = async () => {
     if (!revokeConfirmMatch) return;
@@ -303,23 +388,30 @@ export function AdminMatches() {
             </div>
             <div className="flex flex-wrap p-1 bg-slate-100 dark:bg-slate-900 rounded-xl gap-1">
               {([
-                { id: 'all', label: 'All' },
-                { id: 'upcoming', label: 'Upcoming' },
-                { id: 'live', label: 'Live Now' },
-                { id: 'full_match', label: 'Full Match' },
-                { id: 'highlights', label: 'Highlights' },
-                { id: 'revoked', label: 'Revoked' }
+                { id: 'all', label: 'All', count: counts.all },
+                { id: 'upcoming', label: 'Upcoming', count: counts.upcoming },
+                { id: 'live', label: 'Live Now', count: counts.live },
+                { id: 'full_match', label: 'Full Match', count: counts.full_match },
+                { id: 'highlights', label: 'Highlights', count: counts.highlights },
+                { id: 'revoked', label: 'Revoked', count: counts.revoked }
               ] as const).map((tab) => (
                 <button 
                   key={tab.id}
                   onClick={() => setFilterStatus(tab.id as any)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
                     filterStatus === tab.id || (tab.id === 'full_match' && (filterStatus as any) === 'completed')
                       ? (tab.id === 'revoked' ? 'bg-rose-500 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm')
                       : (tab.id === 'revoked' ? 'text-rose-500 hover:text-rose-600 font-bold' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300')
                   }`}
                 >
-                  {tab.label}
+                  <span>{tab.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    filterStatus === tab.id || (tab.id === 'full_match' && (filterStatus as any) === 'completed')
+                      ? (tab.id === 'revoked' ? 'bg-rose-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200')
+                      : 'bg-slate-200/70 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                  }`}>
+                    {tab.count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -531,13 +623,34 @@ export function AdminMatches() {
                       <td colSpan={6} className="p-12 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <Video className="w-12 h-12 text-slate-200 dark:text-slate-700 mb-4" />
-                          <p className="text-slate-500 dark:text-slate-400 font-medium">No matches found</p>
-                          <button 
-                            onClick={() => navigate('/admin/matches/new')}
-                            className="mt-4 text-yellow-500 font-bold text-sm hover:text-yellow-400 transition-colors"
-                          >
-                            Create your first match
-                          </button>
+                          <p className="text-slate-700 dark:text-slate-200 font-bold text-base">
+                            {searchQuery.trim()
+                              ? `No matches found matching "${searchQuery}"`
+                              : filterStatus !== 'all'
+                              ? `No ${filterStatus === 'full_match' ? 'Full Match' : filterStatus === 'live' ? 'Live Now' : filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)} matches found`
+                              : 'No matches found in the catalog'}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                            {filterStatus !== 'all' && counts.all > 0
+                              ? `There are ${counts.all} total matches in your catalog, but none currently match the "${filterStatus === 'full_match' ? 'Full Match' : filterStatus}" filter.`
+                              : 'Create a match or schedule a broadcast to populate your catalog.'}
+                          </p>
+                          <div className="flex items-center gap-3 mt-4">
+                            {filterStatus !== 'all' && counts.all > 0 && (
+                              <button
+                                onClick={() => { setFilterStatus('all'); setSearchQuery(''); }}
+                                className="px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                              >
+                                View all {counts.all} matches
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => navigate('/admin/matches/new')}
+                              className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold text-xs px-4 py-1.5 rounded-xl transition-colors shadow-sm"
+                            >
+                              Create new match
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
