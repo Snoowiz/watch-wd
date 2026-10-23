@@ -6,6 +6,16 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+export function extractMetaCode(input?: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  const match = trimmed.match(/content=["']([^"']+)["']/i);
+  if (match && match[1]) return match[1].trim();
+  const xmlMatch = trimmed.match(/<user>([^<]+)<\/user>/i);
+  if (xmlMatch && xmlMatch[1]) return xmlMatch[1].trim();
+  return trimmed.replace(/^[<"']+|[>"']+$/g, '').trim();
+}
+
 export function AdminSEO() {
   const { seoSettings, setSeoSettings, perPageSeo, setPerPageSeo, fetchPerPageSeo, platformName } = useSettingsStore();
 
@@ -15,6 +25,10 @@ export function AdminSEO() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Live verification health state
+  const [liveHealth, setLiveHealth] = useState<any>(null);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
 
   // Ping state
   const [isPinging, setIsPinging] = useState(false);
@@ -26,6 +40,24 @@ export function AdminSEO() {
 
   // JSON-LD Copy feedback
   const [copiedSchema, setCopiedSchema] = useState(false);
+
+  const fetchLiveHealth = async () => {
+    setIsCheckingHealth(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/seo/verify-live', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLiveHealth(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch live SEO health:', e);
+    } finally {
+      setIsCheckingHealth(false);
+    }
+  };
 
   useEffect(() => {
     setFormData({ ...seoSettings });
@@ -39,8 +71,19 @@ export function AdminSEO() {
     setPerPages(perPageSeo || []);
   }, [perPageSeo]);
 
+  useEffect(() => {
+    if (activeTab === 'verifications') {
+      fetchLiveHealth();
+    }
+  }, [activeTab]);
+
   const handleGlobalChange = (key: string, value: any) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
+    // If user is pasting full tags into verification fields, sanitize automatically
+    if (['googleVerification', 'bingVerification', 'yandexVerification', 'pinterestVerification', 'baiduVerification'].includes(key)) {
+      setFormData(prev => ({ ...prev, [key]: extractMetaCode(value) }));
+    } else {
+      setFormData(prev => ({ ...prev, [key]: value }));
+    }
   };
 
   const handleSaveGlobal = async (e?: React.FormEvent) => {
@@ -49,10 +92,38 @@ export function AdminSEO() {
     setSaveMessage(null);
     setSaveError(null);
 
+    const cleanData = {
+      ...formData,
+      googleVerification: extractMetaCode(formData.googleVerification),
+      bingVerification: extractMetaCode(formData.bingVerification),
+      yandexVerification: extractMetaCode(formData.yandexVerification),
+      pinterestVerification: extractMetaCode(formData.pinterestVerification),
+      baiduVerification: extractMetaCode(formData.baiduVerification)
+    };
+
     try {
-      setSeoSettings(formData);
-      setSaveMessage('Global SEO settings saved successfully!');
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/settings/seo', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(cleanData)
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Server returned error status ${res.status}`);
+      }
+
+      setFormData(cleanData);
+      setSeoSettings(cleanData);
+      setSaveMessage('Global SEO & Search Console settings successfully saved and applied!');
       setTimeout(() => setSaveMessage(null), 4000);
+
+      // Refresh live health report
+      fetchLiveHealth();
     } catch (err: any) {
       setSaveError(err.message || 'Failed to save settings.');
     } finally {
@@ -203,7 +274,7 @@ export function AdminSEO() {
               Configure global metadata, per-page overrides, sitemap parameters, search engine webmaster verifications, and structured JSON-LD schemas.
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
             <a
               href="/sitemap.xml"
               target="_blank"
@@ -219,6 +290,14 @@ export function AdminSEO() {
               className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl font-bold text-xs border border-slate-700 transition-colors"
             >
               <Shield className="w-4 h-4 text-emerald-400" /> View Robots.txt
+            </a>
+            <a
+              href="/BingSiteAuth.xml"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl font-bold text-xs border border-slate-700 transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4 text-cyan-400" /> View BingSiteAuth.xml
             </a>
           </div>
         </div>
@@ -635,6 +714,103 @@ export function AdminSEO() {
       {/* TAB 4: VERIFICATIONS & ANALYTICS */}
       {activeTab === 'verifications' && (
         <form onSubmit={handleSaveGlobal} className="space-y-6">
+          {/* Live Engine Diagnostic Card */}
+          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 border border-indigo-900/40 rounded-2xl p-6 shadow-md text-white">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-indigo-900/50 pb-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    Live Search Console & Bot Verification Engine
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live Server Active
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Real-time status of verification files and server-side head injection for Bingbot, Googlebot, and web crawlers.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={fetchLiveHealth}
+                disabled={isCheckingHealth}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/60 hover:bg-indigo-600 text-white text-xs font-semibold border border-indigo-500/40 transition-colors disabled:opacity-50 shrink-0 self-start sm:self-auto"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingHealth ? 'animate-spin' : ''}`} />
+                {isCheckingHealth ? 'Checking...' : 'Refresh Status'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Bing Status */}
+              <div className="bg-slate-900/80 rounded-xl p-3.5 border border-slate-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-300">Bing Webmaster</span>
+                  {liveHealth?.bing?.metaActive ? (
+                    <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Ready
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-amber-400">Needs Code</span>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-400 space-y-1">
+                  <div>Tag: <span className="font-mono text-slate-200">{liveHealth?.bing?.metaActive ? 'Injected' : 'None'}</span></div>
+                  <div>File: <a href="/BingSiteAuth.xml" target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline font-mono">/BingSiteAuth.xml</a></div>
+                </div>
+              </div>
+
+              {/* Google Status */}
+              <div className="bg-slate-900/80 rounded-xl p-3.5 border border-slate-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-300">Google Console</span>
+                  {liveHealth?.google?.metaActive ? (
+                    <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Ready
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-amber-400">Needs Code</span>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-400 space-y-1">
+                  <div>Tag: <span className="font-mono text-slate-200">{liveHealth?.google?.metaActive ? 'Injected' : 'None'}</span></div>
+                  <div>File: <span className="font-mono text-slate-300">{liveHealth?.google?.metaActive ? 'HTML active' : 'None'}</span></div>
+                </div>
+              </div>
+
+              {/* Crawl Control */}
+              <div className="bg-slate-900/80 rounded-xl p-3.5 border border-slate-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-300">Robots & Indexing</span>
+                  <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Active
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 space-y-1">
+                  <div>Robots: <a href="/robots.txt" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline font-mono">/robots.txt</a></div>
+                  <div>Indexing: <span className="text-emerald-300 font-semibold">{formData.allowIndexing !== false ? 'Allowed' : 'Blocked'}</span></div>
+                </div>
+              </div>
+
+              {/* Sitemap */}
+              <div className="bg-slate-900/80 rounded-xl p-3.5 border border-slate-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-300">XML Sitemap</span>
+                  <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Active
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 space-y-1">
+                  <div>Endpoint: <a href="/sitemap.xml" target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline font-mono">/sitemap.xml</a></div>
+                  <div>Dynamic: <span className="text-indigo-300 font-semibold">Live DB Sync</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-6 shadow-sm space-y-6">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Shield className="w-5 h-5 text-indigo-500" /> Search Console & Webmaster Verification
@@ -642,8 +818,8 @@ export function AdminSEO() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Google Search Console */}
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                     Google Search Console Code
                   </label>
@@ -655,33 +831,53 @@ export function AdminSEO() {
                   type="text"
                   value={formData.googleVerification || ''}
                   onChange={e => handleGlobalChange('googleVerification', e.target.value)}
-                  placeholder="google-site-verification meta code"
+                  placeholder="e.g. 4v-vM_XXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 font-mono text-slate-900 dark:text-white"
                 />
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 space-y-1">
+                  <p className="font-semibold text-slate-700 dark:text-slate-300">Both verification methods are supported:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-slate-600 dark:text-slate-400">
+                    <li>Method 1 (Meta Tag): Injected as <code className="text-indigo-500">&lt;meta name="google-site-verification" ...&gt;</code> into HTML head.</li>
+                    <li>Method 2 (HTML File): Served automatically at <code className="text-indigo-500">/google{formData.googleVerification || 'code'}.html</code>.</li>
+                  </ul>
+                </div>
               </div>
 
               {/* Bing Webmaster */}
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                     Bing Webmaster Code
                   </label>
-                  <a href="https://www.bing.com/webmasters" target="_blank" rel="noreferrer" className="text-[11px] text-indigo-500 hover:underline flex items-center gap-1 font-semibold">
-                    Bing Webmaster <ExternalLink className="w-3 h-3" />
-                  </a>
+                  <div className="flex items-center gap-3">
+                    <a href="/BingSiteAuth.xml" target="_blank" rel="noreferrer" className="text-[11px] text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1 font-semibold">
+                      Test BingSiteAuth.xml <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <a href="https://www.bing.com/webmasters" target="_blank" rel="noreferrer" className="text-[11px] text-indigo-500 hover:underline flex items-center gap-1 font-semibold">
+                      Bing Portal <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
                 <input
                   type="text"
                   value={formData.bingVerification || ''}
                   onChange={e => handleGlobalChange('bingVerification', e.target.value)}
-                  placeholder="msvalidate.01 meta code"
+                  placeholder="e.g. F9034AB696984E360D2AA7C669DEC"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 font-mono text-slate-900 dark:text-white"
                 />
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 space-y-1">
+                  <p className="font-semibold text-slate-700 dark:text-slate-300">Both Bing verification methods are active:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-slate-600 dark:text-slate-400">
+                    <li>Method 1 (Meta Tag): Injected as <code className="text-indigo-500">&lt;meta name="msvalidate.01" ...&gt;</code> into SSR HTML head.</li>
+                    <li>Method 2 (XML File): Served live at <a href="/BingSiteAuth.xml" target="_blank" rel="noreferrer" className="text-cyan-500 underline font-mono">/BingSiteAuth.xml</a>.</li>
+                  </ul>
+                  <p className="text-[10px] text-slate-400 italic">You can paste either the raw code or the full HTML &lt;meta&gt; tag—it will clean automatically.</p>
+                </div>
               </div>
 
               {/* Yandex Webmaster */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Yandex Verification Code
                 </label>
                 <input
@@ -691,11 +887,14 @@ export function AdminSEO() {
                   placeholder="yandex-verification meta code"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 font-mono text-slate-900 dark:text-white"
                 />
+                <p className="text-[11px] text-slate-400">
+                  Injected as <code className="text-indigo-500">&lt;meta name="yandex-verification" ...&gt;</code> and served via <code className="text-indigo-500">/yandex_{formData.yandexVerification || 'code'}.html</code>.
+                </p>
               </div>
 
               {/* Pinterest Verification */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Pinterest Domain Verification
                 </label>
                 <input
@@ -705,6 +904,9 @@ export function AdminSEO() {
                   placeholder="p:domain_verify meta code"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 font-mono text-slate-900 dark:text-white"
                 />
+                <p className="text-[11px] text-slate-400">
+                  Injected as <code className="text-indigo-500">&lt;meta name="p:domain_verify" ...&gt;</code> into server head.
+                </p>
               </div>
             </div>
 
@@ -726,6 +928,7 @@ export function AdminSEO() {
                     placeholder="G-XXXXXXXXXX"
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 font-mono text-slate-900 dark:text-white"
                   />
+                  <p className="text-[11px] text-slate-400 mt-1">Direct Google Analytics measurement ID.</p>
                 </div>
 
                 <div>
@@ -739,6 +942,7 @@ export function AdminSEO() {
                     placeholder="GTM-XXXXXXX"
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 font-mono text-slate-900 dark:text-white"
                   />
+                  <p className="text-[11px] text-slate-400 mt-1">Google Tag Manager container ID.</p>
                 </div>
               </div>
             </div>

@@ -65,12 +65,21 @@ export function SEOHeadManager() {
     }
     updateMeta('robots', robotsContent);
 
-    // Site Verification Meta Tags
-    if (seoSettings.googleVerification) updateMeta('google-site-verification', seoSettings.googleVerification);
-    if (seoSettings.bingVerification) updateMeta('msvalidate.01', seoSettings.bingVerification);
-    if (seoSettings.yandexVerification) updateMeta('yandex-verification', seoSettings.yandexVerification);
-    if (seoSettings.pinterestVerification) updateMeta('p:domain_verify', seoSettings.pinterestVerification);
-    if (seoSettings.baiduVerification) updateMeta('baidu-site-verification', seoSettings.baiduVerification);
+    // Site Verification Meta Tags (clean any full tags if present)
+    const sanitizeCode = (val?: string) => {
+      if (!val) return '';
+      const match = val.match(/content=["']([^"']+)["']/i);
+      if (match && match[1]) return match[1].trim();
+      const xmlMatch = val.match(/<user>([^<]+)<\/user>/i);
+      if (xmlMatch && xmlMatch[1]) return xmlMatch[1].trim();
+      return val.replace(/^[<"']+|[>"']+$/g, '').trim();
+    };
+
+    if (seoSettings.googleVerification) updateMeta('google-site-verification', sanitizeCode(seoSettings.googleVerification));
+    if (seoSettings.bingVerification) updateMeta('msvalidate.01', sanitizeCode(seoSettings.bingVerification));
+    if (seoSettings.yandexVerification) updateMeta('yandex-verification', sanitizeCode(seoSettings.yandexVerification));
+    if (seoSettings.pinterestVerification) updateMeta('p:domain_verify', sanitizeCode(seoSettings.pinterestVerification));
+    if (seoSettings.baiduVerification) updateMeta('baidu-site-verification', sanitizeCode(seoSettings.baiduVerification));
 
     // Canonical Tag
     let canonicalEl = document.querySelector('link[rel="canonical"]') as HTMLLinkElement;

@@ -3657,6 +3657,19 @@ async function startServer() {
     if (!str) return "";
     return String(str).replace(/<iframe\b[^>]*>(.*?)<\/iframe>/gis, " ").replace(/<iframe\b[^>]*\/?>/gis, " ").replace(/<video\b[^>]*>(.*?)<\/video>/gis, " ").replace(/<video\b[^>]*\/?>/gis, " ").replace(/<audio\b[^>]*>(.*?)<\/audio>/gis, " ").replace(/<audio\b[^>]*\/?>/gis, " ").replace(/<script\b[^>]*>(.*?)<\/script>/gis, " ").replace(/<style\b[^>]*>(.*?)<\/style>/gis, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/\s+/g, " ").trim();
   }
+  function extractMetaCode(input) {
+    if (!input) return "";
+    const trimmed = String(input).trim();
+    const contentMatch = trimmed.match(/content=["']([^"']+)["']/i);
+    if (contentMatch && contentMatch[1]) {
+      return contentMatch[1].trim();
+    }
+    return trimmed.replace(/^<meta[^>]*>$/i, "").replace(/["']/g, "").trim();
+  }
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
   app.get("/api/search", async (req, res) => {
     try {
       const queryStr = String(req.query.q || "").trim().toLowerCase();
@@ -8133,13 +8146,58 @@ async function startServer() {
     <priority>${u.priority || defaultPriority}</priority>
   </url>`).join("\n");
       const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemap.orgs/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${xmlUrls}
 </urlset>`;
-      res.header("Content-Type", "application/xml");
+      res.header("Content-Type", "application/xml; charset=utf-8");
       res.send(xmlContent);
     } catch (e) {
       res.status(500).send(`<?xml version="1.0" encoding="UTF-8"?><error>${e.message}</error>`);
+    }
+  });
+  app.get("/BingSiteAuth.xml", async (req, res) => {
+    try {
+      const seoSnap = await db.collection("settings").doc("seo").get();
+      const seoData = seoSnap.exists ? seoSnap.data() : {};
+      const bingCode = extractMetaCode(seoData?.bingVerification || "");
+      if (!bingCode) {
+        return res.status(404).type("text/plain").send("Bing verification code not configured.");
+      }
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<users>
+  <user>${escapeHtml(bingCode)}</user>
+</users>`;
+      res.type("application/xml; charset=utf-8").send(xml);
+    } catch (e) {
+      res.status(500).type("text/plain").send("Error loading Bing verification file.");
+    }
+  });
+  app.get("/google:code.html", async (req, res, next) => {
+    try {
+      const seoSnap = await db.collection("settings").doc("seo").get();
+      const seoData = seoSnap.exists ? seoSnap.data() : {};
+      const expectedCode = extractMetaCode(seoData?.googleVerification || "");
+      const requestedCode = req.params.code;
+      if (expectedCode && (expectedCode === requestedCode || expectedCode.includes(requestedCode) || requestedCode.includes(expectedCode))) {
+        return res.type("text/html").send(`google-site-verification: google${requestedCode}.html`);
+      }
+      return next();
+    } catch {
+      return next();
+    }
+  });
+  app.get("/yandex_:code.html", async (req, res, next) => {
+    try {
+      const seoSnap = await db.collection("settings").doc("seo").get();
+      const seoData = seoSnap.exists ? seoSnap.data() : {};
+      const expectedCode = extractMetaCode(seoData?.yandexVerification || "");
+      const requestedCode = req.params.code;
+      if (expectedCode && (expectedCode === requestedCode || expectedCode.includes(requestedCode))) {
+        return res.type("text/html").send(`<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head><body>Verification: ${requestedCode}</body></html>`);
+      }
+      return next();
+    } catch {
+      return next();
     }
   });
   app.get("/robots.txt", async (req, res) => {
@@ -8168,7 +8226,7 @@ Disallow: /
 
 Sitemap: ${baseUrl}/sitemap.xml`;
       }
-      res.header("Content-Type", "text/plain");
+      res.header("Content-Type", "text/plain; charset=utf-8");
       res.send(robotsContent);
     } catch (e) {
       res.status(500).send("User-agent: *\nAllow: /");
@@ -8176,8 +8234,25 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   });
   app.get("/api/seo/per-page", async (_req, res) => {
     try {
-      const snap = await db.collection("settings").doc("seo_per_page").get();
-      res.json(snap.exists ? snap.data()?.pages || [] : []);
+      const [perPageSnap, settingsSnap] = await Promise.all([
+        db.collection("per_page_seo").get().catch(() => ({ docs: [] })),
+        db.collection("settings").doc("seo_per_page").get().catch(() => ({ exists: false, data: () => ({}) }))
+      ]);
+      const list = perPageSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      if (list.length > 0) return res.json(list);
+      const fallbackList = settingsSnap.exists ? settingsSnap.data()?.pages || [] : [];
+      res.json(fallbackList);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/seo/per-page", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const id = req.body.id || `page-${Date.now()}`;
+      const pageData = { ...req.body, id, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+      await db.collection("per_page_seo").doc(id).set(pageData);
+      cacheEngine.invalidateCollection("settings");
+      res.json(pageData);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -8186,7 +8261,69 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     try {
       const { pages } = req.body;
       await db.collection("settings").doc("seo_per_page").set({ pages: pages || [], updatedAt: (/* @__PURE__ */ new Date()).toISOString() });
+      if (Array.isArray(pages)) {
+        for (const p of pages) {
+          if (p.id) {
+            await db.collection("per_page_seo").doc(p.id).set(p);
+          }
+        }
+      }
+      cacheEngine.invalidateCollection("settings");
       res.json({ success: true, message: "Per-page SEO configurations saved successfully" });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.delete("/api/seo/per-page/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.collection("per_page_seo").doc(id).delete();
+      cacheEngine.invalidateCollection("settings");
+      res.json({ success: true, id });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/admin/seo/verify-live", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const origin = req.headers.host ? `${req.protocol}://${req.headers.host}` : "https://watchwds.com";
+      const seoSnap = await db.collection("settings").doc("seo").get();
+      const seoData = seoSnap.exists ? seoSnap.data() : {};
+      const baseUrl = (seoData?.canonicalBaseUrl || origin).replace(/\/$/, "");
+      const bingCode = extractMetaCode(seoData?.bingVerification || "");
+      const googleCode = extractMetaCode(seoData?.googleVerification || "");
+      const yandexCode = extractMetaCode(seoData?.yandexVerification || "");
+      const pinterestCode = extractMetaCode(seoData?.pinterestVerification || "");
+      const checks = {
+        baseUrl,
+        allowIndexing: seoData?.allowIndexing !== false,
+        bing: {
+          configured: Boolean(bingCode),
+          code: bingCode || null,
+          metaSnippet: bingCode ? `<meta name="msvalidate.01" content="${bingCode}" />` : null,
+          xmlUrl: `${baseUrl}/BingSiteAuth.xml`,
+          xmlActive: Boolean(bingCode)
+        },
+        google: {
+          configured: Boolean(googleCode),
+          code: googleCode || null,
+          metaSnippet: googleCode ? `<meta name="google-site-verification" content="${googleCode}" />` : null,
+          htmlFileUrl: googleCode ? `${baseUrl}/google${googleCode}.html` : null
+        },
+        yandex: {
+          configured: Boolean(yandexCode),
+          code: yandexCode || null,
+          metaSnippet: yandexCode ? `<meta name="yandex-verification" content="${yandexCode}" />` : null
+        },
+        pinterest: {
+          configured: Boolean(pinterestCode),
+          code: pinterestCode || null,
+          metaSnippet: pinterestCode ? `<meta name="p:domain_verify" content="${pinterestCode}" />` : null
+        },
+        sitemapUrl: `${baseUrl}/sitemap.xml`,
+        robotsTxtUrl: `${baseUrl}/robots.txt`
+      };
+      res.json({ success: true, checks });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -10484,103 +10621,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       res.json({ enabled: false, tolerance: 25 });
     }
   });
-  app.get("/robots.txt", async (_req, res) => {
-    try {
-      const snap = await db.collection("settings").doc("seo").get();
-      const seoData = snap.exists ? snap.data() : {};
-      const content = seoData?.robotsTxt || "User-agent: *\nAllow: /";
-      res.type("text/plain").send(content);
-    } catch (e) {
-      res.type("text/plain").send("User-agent: *\nAllow: /");
-    }
-  });
-  app.get("/sitemap.xml", async (req, res) => {
-    try {
-      const snap = await db.collection("settings").doc("seo").get();
-      const seoData = snap.exists ? snap.data() || {} : {};
-      const baseUrl = seoData.canonicalBaseUrl || `${req.protocol}://${req.get("host")}`;
-      const matchesSnap = await db.collection("matches").get();
-      const postsSnap = await db.collection("blog_posts").get();
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-`;
-      xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-`;
-      const routes = ["/", "/matches", "/blog", "/pricing", "/faq"];
-      for (const route of routes) {
-        xml += `  <url>
-    <loc>${baseUrl}${route}</loc>
-    <changefreq>${seoData.sitemapChangeFreq || "daily"}</changefreq>
-    <priority>${seoData.sitemapPriority || "0.8"}</priority>
-  </url>
-`;
-      }
-      matchesSnap.docs.forEach((doc) => {
-        const m = doc.data();
-        const slug = m.slug || doc.id;
-        xml += `  <url>
-    <loc>${baseUrl}/match/${slug}</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.9</priority>
-  </url>
-`;
-      });
-      postsSnap.docs.forEach((doc) => {
-        const p = doc.data();
-        const slug = p.slug || doc.id;
-        xml += `  <url>
-    <loc>${baseUrl}/blog/${slug}</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-`;
-      });
-      xml += `</urlset>`;
-      res.type("application/xml").send(xml);
-    } catch (e) {
-      res.status(500).send("Error generating sitemap");
-    }
-  });
-  app.get("/api/seo/per-page", async (_req, res) => {
-    try {
-      const snap = await db.collection("per_page_seo").get();
-      res.json(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-  app.post("/api/seo/per-page", authenticate, requireRole(["admin"]), async (req, res) => {
-    try {
-      const id = req.body.id || `page-${Date.now()}`;
-      const pageData = { ...req.body, id };
-      await db.collection("per_page_seo").doc(id).set(pageData);
-      res.json({ success: true, ...pageData });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-  app.delete("/api/seo/per-page/:id", authenticate, requireRole(["admin"]), async (req, res) => {
-    try {
-      const { id } = req.params;
-      await db.collection("per_page_seo").doc(id).delete();
-      res.json({ success: true });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-  app.post("/api/admin/seo/ping-sitemap", authenticate, requireRole(["admin"]), async (_req, res) => {
-    try {
-      res.json({
-        success: true,
-        message: "Sitemap submission request successfully dispatched to Google & Bing Search Consoles!",
-        results: {
-          google: { success: true, status: 200 },
-          bing: { success: true, status: 200 }
-        }
-      });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
   const DEFAULT_SLIDERS = [
     {
       id: "default-hero",
@@ -11094,13 +11134,182 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     }
   });
   app.use("/api", (req, res) => res.json({ success: true }));
+  async function injectSeoIntoHtml(req, html) {
+    try {
+      const origin = req.headers.host ? `${req.protocol}://${req.headers.host}` : "https://watchwds.com";
+      const [seoSnap, brandingSnap, perPageSnap] = await Promise.all([
+        db.collection("settings").doc("seo").get().catch(() => ({ exists: false, data: () => ({}) })),
+        db.collection("settings").doc("branding").get().catch(() => ({ exists: false, data: () => ({}) })),
+        db.collection("per_page_seo").get().catch(() => ({ docs: [] }))
+      ]);
+      const seo = (seoSnap.exists ? seoSnap.data() : {}) || {};
+      const branding = (brandingSnap.exists ? brandingSnap.data() : {}) || {};
+      const platformName = branding.platformName || "WatchWDS";
+      const baseUrl = (seo.canonicalBaseUrl || origin).replace(/\/$/, "");
+      const currentPath = (req.path || "/").toLowerCase();
+      const fullCanonicalUrl = `${baseUrl}${req.path || "/"}`;
+      let pageConfig = null;
+      for (const doc of perPageSnap.docs || []) {
+        const data = doc.data();
+        if (data && data.path && String(data.path).toLowerCase() === currentPath) {
+          pageConfig = data;
+          break;
+        }
+      }
+      let dynamicMatch = null;
+      if (currentPath.startsWith("/matches/") || currentPath.startsWith("/match/")) {
+        const slug = req.path.split("/")[2];
+        if (slug) {
+          try {
+            const matchQuery = await db.collection("matches").where("slug", "==", slug).limit(1).get();
+            if (!matchQuery.empty) {
+              dynamicMatch = matchQuery.docs[0].data();
+            } else {
+              const matchDoc = await db.collection("matches").doc(slug).get();
+              if (matchDoc.exists) dynamicMatch = matchDoc.data();
+            }
+          } catch {
+          }
+        }
+      }
+      let dynamicPost = null;
+      if (currentPath.startsWith("/blog/")) {
+        const slug = req.path.split("/")[2];
+        if (slug) {
+          try {
+            const postQuery = await db.collection("blog_posts").where("slug", "==", slug).limit(1).get();
+            if (!postQuery.empty) {
+              dynamicPost = postQuery.docs[0].data();
+            } else {
+              const postDoc = await db.collection("blog_posts").doc(slug).get();
+              if (postDoc.exists) dynamicPost = postDoc.data();
+            }
+          } catch {
+          }
+        }
+      }
+      let title = seo.metaTitle || `${platformName} - Live Sports Streaming`;
+      if (pageConfig && pageConfig.title) {
+        title = pageConfig.title;
+      } else if (dynamicMatch) {
+        title = `${dynamicMatch.title} | Live Stream & Match Details - ${platformName}`;
+      } else if (dynamicPost) {
+        title = `${dynamicPost.title} | ${platformName} News`;
+      }
+      let description = seo.metaDescription || "Watch live sports, follow your favorite creators, and join the community.";
+      if (pageConfig && pageConfig.description) {
+        description = pageConfig.description;
+      } else if (dynamicMatch) {
+        description = dynamicMatch.description ? cleanHtmlSnippet(dynamicMatch.description).slice(0, 160) : `Watch ${dynamicMatch.title} live online on ${platformName}.`;
+      } else if (dynamicPost) {
+        description = dynamicPost.excerpt || (dynamicPost.content ? cleanHtmlSnippet(dynamicPost.content).slice(0, 160) : "");
+      }
+      let ogImage = seo.ogImage || branding.logoUrl || `${baseUrl}/favicon.ico`;
+      if (pageConfig && pageConfig.ogImage) {
+        ogImage = pageConfig.ogImage;
+      } else if (dynamicMatch) {
+        ogImage = dynamicMatch.poster || dynamicMatch.thumbnail || dynamicMatch.banner || ogImage;
+      } else if (dynamicPost) {
+        ogImage = dynamicPost.cover_image || dynamicPost.thumbnail || ogImage;
+      }
+      const isNoIndex = pageConfig?.noIndex || seo.allowIndexing === false;
+      const isNoFollow = pageConfig?.noFollow;
+      let robotsContent = "index, follow";
+      if (isNoIndex && isNoFollow) {
+        robotsContent = "noindex, nofollow";
+      } else if (isNoIndex) {
+        robotsContent = "noindex, follow";
+      } else if (isNoFollow) {
+        robotsContent = "index, nofollow";
+      }
+      const bingCode = extractMetaCode(seo.bingVerification || "");
+      const googleCode = extractMetaCode(seo.googleVerification || "");
+      const yandexCode = extractMetaCode(seo.yandexVerification || "");
+      const pinterestCode = extractMetaCode(seo.pinterestVerification || "");
+      const baiduCode = extractMetaCode(seo.baiduVerification || "");
+      const orgSchema = {
+        "@context": "https://schema.org",
+        "@type": seo.organizationType || "Organization",
+        "name": seo.organizationName || platformName,
+        "url": baseUrl,
+        "logo": seo.organizationLogo || branding.logoUrl || void 0
+      };
+      const metaTags = [
+        `<!-- Dynamic Search Engine Verification & Metadata -->`,
+        `<meta name="description" content="${escapeHtml(description)}" />`,
+        seo.metaKeywords ? `<meta name="keywords" content="${escapeHtml(pageConfig?.keywords || seo.metaKeywords)}" />` : "",
+        `<meta name="robots" content="${escapeHtml(robotsContent)}" />`,
+        `<link rel="canonical" href="${escapeHtml(pageConfig?.canonicalUrl || fullCanonicalUrl)}" />`,
+        bingCode ? `<meta name="msvalidate.01" content="${escapeHtml(bingCode)}" />` : "",
+        googleCode ? `<meta name="google-site-verification" content="${escapeHtml(googleCode)}" />` : "",
+        yandexCode ? `<meta name="yandex-verification" content="${escapeHtml(yandexCode)}" />` : "",
+        pinterestCode ? `<meta name="p:domain_verify" content="${escapeHtml(pinterestCode)}" />` : "",
+        baiduCode ? `<meta name="baidu-site-verification" content="${escapeHtml(baiduCode)}" />` : "",
+        `<meta property="og:site_name" content="${escapeHtml(platformName)}" />`,
+        `<meta property="og:type" content="${dynamicPost ? "article" : "website"}" />`,
+        `<meta property="og:url" content="${escapeHtml(fullCanonicalUrl)}" />`,
+        `<meta property="og:title" content="${escapeHtml(pageConfig?.title || seo.ogTitle || title)}" />`,
+        `<meta property="og:description" content="${escapeHtml(description)}" />`,
+        ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : "",
+        `<meta name="twitter:card" content="${escapeHtml(seo.twitterCardType || "summary_large_image")}" />`,
+        seo.twitterHandle ? `<meta name="twitter:site" content="${escapeHtml(seo.twitterHandle)}" />` : "",
+        `<meta name="twitter:title" content="${escapeHtml(pageConfig?.title || seo.ogTitle || title)}" />`,
+        `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
+        ogImage ? `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />` : "",
+        `<script type="application/ld+json">${JSON.stringify(orgSchema)}</script>`,
+        pageConfig?.jsonLdSchema ? `<script type="application/ld+json">${pageConfig.jsonLdSchema}</script>` : "",
+        seo.googleAnalyticsId ? `
+<script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(seo.googleAnalyticsId)}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '${escapeHtml(seo.googleAnalyticsId)}');
+</script>` : "",
+        seo.googleTagManagerId ? `
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','${escapeHtml(seo.googleTagManagerId)}');</script>` : ""
+      ].filter(Boolean).join("\n  ");
+      let output = html.replace(/<title>.*?<\/title>/i, `<title>${escapeHtml(title)}</title>`);
+      if (output.includes("</head>")) {
+        output = output.replace("</head>", `  ${metaTags}
+</head>`);
+      } else {
+        output = `${metaTags}
+${output}`;
+      }
+      return output;
+    } catch (err) {
+      console.error("Error injecting SEO tags into HTML:", err);
+      return html;
+    }
+  }
   const isProduction = process.env.NODE_ENV === "production" || !import_fs2.default.existsSync(import_path2.default.join(currentDirname, "vite.config.ts")) || currentFilename.endsWith(".cjs");
   if (!isProduction) {
     const vite = await (0, import_vite.createServer)({
       server: { middlewareMode: true, hmr: process.env.DISABLE_HMR === "true" ? false : void 0 },
-      appType: "spa"
+      appType: "custom"
     });
     app.use(vite.middlewares);
+    app.get("*", async (req, res, next) => {
+      if (req.path.startsWith("/api") || req.path.startsWith("/@") || req.path.includes(".") && !req.path.endsWith(".html")) {
+        return next();
+      }
+      try {
+        const url = req.originalUrl;
+        const indexPath = import_path2.default.resolve(currentDirname, "index.html");
+        let template = import_fs2.default.readFileSync(indexPath, "utf-8");
+        template = await vite.transformIndexHtml(url, template);
+        const html = await injectSeoIntoHtml(req, template);
+        res.status(200).set({ "Content-Type": "text/html; charset=utf-8" }).send(html);
+      } catch (e) {
+        vite.ssrFixStacktrace(e);
+        next(e);
+      }
+    });
   } else {
     let distPath = import_path2.default.join(currentDirname, "dist");
     if (!import_fs2.default.existsSync(import_path2.default.join(distPath, "index.html"))) {
@@ -11113,8 +11322,23 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         }
       }
     }
-    app.use(import_express2.default.static(distPath));
-    app.get("*", (req, res) => res.sendFile(import_path2.default.join(distPath, "index.html")));
+    app.use(import_express2.default.static(distPath, { index: false }));
+    app.get("*", async (req, res, next) => {
+      if (req.path.startsWith("/api") || req.path.includes(".") && !req.path.endsWith(".html")) {
+        return next();
+      }
+      try {
+        const indexPath = import_path2.default.join(distPath, "index.html");
+        if (!import_fs2.default.existsSync(indexPath)) {
+          return res.status(404).send("Application not built yet.");
+        }
+        const template = import_fs2.default.readFileSync(indexPath, "utf-8");
+        const html = await injectSeoIntoHtml(req, template);
+        res.status(200).set({ "Content-Type": "text/html; charset=utf-8" }).send(html);
+      } catch (e) {
+        next(e);
+      }
+    });
   }
   app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
