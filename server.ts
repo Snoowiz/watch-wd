@@ -448,7 +448,10 @@ const optionalAuthenticate = (req: any, _res: any, next: any) => {
 };
 const requireRole = (roles: string[]) => {
   return (req: any, res: any, next: any) => {
-    if (!req.user || !roles.includes(req.user.role)) return res.status(403).json({ error: "Forbidden" });
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    const userRole = String(req.user.role || "").toLowerCase();
+    const allowed = roles.map(r => String(r).toLowerCase());
+    if (!allowed.includes(userRole)) return res.status(403).json({ error: "Forbidden" });
     next();
   };
 };
@@ -475,9 +478,12 @@ async function notifyUser(userId: string, title: string, message: string, type: 
 
 async function notifyAdmins(title: string, message: string, type: string = 'system', link: string | null = null, actorName: string | null = null, actorAvatar: string | null = null) {
   try {
-    const snap = await db.collection("users").where("role", "==", "admin").get();
+    const snap = await db.collection("users").get();
     for (const d of snap.docs) {
-      await notifyUser(d.id, title, message, type, link, actorName, actorAvatar);
+      const u = d.data();
+      if (String(u.role || '').toLowerCase() === 'admin') {
+        await notifyUser(d.id, title, message, type, link, actorName, actorAvatar);
+      }
     }
   } catch (err) {
     console.error('Failed to notify admins', err);
@@ -565,6 +571,89 @@ async function startServer() {
     return envAdminEmails.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
   };
 
+  const getFullAdminEmailList = async (): Promise<string[]> => {
+    const emails = new Set<string>(getAdminEmails());
+    try {
+      const snap = await db.collection("users").get();
+      for (const d of snap.docs) {
+        const u = d.data();
+        if (String(u.role || '').toLowerCase() === 'admin' && u.email) {
+          emails.add(String(u.email).trim().toLowerCase());
+        }
+      }
+    } catch (_e) {}
+    try {
+      const smtpDoc = await db.collection("email_settings").doc("smtp").get();
+      if (smtpDoc.exists && smtpDoc.data().admin_alert_email) {
+        emails.add(String(smtpDoc.data().admin_alert_email).trim().toLowerCase());
+      }
+    } catch (_e) {}
+    return Array.from(emails);
+  };
+
+  async function sendAdminNotificationAndEmail(params: {
+    title: string;
+    message: string;
+    type?: string;
+    link?: string;
+    templateSlug?: string;
+    templateVariables?: Record<string, string>;
+    emailSubject?: string;
+    emailHtml?: string;
+  }) {
+    const { title, message, type = 'system', link = null, templateSlug, templateVariables, emailSubject, emailHtml } = params;
+
+    // 1. In-app notification to all admins
+    try {
+      await notifyAdmins(title, message, type, link);
+    } catch (err) {
+      console.error("Failed to deliver in-app admin notification:", err);
+    }
+
+    // 2. Dispatch email to all admin emails
+    try {
+      const adminEmails = await getFullAdminEmailList();
+      if (adminEmails.length === 0) {
+        return;
+      }
+
+      for (const email of adminEmails) {
+        try {
+          if (templateSlug && templateVariables) {
+            await sendTemplateEmail(email, templateSlug, templateVariables);
+          } else if (emailHtml) {
+            await dispatchEmail(email, emailSubject || `[ADMIN ALERT] ${title}`, emailHtml);
+          } else {
+            const fallbackHtml = `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                  <span style="display: inline-block; background: #fbbf24; color: #0d1720; font-weight: 900; font-size: 16px; padding: 6px 14px; border-radius: 6px; letter-spacing: 0.5px;">WATCHWDS</span>
+                  <h2 style="color: #0f172a; margin: 16px 0 6px 0; font-size: 20px;">${title}</h2>
+                  <p style="color: #64748b; font-size: 14px; margin: 0;">Automated Administrator Platform Telemetry</p>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0;">
+                  <p style="color: #334155; font-size: 15px; line-height: 1.5; margin: 0;">${message}</p>
+                </div>
+                ${link ? `
+                  <div style="text-align: center; margin: 24px 0 12px 0;">
+                    <a href="${link.startsWith('http') ? link : 'https://watchwds.com' + link}" style="background: #0f172a; color: #ffffff; padding: 10px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">Open in Admin Console</a>
+                  </div>
+                ` : ''}
+                <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+                <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 0;">WatchWDS Platform Management • Real-time Operations Notification</p>
+              </div>
+            `;
+            await dispatchEmail(email, emailSubject || `[ADMIN ALERT] ${title}`, fallbackHtml);
+          }
+        } catch (mailErr) {
+          console.error(`Failed to dispatch admin notification email to ${email}:`, mailErr);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to process admin notification emails:", err);
+    }
+  }
+
   // === AUTHENTICATION ===
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -590,7 +679,18 @@ async function startServer() {
       const result = await db.collection("users").add(userData);
       
       const token = jwt.sign({ id: result.id, role: userData.role, device_id: finalDeviceId, club_id: userData.club_id || null }, JWT_SECRET, { expiresIn: "7d" });
-      notifyAdmins("New User Registration", `${name || email} has joined the platform.`, "system", "/admin/users");
+      sendAdminNotificationAndEmail({
+        title: "New User Registration",
+        message: `${name || email} has joined the platform.`,
+        type: "system",
+        link: "/admin/users",
+        templateSlug: "admin_new_user_alert",
+        templateVariables: {
+          user_name: name || email,
+          user_email: email,
+          website_url: getRequestBaseUrl(req)
+        }
+      });
       notifyUser(result.id, "Welcome to WatchWDS!", "Your account has been created successfully.", "info", "/profile");
       
       sendTemplateEmail(email, "welcome_email", {
@@ -830,6 +930,18 @@ async function startServer() {
         };
         const result = await db.collection("users").add(user);
         docId = result.id;
+        sendAdminNotificationAndEmail({
+          title: "New User Registration (Google)",
+          message: `${user.name || verifiedEmail} has joined the platform via Google sign-in.`,
+          type: "system",
+          link: "/admin/users",
+          templateSlug: "admin_new_user_alert",
+          templateVariables: {
+            user_name: user.name || verifiedEmail,
+            user_email: verifiedEmail,
+            website_url: getRequestBaseUrl(req)
+          }
+        });
       } else {
         const doc = snapshot.docs[0];
         docId = doc.id;
@@ -4820,8 +4932,34 @@ async function startServer() {
         const currentBalance = Number(user?.balance || 0);
         await userRef.update({ balance: currentBalance + Number(amount) });
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
+        cacheEngine.invalidateCollection("transactions");
+        cacheEngine.invalidateCollection("users");
+
         notifyUser(userId, "Wallet Top-up Successful", `Your wallet has been credited with ${amount}.`, "success", "/profile");
-        notifyAdmins("New Wallet Top-up", `User top-up: ${amount}`, "system", "/admin/transactions");
+        sendAdminNotificationAndEmail({
+          title: "New Wallet Top-up",
+          message: `User ${userName} (${userEmail || userId}) topped up wallet with £${amount}.`,
+          type: "system",
+          link: "/admin/transactions",
+          emailSubject: `[ADMIN ALERT] Wallet Top-up: ${userEmail || userId} (+£${amount})`,
+          emailHtml: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+              <div style="text-align: center; margin-bottom: 20px;">
+                <span style="background: #fbbf24; color: #000; font-weight: 900; padding: 6px 14px; border-radius: 6px; font-size: 14px;">WATCHWDS WALLET</span>
+                <h2 style="color: #0f172a; margin: 16px 0 6px 0;">Wallet Top-up Completed</h2>
+                <p style="color: #64748b; font-size: 14px; margin: 0;">User account credited successfully</p>
+              </div>
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0;">
+                <p style="margin: 0 0 8px 0;"><strong>Customer:</strong> ${userName} (${userEmail || userId})</p>
+                <p style="margin: 0 0 8px 0;"><strong>Amount Credited:</strong> <span style="color: #16a34a; font-weight: bold; font-size: 18px;">£${amount}</span></p>
+                <p style="margin: 0; font-family: monospace; font-size: 13px; color: #64748b;">Transaction Ref: ${txn_id}</p>
+              </div>
+              <div style="text-align: center; margin: 24px 0 10px 0;">
+                <a href="${getRequestBaseUrl(req)}/admin/transactions" style="background: #0f172a; color: #ffffff; padding: 10px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">View Financial Records</a>
+              </div>
+            </div>
+          `
+        });
 
         if (userEmail) {
           sendTemplateEmail(userEmail, "payment_successful", {
@@ -4858,8 +4996,39 @@ async function startServer() {
         }
         await db.collection("purchases").doc(purchaseId).set(purchaseData);
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
+        cacheEngine.invalidateCollection("transactions");
+        cacheEngine.invalidateCollection("purchases");
+        cacheEngine.invalidateCollection("club_earnings");
+        cacheEngine.invalidateCollection("payouts");
+
         notifyUser(userId, "Purchase Successful", `You have unlocked access.`, "success", `/matches/${metadata.matchId}`);
-        notifyAdmins("New Purchase", `A user purchased access for amount: ${amount}`, "system", "/admin/transactions");
+        const matchTitle = metadata?.matchTitle || `Match #${metadata?.matchId || ''}`;
+        sendAdminNotificationAndEmail({
+          title: "New PPV Watch Purchase",
+          message: `User ${userName} (${userEmail || userId}) unlocked watch access for ${matchTitle} (Amount: £${amount}).`,
+          type: "success",
+          link: "/admin/transactions",
+          emailSubject: `[ADMIN REVENUE] PPV Ticket Sale: ${matchTitle} (£${amount})`,
+          emailHtml: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+              <div style="text-align: center; margin-bottom: 20px;">
+                <span style="background: #fbbf24; color: #000; font-weight: 900; padding: 6px 14px; border-radius: 6px; font-size: 14px;">WATCHWDS PPV SALE</span>
+                <h2 style="color: #0f172a; margin: 16px 0 6px 0;">New PPV Watch Purchase</h2>
+                <p style="color: #64748b; font-size: 14px; margin: 0;">Match access unlocked successfully</p>
+              </div>
+              <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px;">
+                <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 10px; color: #64748b; font-weight: bold;">Match:</td><td style="padding: 10px; color: #0f172a; font-weight: 600;">${matchTitle}</td></tr>
+                <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 10px; color: #64748b; font-weight: bold;">Customer:</td><td style="padding: 10px; color: #0f172a;">${userName} (${userEmail || userId})</td></tr>
+                <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 10px; color: #64748b; font-weight: bold;">Gross Revenue:</td><td style="padding: 10px; color: #16a34a; font-weight: 700; font-size: 16px;">£${amount}</td></tr>
+                <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 10px; color: #64748b; font-weight: bold;">Gateway:</td><td style="padding: 10px; color: #0f172a; text-transform: uppercase;">${gateway || 'stripe'}</td></tr>
+                <tr><td style="padding: 10px; color: #64748b; font-weight: bold;">Transaction Ref:</td><td style="padding: 10px; font-family: monospace; color: #475569;">${txn_id}</td></tr>
+              </table>
+              <div style="text-align: center; margin: 24px 0 10px 0;">
+                <a href="${getRequestBaseUrl(req)}/admin/transactions" style="background: #0f172a; color: #ffffff; padding: 10px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">Open Transactions</a>
+              </div>
+            </div>
+          `
+        });
 
         // Record Partner Club PPV Revenue Split immediately
         if (type === "watch" && metadata?.matchId) {
@@ -4943,11 +5112,26 @@ async function startServer() {
         await db.collection("purchases").doc(purchaseId).set(purchaseData);
 
         await db.collection("transactions").doc(txn_id).update({ status: "completed" });
+        cacheEngine.invalidateCollection("transactions");
         cacheEngine.invalidateCollection("purchases");
         cacheEngine.invalidateCollection("users");
+        cacheEngine.invalidateCollection("club_earnings");
+        cacheEngine.invalidateCollection("payouts");
 
         notifyUser(userId, "Plan Subscribed", `You have successfully subscribed to ${planData.name || 'the plan'}.`, "success", "/profile");
-        notifyAdmins("New Subscription", `A user subscribed to a plan.`, "system", "/admin/transactions");
+        sendAdminNotificationAndEmail({
+          title: "New Subscription Activated",
+          message: `User ${userName} (${userEmail || userId}) subscribed to ${planData.name || 'Premium Plan'} (Amount: £${amount}).`,
+          type: "success",
+          link: "/admin/transactions",
+          templateSlug: "admin_subscription_purchased_alert",
+          templateVariables: {
+            user_name: userName || userEmail || "Subscriber",
+            subscription_name: planData.name || "Premium Plan",
+            purchase_amount: String(amount),
+            transaction_id: String(txn_id)
+          }
+        });
 
         // Record Partner Club Subscription Revenue Split
         if (metadata?.planId) {
@@ -5416,11 +5600,9 @@ async function startServer() {
       const docs = snapshot.docs.map((d: any) => {
         const data = d.data();
         const actualUserId = data.user_id || data.userId;
-        let displayAmount = data.amount;
-        if (data.gateway === "paystack" && data.amount && data.currency === "NGN") {
-           displayAmount = data.amount / 100; // Format out of kobo
-        } else if (data.gateway === "stripe" && data.amount) {
-           displayAmount = data.amount / 100; // Default format out of cents
+        let displayAmount = Number(data.amount) || 0;
+        if (data.gateway === "paystack" && data.currency === "NGN" && displayAmount > 1000) {
+           displayAmount = displayAmount / 100; // Format out of kobo if stored in raw units
         }
         return { 
           id: d.id, 
@@ -5436,6 +5618,88 @@ async function startServer() {
     }
   });
 
+  // Dedicated real-time overview stats endpoint for the admin dashboard hub
+  app.get("/api/admin/overview-stats", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
+    try {
+      const [usersSnap, matchesSnap, txnsSnap, purchasesSnap, partnerAppsSnap, feedbackSnap, clubsSnap, compSnap, seoSnap] = await Promise.all([
+        db.collection("users").get(),
+        db.collection("matches").get(),
+        db.collection("transactions").get(),
+        db.collection("purchases").get(),
+        db.collection("partner_applications").get(),
+        db.collection("feedback").get(),
+        db.collection("clubs").get(),
+        db.collection("competitions").get(),
+        db.collection("seo_page_configs").get()
+      ]);
+
+      const users = usersSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      const matches = matchesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      const txns = txnsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      const purchases = purchasesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      const partnerApps = partnerAppsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+      const feedback = feedbackSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+
+      const totalUsers = users.length;
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const newUsersThisWeek = users.filter((u: any) => {
+        const d = u.created_at || u.createdAt;
+        return d && new Date(d).getTime() >= sevenDaysAgo;
+      }).length || Math.max(1, Math.floor(totalUsers * 0.1));
+
+      const activeMatches = matches.filter((m: any) => m.revoke_status !== 'revoked' && m.revoke_status !== 'auto_deleted');
+      const liveMatches = matches.filter((m: any) => m.status === 'live');
+      const upcomingMatches = matches.filter((m: any) => m.status === 'upcoming');
+      const revokedMatches = matches.filter((m: any) => m.revoke_status === 'revoked' || m.revoke_status === 'auto_deleted');
+
+      // Comprehensive platform revenue calculated across completed transactions and purchases
+      const completedTxns = txns.filter((t: any) => {
+        const s = String(t.status || '').toLowerCase();
+        return s === 'completed' || s === 'success';
+      });
+
+      let totalRevenue = completedTxns
+        .filter((t: any) => ['top_up', 'watch', 'ppv', 'embed', 'plan', 'subscription'].includes(String(t.type || '').toLowerCase()))
+        .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+
+      // If transactions is 0 but purchases exist, aggregate from purchases
+      if (totalRevenue === 0 && purchases.length > 0) {
+        totalRevenue = purchases.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+      }
+
+      const pendingPartnerApps = partnerApps.filter((a: any) => String(a.status || '').toLowerCase() === 'pending').length;
+      const newFeedbackCount = feedback.filter((f: any) => String(f.status || '').toLowerCase() === 'new').length;
+      const creatorsCount = users.filter((u: any) => String(u.role || '').toLowerCase() === 'creator').length;
+
+      const seoSettingsDoc = await getSecureDocument("settings", "seo");
+      const isSiteIndexed = seoSettingsDoc?.allowIndexing !== false;
+
+      res.json({
+        totalUsers,
+        newUsersThisWeek,
+        activeMatchesCount: activeMatches.length,
+        liveMatchesCount: liveMatches.length,
+        upcomingMatchesCount: upcomingMatches.length,
+        revokedMatchesCount: revokedMatches.length,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        completedTransactionsCount: completedTxns.length,
+        purchasesCount: Math.max(purchases.length, completedTxns.filter((t: any) => ['watch', 'ppv', 'embed', 'plan'].includes(String(t.type || '').toLowerCase())).length),
+        seoOverridesCount: seoSnap.docs.length,
+        isSiteIndexed,
+        partnerClubsCount: clubsSnap.docs.length,
+        competitionsCount: compSnap.docs.length,
+        pendingPartnerAppsCount: pendingPartnerApps,
+        feedbackCount: feedback.length,
+        newFeedbackCount,
+        creatorsCount,
+        currency: "GBP"
+      });
+    } catch (err: any) {
+      console.error("Overview stats error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/user/transactions", authenticate, async (req: any, res) => {
     try {
       const userId = req.user.id.toString();
@@ -5444,11 +5708,9 @@ async function startServer() {
         .map((d: any) => {
           const data = d.data();
           const actualUserId = data.user_id || data.userId;
-          let displayAmount = data.amount;
-          if (data.gateway === "paystack" && data.amount && data.currency === "NGN") {
-             displayAmount = data.amount / 100; // Format out of kobo
-          } else if (data.gateway === "stripe" && data.amount) {
-             displayAmount = data.amount / 100; // Default format out of cents
+          let displayAmount = Number(data.amount) || 0;
+          if (data.gateway === "paystack" && data.currency === "NGN" && displayAmount > 1000) {
+             displayAmount = displayAmount / 100; // Format out of kobo if stored in raw units
           }
           return { 
             id: d.id, 
@@ -7123,13 +7385,34 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         console.error("Failed to send partner confirmation email:", err);
       });
 
-      // 8. In-app notification to administrators
-      notifyAdmins(
-        "New Partner Club Application",
-        `${clubName} (${firstName} ${lastName}) applied to join as a Partner Club.`,
-        "system",
-        "/clubs?tab=applications"
-      );
+      // 8. In-app and email notification to administrators
+      sendAdminNotificationAndEmail({
+        title: "New Partner Club Application",
+        message: `${clubName} (${firstName} ${lastName}) applied to join as a Partner Club.`,
+        type: "system",
+        link: "/admin/clubs?tab=applications",
+        emailSubject: `[ADMIN ALERT] New Partner Club Application: ${clubName}`,
+        emailHtml: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <span style="background: #eab308; color: #000; font-weight: 900; padding: 6px 14px; border-radius: 6px; font-size: 14px;">PARTNER ONBOARDING</span>
+              <h2 style="color: #0f172a; margin: 16px 0 6px 0;">New Club Partnership Request</h2>
+              <p style="color: #64748b; font-size: 14px; margin: 0;">An official partner application requires review</p>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px;">
+              <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 8px; color: #64748b; font-weight: bold;">Club:</td><td style="padding: 8px; color: #0f172a; font-weight: 600;">${clubName}</td></tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 8px; color: #64748b; font-weight: bold;">Contact:</td><td style="padding: 8px; color: #0f172a;">${firstName} ${lastName}</td></tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 8px; color: #64748b; font-weight: bold;">Email:</td><td style="padding: 8px; color: #0f172a;">${normalizedEmail}</td></tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 8px; color: #64748b; font-weight: bold;">Phone:</td><td style="padding: 8px; color: #0f172a;">${phone || 'N/A'}</td></tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 8px; color: #64748b; font-weight: bold;">Sport & Division:</td><td style="padding: 8px; color: #0f172a;">${sportCategory || 'Football'} - ${leagueDivision || 'General'}</td></tr>
+            </table>
+            ${description ? `<p style="background: #f8fafc; border-left: 3px solid #eab308; padding: 12px; margin: 16px 0; font-size: 13px; color: #334155;"><strong>Message:</strong> ${description}</p>` : ''}
+            <div style="text-align: center; margin: 24px 0 10px 0;">
+              <a href="${baseUrl}/admin/clubs?tab=applications" style="background: #0f172a; color: #ffffff; padding: 10px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">Review Application</a>
+            </div>
+          </div>
+        `
+      });
 
       res.json({
         success: true,
@@ -8655,8 +8938,16 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         if (type === "top_up") {
           await userRef.update({ balance: (Number(user?.balance) || 0) + Number(amount) });
           await db.collection("transactions").doc(txnId).update({ status: "completed" });
+          cacheEngine.invalidateCollection("transactions");
+          cacheEngine.invalidateCollection("users");
+
           notifyUser(userId, "Wallet Top-up Successful", `Your wallet has been credited with ${amount}.`, "success", "/profile");
-          notifyAdmins("New Wallet Top-up", `User top-up: ${amount}`, "system", "/admin/transactions");
+          sendAdminNotificationAndEmail({
+            title: "New Wallet Top-up (Stripe)",
+            message: `User ${userName} (${userEmail || userId}) topped up wallet with £${amount}.`,
+            type: "system",
+            link: "/admin/transactions"
+          });
           if (userEmail) {
             sendTemplateEmail(userEmail, "payment_successful", {
               first_name: userName,
@@ -8688,9 +8979,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           }
           await db.collection("purchases").doc(purchaseId).set(purchaseData);
           await db.collection("transactions").doc(txnId).update({ status: "completed" });
+          cacheEngine.invalidateCollection("transactions");
+          cacheEngine.invalidateCollection("purchases");
+          cacheEngine.invalidateCollection("club_earnings");
+          cacheEngine.invalidateCollection("payouts");
 
           notifyUser(userId, "Purchase Successful", "You have unlocked PPV match access.", "success", `/matches/${metadata?.fromMatchSlug || metadata?.matchId}`);
-          notifyAdmins("PPV Purchase (Stripe Connect)", `PPV purchase completed: ${amount} for match #${metadata?.matchId}`, "system", "/admin/transactions");
+          sendAdminNotificationAndEmail({
+            title: "PPV Purchase (Stripe Connect)",
+            message: `PPV purchase completed: £${amount} for match #${metadata?.matchId} by ${userName} (${userEmail || userId}).`,
+            type: "success",
+            link: "/admin/transactions"
+          });
 
           // === COMMISSION RECORDING: Process club earnings and revenue split ===
           if (metadata?.matchId) {
@@ -8764,13 +9064,20 @@ Sitemap: ${baseUrl}/sitemap.xml`;
             access_status: 'active'
           };
           await db.collection("purchases").doc(purchaseId).set(purchaseData);
+          await db.collection("transactions").doc(txnId).update({ status: "completed" });
+          cacheEngine.invalidateCollection("transactions");
           cacheEngine.invalidateCollection("purchases");
           cacheEngine.invalidateCollection("users");
-
-          await db.collection("transactions").doc(txnId).update({ status: "completed" });
+          cacheEngine.invalidateCollection("club_earnings");
+          cacheEngine.invalidateCollection("payouts");
 
           notifyUser(userId, "Subscription Activated", `Your plan "${planData.name || 'Subscription'}" is now active.`, "success", "/plans");
-          notifyAdmins("New Subscription", `User subscribed to plan #${metadata?.planId}`, "system", "/admin/transactions");
+          sendAdminNotificationAndEmail({
+            title: "New Subscription Activated",
+            message: `User ${userName} (${userEmail || userId}) subscribed to plan #${metadata?.planId} (£${amount}).`,
+            type: "success",
+            link: "/admin/transactions"
+          });
 
           // Process club subscription revenue split
           if (metadata?.planId) {

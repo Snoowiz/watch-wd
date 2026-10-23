@@ -58,7 +58,8 @@ export function AdminDashboard() {
   const [isAdminDropdownOpen, setIsAdminDropdownOpen] = useState(false);
 
   useEffect(() => {
-    if (user?.role === 'admin') {
+    const userRole = String(user?.role || '').toLowerCase();
+    if (['admin', 'operator'].includes(userRole)) {
       const token = localStorage.getItem('token');
       if (token) {
         fetch('/api/admin/users', {
@@ -68,7 +69,7 @@ export function AdminDashboard() {
         })
           .then(res => res.json())
           .then(data => {
-            if (!data.error) {
+            if (!data.error && Array.isArray(data)) {
               setUsers(data);
             }
           })
@@ -373,7 +374,7 @@ export function AdminDashboard() {
 
 function AdminOverview() {
   const { currency, currencySymbol, seoSettings, perPageSeo = [] } = useSettingsStore();
-  const { users = [] } = useUsersStore();
+  const { users = [], setUsers } = useUsersStore();
   const { matches = [], adminMatches = [], fetchAdminMatches } = useMatchStore();
   const effectiveMatches = adminMatches.length > 0 ? adminMatches : matches;
   const { posts = [] } = useBlogStore();
@@ -383,6 +384,7 @@ function AdminOverview() {
   const { blogSettings } = useSettingsStore();
   const blogEnabled = blogSettings?.enabled !== false;
 
+  const [overviewStats, setOverviewStats] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [freeViewingData, setFreeViewingData] = useState<{
     summary: {
@@ -436,6 +438,39 @@ function AdminOverview() {
 
   useEffect(() => {
     fetchAdminMatches();
+
+    const fetchOverviewStats = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/admin/overview-stats', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setOverviewStats(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin overview stats:', err);
+      }
+    };
+
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const res = await fetch('/api/admin/users', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) setUsers(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch users in overview:', err);
+      }
+    };
+
     const fetchTxns = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -450,6 +485,7 @@ function AdminOverview() {
         console.error('Failed to fetch admin dashboard overview transactions:', err);
       }
     };
+
     const fetchFreeViewing = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -464,6 +500,7 @@ function AdminOverview() {
         console.error('Failed to fetch free viewing analytics:', err);
       }
     };
+
     const fetchPartnerApps = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -482,6 +519,7 @@ function AdminOverview() {
         console.error('Failed to fetch partner applications in overview:', err);
       }
     };
+
     const fetchFeedbackStats = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -503,11 +541,14 @@ function AdminOverview() {
         console.error('Failed to fetch feedback stats in overview:', err);
       }
     };
+
+    fetchOverviewStats();
+    fetchUsers();
     fetchTxns();
     fetchFreeViewing();
     fetchPartnerApps();
     fetchFeedbackStats();
-  }, [fetchAdminMatches]);
+  }, [fetchAdminMatches, setUsers]);
 
   const getCurrencySymbol = (curr: string) => {
     switch (curr) {
@@ -525,23 +566,26 @@ function AdminOverview() {
     }
   };
 
-  // Calculate statistics dynamically
-  const totalUsers = users.length;
-  const newUsersCount = users.filter(u => new Date(u.createdAt) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length || Math.floor(totalUsers * 0.1) || 1;
+  // Calculate statistics dynamically with live backend data prioritization
+  const totalUsers = overviewStats?.totalUsers ?? users.length;
+  const newUsersCount = overviewStats?.newUsersThisWeek ?? (users.filter(u => new Date(u.createdAt || (u as any).created_at).getTime() >= Date.now() - 7 * 24 * 60 * 60 * 1000).length || Math.floor(totalUsers * 0.1) || 1);
 
-  const liveCount = effectiveMatches.filter(m => m.status === 'live').length;
-  const upcomingCount = effectiveMatches.filter(m => m.status === 'upcoming').length;
-  const revokedMatchesCount = effectiveMatches.filter(m => m.revoke_status === 'revoked' || m.revoke_status === 'auto_deleted').length;
-  const activeMatchesCount = effectiveMatches.filter(m => !m.revoke_status || m.revoke_status === 'normal').length;
+  const liveCount = overviewStats?.liveMatchesCount ?? effectiveMatches.filter(m => m.status === 'live').length;
+  const upcomingCount = overviewStats?.upcomingMatchesCount ?? effectiveMatches.filter(m => m.status === 'upcoming').length;
+  const revokedMatchesCount = overviewStats?.revokedMatchesCount ?? effectiveMatches.filter(m => m.revoke_status === 'revoked' || m.revoke_status === 'auto_deleted').length;
+  const activeMatchesCount = overviewStats?.activeMatchesCount ?? effectiveMatches.filter(m => !m.revoke_status || m.revoke_status === 'normal').length;
 
-  // Revenue calculates the total amount of completed gateway transactions on the platform
-  const completedTxns = transactions.filter(t => t.status === 'completed' || t.status === 'success');
-  const totalRevenue = completedTxns
-    .filter(t => ['top_up', 'watch', 'embed', 'plan'].includes(t.type))
+  // Revenue calculates the total amount of completed gateway transactions and purchases on the platform
+  const completedTxns = transactions.filter(t => {
+    const s = String(t.status || '').toLowerCase();
+    return s === 'completed' || s === 'success';
+  });
+  const calculatedRevenue = completedTxns
+    .filter(t => ['top_up', 'watch', 'ppv', 'embed', 'plan', 'subscription'].includes(String(t.type || '').toLowerCase()))
     .reduce((acc, t) => acc + Number(t.amount || 0), 0);
+  const totalRevenue = overviewStats?.totalRevenue !== undefined ? Number(overviewStats.totalRevenue) : calculatedRevenue;
 
-  const contentPurchases = completedTxns.filter(t => ['watch', 'embed', 'plan'].includes(t.type));
-  const purchasesCount = contentPurchases.length;
+  const purchasesCount = overviewStats?.purchasesCount ?? (completedTxns.filter(t => ['watch', 'ppv', 'embed', 'plan'].includes(String(t.type || '').toLowerCase())).length || 0);
 
   // Engagement starts at 84 and scales with the number of matches views and registered users
   const totalMatchViews = effectiveMatches.reduce((acc, m) => acc + (m.views || 0), 0);
@@ -552,14 +596,14 @@ function AdminOverview() {
   const engagementValue = Math.min(99, Math.max(50, baseEngagement + (totalViews > 0 ? Math.min(10, Math.floor(totalViews / 500)) : 0) + (comments.length > 0 ? Math.min(5, Math.floor(comments.length / 5)) : 0)));
 
   // SEO Health metrics
-  const seoOverrideCount = perPageSeo.length;
-  const isSiteIndexed = seoSettings?.allowIndexing !== false;
+  const seoOverrideCount = overviewStats?.seoOverridesCount ?? perPageSeo.length;
+  const isSiteIndexed = overviewStats?.isSiteIndexed ?? (seoSettings?.allowIndexing !== false);
 
   const stats = [
-    { label: 'Total Users', value: totalUsers.toLocaleString(), trend: '+12%', icon: Users, color: 'border-l-yellow-500', subtitle: `${newUsersCount} registered this week` },
-    { label: 'Active Matches', value: activeMatchesCount.toString(), trend: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : '+5%', icon: Video, color: revokedMatchesCount > 0 ? 'border-l-amber-500' : 'border-l-green-500', subtitle: revokedMatchesCount > 0 ? `${revokedMatchesCount} taken down under review` : `${liveCount} broadcasting now` },
-    { label: 'Total Revenue', value: `${getCurrencySymbol(currency)}${totalRevenue.toLocaleString()}`, trend: '+18%', icon: getCurrencyIcon(currency), color: 'border-l-yellow-500', subtitle: `${purchasesCount} live purchase(s)` },
-    { label: 'SEO & Search Index', value: `${seoOverrideCount} Overrides`, trend: isSiteIndexed ? '100% OK' : 'NoIndex', icon: Globe, color: 'border-l-purple-500', subtitle: isSiteIndexed ? 'Search Engines Active' : 'Indexing Disabled' },
+    { label: 'Total Users', value: totalUsers.toLocaleString(), trend: '+12%', icon: Users, color: 'border-l-yellow-500', subtitle: `${newUsersCount} registered this week`, path: '/admin/users' },
+    { label: 'Active Matches', value: activeMatchesCount.toString(), trend: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : '+5%', icon: Video, color: revokedMatchesCount > 0 ? 'border-l-amber-500' : 'border-l-green-500', subtitle: revokedMatchesCount > 0 ? `${revokedMatchesCount} taken down under review` : `${liveCount} broadcasting now`, path: '/admin/matches' },
+    { label: 'Total Revenue', value: `${getCurrencySymbol(currency)}${Number(totalRevenue).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`, trend: '+18%', icon: getCurrencyIcon(currency), color: 'border-l-yellow-500', subtitle: `${purchasesCount} live purchase(s)`, path: '/admin/transactions' },
+    { label: 'SEO & Search Index', value: `${seoOverrideCount} Overrides`, trend: isSiteIndexed ? '100% OK' : 'NoIndex', icon: Globe, color: 'border-l-purple-500', subtitle: isSiteIndexed ? 'Search Engines Active' : 'Indexing Disabled', path: '/admin/seo' },
   ];
 
   const recentUsers = users.slice(-3).reverse().map(u => ({
@@ -574,34 +618,32 @@ function AdminOverview() {
           'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
   }));
 
-  // Auto-discovered active platform modules
+  // Auto-discovered active platform modules (deduplicated: Users & Matches are prominently represented in main KPI stats)
   const activeModules = useMemo(() => [
-    { name: 'Users & Roles', count: users.length, label: 'Accounts', icon: Users, path: '/admin/users', status: 'Healthy', color: 'text-yellow-500' },
-    { name: 'Match Streamer', count: activeMatchesCount, label: 'Matches', icon: Video, path: '/admin/matches', status: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : 'Active', color: revokedMatchesCount > 0 ? 'text-amber-500' : 'text-green-500' },
     { name: 'Free Match Gate', count: freeViewingData.summary.uniqueViewers, label: 'Unique Viewers', icon: Eye, path: '#free-audience-analytics', status: `${freeViewingData.summary.conversionRate}% Conv`, color: 'text-yellow-500' },
     ...(revokedMatchesCount > 0 ? [{ name: 'Revoked Matches', count: revokedMatchesCount, label: 'Under Review', icon: Shield, path: '/admin/matches', status: 'Retention Active', color: 'text-amber-500' }] : []),
-    { name: 'Partner Applications', count: partnerAppsStats.pending, label: 'Pending Review', icon: Building2, path: '/admin/clubs?tab=applications', status: partnerAppsStats.pending > 0 ? `${partnerAppsStats.pending} Pending` : 'All Reviewed', color: partnerAppsStats.pending > 0 ? 'text-amber-500' : 'text-emerald-500' },
-    { name: 'Partner Clubs', count: 1, label: 'Portals & Split', icon: Building2, path: '/admin/clubs', status: 'Active', color: 'text-amber-500' },
-    { name: 'Competitions', count: 1, label: 'Leagues & Cups', icon: Trophy, path: '/admin/competitions', status: 'Active', color: 'text-yellow-500' },
-    { name: 'SEO Engine', count: perPageSeo.length, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
+    { name: 'Partner Applications', count: overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending, label: 'Pending Review', icon: Building2, path: '/admin/clubs?tab=applications', status: (overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending) > 0 ? `${overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending} Pending` : 'All Reviewed', color: (overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending) > 0 ? 'text-amber-500' : 'text-emerald-500' },
+    { name: 'Partner Clubs', count: overviewStats?.partnerClubsCount ?? 1, label: 'Portals & Split', icon: Building2, path: '/admin/clubs', status: 'Active', color: 'text-amber-500' },
+    { name: 'Competitions', count: overviewStats?.competitionsCount ?? 1, label: 'Leagues & Cups', icon: Trophy, path: '/admin/competitions', status: 'Active', color: 'text-yellow-500' },
+    { name: 'SEO Engine', count: seoOverrideCount, label: 'Meta Overrides', icon: Globe, path: '/admin/seo', status: isSiteIndexed ? 'Indexed' : 'NoIndex', color: 'text-purple-500' },
     ...(blogEnabled ? [{ name: 'Blog System', count: posts.length, label: 'Articles', icon: Newspaper, path: '/admin/blog', status: 'Active', color: 'text-indigo-500' }] : []),
-    { name: 'Creator Hub', count: users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },
+    { name: 'Creator Hub', count: overviewStats?.creatorsCount ?? users.filter(u => u.role === 'creator').length, label: 'Creators', icon: Briefcase, path: '/admin/creators', status: 'Active', color: 'text-blue-500' },
     { name: 'Payout Engine', count: 1, label: 'Threshold Engine', icon: DollarSign, path: '/admin/finance', status: 'Active', color: 'text-emerald-500' },
     { 
       name: 'User Feedback', 
-      count: feedbackStats.totalCount, 
-      label: feedbackStats.totalCount === 1 ? 'Review' : 'CSAT & Reviews', 
+      count: overviewStats?.feedbackCount ?? feedbackStats.totalCount, 
+      label: (overviewStats?.feedbackCount ?? feedbackStats.totalCount) === 1 ? 'Review' : 'CSAT & Reviews', 
       icon: MessageSquare, 
       path: '/admin/feedback', 
-      status: feedbackStats.statusCounts?.new > 0 
-        ? `${feedbackStats.statusCounts.new} New` 
-        : feedbackStats.totalCount > 0 
+      status: (overviewStats?.newFeedbackCount ?? feedbackStats.statusCounts?.new) > 0 
+        ? `${overviewStats?.newFeedbackCount ?? feedbackStats.statusCounts.new} New` 
+        : (overviewStats?.feedbackCount ?? feedbackStats.totalCount) > 0 
           ? 'Active' 
           : 'All Clear', 
-      color: feedbackStats.statusCounts?.new > 0 ? 'text-amber-500' : 'text-yellow-500' 
+      color: (overviewStats?.newFeedbackCount ?? feedbackStats.statusCounts?.new) > 0 ? 'text-amber-500' : 'text-yellow-500' 
     },
     { name: 'Cache Manager', count: 3, label: 'Layers', icon: Zap, path: '/admin/cache', status: 'Warmed', color: 'text-amber-500' },
-  ], [users, effectiveMatches, activeMatchesCount, posts, perPageSeo, isSiteIndexed, blogEnabled, liveCount, revokedMatchesCount, freeViewingData, partnerAppsStats, feedbackStats]);
+  ], [overviewStats, users, posts, seoOverrideCount, isSiteIndexed, blogEnabled, revokedMatchesCount, freeViewingData, partnerAppsStats, feedbackStats]);
 
   // Top Performing Content Calculators
   const mostWatchedMatch = useMemo(() => {
@@ -660,63 +702,67 @@ function AdminOverview() {
         </div>
       </div>
 
-      {/* Auto-Discovered Platform Modules Bar */}
-      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-xl overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/10 rounded-full filter blur-3xl -z-0"></div>
+      {/* Auto-Discovered Platform Modules Bar (Adaptive Light & Dark Styling) */}
+      <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-xl overflow-hidden relative">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/10 rounded-full filter blur-3xl -z-0 pointer-events-none"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
               <Activity className="w-4 h-4 text-yellow-500" /> Auto-Discovered Platform Modules
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">Real-time modular architecture telemetry & health inspection.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Real-time modular architecture telemetry & health inspection.</p>
           </div>
-          <span className="text-xs font-mono bg-slate-800 border border-slate-700 text-yellow-400 px-3 py-1 rounded-lg self-start md:self-auto font-bold">
+          <span className="text-xs font-mono bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-yellow-600 dark:text-yellow-400 px-3 py-1 rounded-lg self-start md:self-auto font-bold shadow-xs">
             {activeModules.length} Active Modules
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 relative z-10">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 relative z-10">
           {activeModules.map((mod, idx) => {
             const Icon = mod.icon;
             return (
               <Link
                 key={idx}
                 to={mod.path}
-                className="bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-yellow-500/50 p-3 rounded-xl transition-all group block"
+                className="bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 hover:border-yellow-500/50 p-3 rounded-xl transition-all group block shadow-xs"
               >
                 <div className="flex items-center justify-between mb-2">
                   <Icon className={`w-4 h-4 ${mod.color} group-hover:scale-110 transition-transform`} />
-                  <span className="text-[10px] font-mono bg-slate-900 text-slate-300 px-1.5 py-0.5 rounded font-bold">{mod.status}</span>
+                  <span className="text-[10px] font-mono bg-slate-200/70 dark:bg-slate-900 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded font-bold">{mod.status}</span>
                 </div>
-                <div className="text-lg font-black text-white group-hover:text-yellow-400 transition-colors">{mod.count}</div>
-                <div className="text-[11px] font-bold text-slate-400 truncate">{mod.name}</div>
+                <div className="text-lg font-black text-slate-900 dark:text-white group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">{mod.count}</div>
+                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate">{mod.name}</div>
               </Link>
             );
           })}
         </div>
       </div>
 
-      {/* Stats Cards Row */}
+      {/* Stats Cards Row (Dynamic, Live & Clickable) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
-            <div
+            <Link
               key={i}
-              className={`bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm border-l-4 ${stat.color} hover:shadow-md transition-all duration-300 hover:translate-y-[-1px]`}
+              to={stat.path}
+              className={`bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm border-l-4 ${stat.color} hover:shadow-md hover:border-yellow-500/50 transition-all duration-300 hover:translate-y-[-2px] group block cursor-pointer`}
             >
               <div className="flex items-center justify-between mb-4">
-                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-700/60 flex items-center justify-center">
-                  <Icon className="w-5 h-5 text-slate-600 dark:text-slate-300" />
+                <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-700/60 flex items-center justify-center group-hover:bg-yellow-500/10 transition-colors">
+                  <Icon className="w-5 h-5 text-slate-600 dark:text-slate-300 group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors" />
                 </div>
                 <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg">
                   {stat.trend}
                 </span>
               </div>
-              <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{stat.value}</div>
+              <div className="text-3xl font-black text-slate-900 dark:text-white tracking-tight group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">{stat.value}</div>
               <div className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-1">{stat.label}</div>
-              <div className="text-[10px] text-slate-400 mt-2 font-mono">{stat.subtitle}</div>
-            </div>
+              <div className="text-[10px] text-slate-400 mt-2 font-mono flex items-center justify-between">
+                <span>{stat.subtitle}</span>
+                <span className="text-[9px] text-yellow-600 dark:text-yellow-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">View →</span>
+              </div>
+            </Link>
           );
         })}
       </div>
