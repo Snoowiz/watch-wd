@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import { format } from 'date-fns';
 import { MediaPicker } from '../../components/MediaPicker';
 import { compressImage } from '../../lib/imageCompressor';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../../utils/embedHelper';
@@ -104,11 +105,21 @@ export function NewMatch() {
   const [publishMode, setPublishMode] = useState<'now' | 'scheduled'>(existingMatch?.scheduledDate ? 'scheduled' : 'now');
   const [scheduledDate, setScheduledDate] = useState(existingMatch?.scheduledDate || '');
   const [customDate, setCustomDate] = useState(safeIsoDateSlice(existingMatch?.date || (existingMatch as any)?.start_time || (existingMatch as any)?.startTime));
+  const [timeZone, setTimeZone] = useState<string>(existingMatch?.time_zone || 'Europe/London');
+  const [isManualOverride, setIsManualOverride] = useState(
+    existingMatch?.status_mode === 'manual' || existingMatch?.status === 'completed' || existingMatch?.status === 'full_match' || existingMatch?.status === 'live' || existingMatch?.status === 'highlights'
+  );
+  const [statusMode, setStatusMode] = useState<'manual' | 'automatic'>(
+    existingMatch?.status_mode || (isManualOverride ? 'manual' : 'automatic')
+  );
+  const [hideLiveControls, setHideLiveControls] = useState<boolean>(
+    Boolean(existingMatch?.hide_live_controls)
+  );
   const [liveCommenting, setLiveCommenting] = useState(existingMatch?.liveCommenting ?? true);
   const [commentAlignment, setCommentAlignment] = useState<'left' | 'center' | 'right'>(existingMatch?.commentAlignment || 'center');
   const [duration, setDuration] = useState<number>(existingMatch?.duration || 120);
 
-  // Event Access Duration System
+  // Event Access Duration & Period System
   const [eventAccessEnabled, setEventAccessEnabled] = useState(
     Boolean(Number(existingMatch?.event_access_enabled ?? (existingMatch as any)?.eventAccessEnabled ?? 0))
   );
@@ -117,15 +128,28 @@ export function NewMatch() {
   );
   const [customDurationVal, setCustomDurationVal] = useState<number>(24);
   const [customDurationUnit, setCustomDurationUnit] = useState<'hours' | 'days'>('hours');
+  const [accessStartTime, setAccessStartTime] = useState<string>(
+    safeIsoDateSlice(existingMatch?.event_access_starts_at || (existingMatch as any)?.access_starts_at || existingMatch?.date)
+  );
+  const [accessEndTime, setAccessEndTime] = useState<string>(
+    safeIsoDateSlice(existingMatch?.event_access_expires_at || (existingMatch as any)?.access_expires_at || existingMatch?.revoke_expires_at)
+  );
+
+  const formatDateTimeDisplay = (isoStr: string) => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    try {
+      return format(d, 'd MMMM yyyy, HH:mm');
+    } catch {
+      return isoStr;
+    }
+  };
   
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { addToast, updateToast } = useUIStore();
-
-  const [isManualOverride, setIsManualOverride] = useState(
-    existingMatch?.status === 'completed' || existingMatch?.status === 'full_match' || existingMatch?.status === 'live' || existingMatch?.status === 'highlights'
-  );
 
   // Fetch plans and clubs
   useEffect(() => {
@@ -296,9 +320,14 @@ export function NewMatch() {
         embedPrice: ppvPrice * 10,
         status: computedStatus as any,
         duration: Number(duration) || 120,
+        time_zone: timeZone,
+        status_mode: statusMode,
+        hide_live_controls: hideLiveControls,
         event_access_enabled: eventAccessEnabled ? 1 : 0,
         event_access_duration: calculatedDurationMinutes,
         event_access_duration_label: eventAccessPreset,
+        event_access_starts_at: accessStartTime ? resolveValidIsoDate(accessStartTime) : null,
+        event_access_expires_at: accessEndTime ? resolveValidIsoDate(accessEndTime) : null,
         thumbnail: finalThumbnail || 'https://picsum.photos/seed/default/800/450',
         content,
         description,
@@ -528,100 +557,61 @@ export function NewMatch() {
                   </div>
                 </div>
 
-                {/* Content Type & Sport Row */}
-                <div className="grid sm:grid-cols-2 gap-4">
+                {/* Clubs / Organisation & Competition (Inline side by side) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Clubs / Organisation Selector */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                      Content type
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                        Clubs / organisation
+                      </label>
+                      <span className="text-[11px] font-semibold text-slate-400">Optional</span>
+                    </div>
                     <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value as any)}
+                      value={clubId || ''}
+                      onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
                       className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
-                      id="select-content-type"
+                      id="select-match-club"
                     >
-                      <option value="upcoming">Upcoming Match</option>
-                      <option value="live">Live broadcast</option>
-                      <option value="full_match">Full Match</option>
-                      <option value="highlights">Highlights</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                      Sport
-                    </label>
-                    <select
-                      value={selectedCategories[0] || ''}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        if (val) {
-                          setSelectedCategories(prev => prev.includes(val) ? prev : [val, ...prev.filter(id => id !== val)]);
-                        }
-                      }}
-                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
-                      id="select-primary-sport"
-                    >
-                      <option value="">Select sport / category...</option>
-                      {categories.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                      <option value="">No club or organisation assigned</option>
+                      {clubs.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.stripe_account_id ? '• Partner' : ''}
+                        </option>
                       ))}
                     </select>
+                    <p className="text-[11px] text-slate-500 mt-1.5">
+                      Assigning a club displays club branding and enables filtering.
+                    </p>
                   </div>
-                </div>
 
-                {/* Clubs / Organisation Selector */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                      Clubs / organisation
-                    </label>
-                    <span className="text-[11px] font-semibold text-slate-400">Optional</span>
+                  {/* Competition Selector */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Trophy className="w-3.5 h-3.5 text-slate-400" />
+                        Competition
+                      </label>
+                      <span className="text-[11px] font-semibold text-slate-400">Optional</span>
+                    </div>
+                    <select
+                      value={competitionId || ''}
+                      onChange={(e) => setCompetitionId(e.target.value ? e.target.value : null)}
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                      id="select-match-competition"
+                    >
+                      <option value="">No competition assigned</option>
+                      {competitions.map(comp => (
+                        <option key={comp.id} value={comp.id}>
+                          {comp.name} {comp.season ? `(${comp.season})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-500 mt-1.5">
+                      Assigning a competition links this match to tournament schedules.
+                    </p>
                   </div>
-                  <select
-                    value={clubId || ''}
-                    onChange={(e) => setClubId(e.target.value ? e.target.value : null)}
-                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
-                    id="select-match-club"
-                  >
-                    <option value="">No club or organisation assigned</option>
-                    {clubs.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.stripe_account_id ? '• Partner' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-500 mt-1.5">
-                    Assigning a club displays club branding and enables filtering. Does not alter billing or payouts unless set as PPV.
-                  </p>
-                </div>
-
-                {/* Competition Selector */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <Trophy className="w-3.5 h-3.5 text-slate-400" />
-                      Competition
-                    </label>
-                    <span className="text-[11px] font-semibold text-slate-400">Optional</span>
-                  </div>
-                  <select
-                    value={competitionId || ''}
-                    onChange={(e) => setCompetitionId(e.target.value ? e.target.value : null)}
-                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
-                    id="select-match-competition"
-                  >
-                    <option value="">No competition assigned</option>
-                    {competitions.map(comp => (
-                      <option key={comp.id} value={comp.id}>
-                        {comp.name} {comp.season ? `(${comp.season})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-500 mt-1.5">
-                    Assigning a competition links this match to tournament schedules and enables competition filters.
-                  </p>
                 </div>
 
                 {/* Rich Text Editor */}
@@ -893,18 +883,14 @@ export function NewMatch() {
 
             {/* Right Column: Timing, Status & Commenting */}
             <div className="lg:col-span-5 xl:col-span-4 space-y-6">
-              {/* Match Timing & Status Card */}
+              {/* Match Timing & Broadcast Card */}
               <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
-                <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
-                  <Clock className="w-5 h-5" style={{ color: primaryColor }} />
-                  <h3>Match timing & status</h3>
-                </div>
-
-                {/* Original Creation / Match Date */}
+                {/* Event date and start time */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      Original Creation / Match Date
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Event date and start time
                     </label>
                     <button
                       type="button"
@@ -912,61 +898,64 @@ export function NewMatch() {
                       style={{ color: primaryColor }}
                       className="text-[11px] font-bold hover:underline"
                     >
-                      Set to Current Time
+                      Set Current Time
                     </button>
                   </div>
-                  <input 
-                    type="datetime-local"
-                    value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
-                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
-                  />
+                  <div 
+                    className="relative cursor-pointer"
+                    onClick={(e) => {
+                      const input = e.currentTarget.querySelector('input');
+                      if (input && 'showPicker' in input) {
+                        try { (input as any).showPicker(); } catch {}
+                      }
+                    }}
+                  >
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <input 
+                      type="datetime-local"
+                      value={customDate}
+                      onChange={(e) => setCustomDate(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors font-medium cursor-pointer"
+                    />
+                  </div>
+                  {customDate && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 pl-1 font-mono">
+                      {formatDateTimeDisplay(customDate)}
+                    </p>
+                  )}
                 </div>
 
-                {/* Match Status */}
+                {/* Time zone */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      Match status
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextOverride = !isManualOverride;
-                        setIsManualOverride(nextOverride);
-                        if (nextOverride && !customDate) {
-                          setCustomDate(new Date().toISOString().slice(0, 16));
-                        }
-                      }}
-                      style={{ color: primaryColor }}
-                      className="text-[11px] font-bold hover:underline"
-                    >
-                      {isManualOverride ? 'Use Automated Detection' : 'Manual Override'}
-                    </button>
-                  </div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                    Time zone
+                  </label>
+                  <select
+                    value={timeZone}
+                    onChange={(e) => setTimeZone(e.target.value)}
+                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                  >
+                    <option value="Europe/London">Europe/London (GMT/BST)</option>
+                    <option value="UTC">UTC (Coordinated Universal Time)</option>
+                    <option value="America/New_York">America/New_York (EST/EDT)</option>
+                    <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+                    <option value="America/Denver">America/Denver (MST/MDT)</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                    <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                    <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                    <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+                  </select>
+                </div>
 
-                  {!isManualOverride ? (
-                    <div className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 flex items-center justify-between transition-colors">
-                      <div className="flex items-center gap-2">
-                        {getCalculatedStatus() === 'upcoming' && (
-                          <span style={primaryBadgeStyle} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border">
-                            <Clock className="w-3 h-3" /> UPCOMING (Auto)
-                          </span>
-                        )}
-                        {getCalculatedStatus() === 'live' && (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/30">
-                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> LIVE NOW (Auto)
-                          </span>
-                        )}
-                        {getCalculatedStatus() === 'full_match' && (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                            ✓ FULL MATCH (Auto)
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] font-medium text-slate-500">From date & duration</span>
-                    </div>
-                  ) : (
+                {/* Broadcast status & Status mode (2 columns side by side) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                      Broadcast status
+                    </label>
                     <select 
                       value={status === 'completed' ? 'full_match' : status}
                       onChange={(e) => {
@@ -976,50 +965,71 @@ export function NewMatch() {
                           setCustomDate(new Date().toISOString().slice(0, 16));
                         }
                       }}
-                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-3 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                     >
                       <option value="upcoming">Upcoming</option>
-                      <option value="live">Live Now</option>
-                      <option value="full_match">Full Match</option>
+                      <option value="live">Live broadcast</option>
+                      <option value="full_match">Full match</option>
                       <option value="highlights">Highlights</option>
                     </select>
-                  )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                      Status mode
+                    </label>
+                    <select
+                      value={statusMode}
+                      onChange={(e) => {
+                        const mode = e.target.value as 'manual' | 'automatic';
+                        setStatusMode(mode);
+                        setIsManualOverride(mode === 'manual');
+                        if (mode === 'manual' && !customDate) {
+                          setCustomDate(new Date().toISOString().slice(0, 16));
+                        }
+                      }}
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-3 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
+                    >
+                      <option value="manual">Manual</option>
+                      <option value="automatic">Automatic</option>
+                    </select>
+                  </div>
                 </div>
 
-                {/* Match Duration */}
+                {/* Estimated broadcast duration */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                    Match duration (minutes)
+                    Estimated broadcast duration
                   </label>
-                  <div className="grid grid-cols-4 gap-2 mb-2">
-                    {[90, 120, 150, 180].map((mins) => (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() => setDuration(mins)}
-                        style={Number(duration) === mins ? primaryButtonStyle : undefined}
-                        className={`py-2 text-xs font-bold rounded-lg border transition-all ${
-                          Number(duration) === mins
-                            ? 'border-transparent shadow-sm'
-                            : 'bg-slate-100/80 dark:bg-slate-950/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-800/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
-                        }`}
-                      >
-                        {mins}m
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="number"
+                      min="15"
+                      max="600"
+                      value={duration}
+                      onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
+                      className="w-28 bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors font-mono"
+                    />
+                    <span className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400">minutes</span>
                   </div>
-                  <input 
-                    type="number"
-                    min="15"
-                    max="600"
-                    value={duration}
-                    onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors font-mono"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-2">
-                    Existing auto/manual status rules stay as they are.
-                  </p>
                 </div>
+
+                {/* Informational banner */}
+                <div className="flex items-start gap-2.5 bg-blue-500/10 dark:bg-blue-500/10 border border-blue-500/20 rounded-xl p-3.5 text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                  <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                  <span>Publishing does not start the broadcast. An estimate must not end an active stream.</span>
+                </div>
+
+                {/* Hide live controls checkbox */}
+                <label className="flex items-center gap-2.5 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer pt-1 select-none">
+                  <input
+                    type="checkbox"
+                    checked={hideLiveControls}
+                    onChange={(e) => setHideLiveControls(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-[var(--primary-500)] focus:ring-[var(--primary-500)] bg-slate-50 dark:bg-slate-950/40"
+                  />
+                  <span>Hide live controls for highlights / interviews.</span>
+                </label>
               </div>
 
               {/* Live Commenting Card */}
@@ -1222,110 +1232,136 @@ export function NewMatch() {
                   </div>
                 )}
 
-                {/* Bottom Callout Notice */}
-                <div className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
-                  <strong className="text-slate-900 dark:text-slate-300">Conditional fields:</strong> Free hides paid fields. Plan / Subscription shows the existing Required Plan selector instead of PPV pricing. Preserve the present access-type storage values.
+                {/* Time-limited event access toggle switch (Image 3 design) */}
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={eventAccessEnabled}
+                        onChange={(e) => setEventAccessEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-[var(--primary-500)] relative"></div>
+                      <span>Time-limited event access</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Limit event access to a countdown window (Free, Plan or PPV). When expired, the match automatically switches to revoked status.
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Right Column: Time-Limited Event Access & Existing Behavior */}
+            {/* Right Column: Access Period (Optional) - Image 3 design */}
             <div className="lg:col-span-5 xl:col-span-4 space-y-6">
-              {/* Time-Limited Event Access Card */}
-              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
-                  <Clock className="w-5 h-5" style={{ color: primaryColor }} />
-                  <h3>Time-limited event access</h3>
+                  <Calendar className="w-5 h-5" style={{ color: primaryColor }} />
+                  <h3>Access period (optional)</h3>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-200 block">
-                      Enable event access duration
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                      Existing feature applies to Free, Plan and PPV.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEventAccessEnabled(!eventAccessEnabled)}
-                    style={eventAccessEnabled ? primaryButtonStyle : undefined}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                      eventAccessEnabled
-                        ? 'shadow-sm'
-                        : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                    }`}
-                  >
-                    {eventAccessEnabled ? 'On' : 'Off'}
-                  </button>
-                </div>
-
-                {eventAccessEnabled && (
-                  <div className="space-y-3 pt-2 animate-in fade-in">
+                {/* Start time */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      Access duration window
+                      Start time
                     </label>
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-                      {[
-                        { id: '3d', label: '3 Days' },
-                        { id: '7d', label: '7 Days' },
-                        { id: '30d', label: '30 Days' },
-                        { id: '1y', label: '1 Year' },
-                        { id: 'custom', label: 'Custom' },
-                      ].map((preset) => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => setEventAccessPreset(preset.id as any)}
-                          style={eventAccessPreset === preset.id ? primaryButtonStyle : undefined}
-                          className={`py-2 px-1 text-[11px] font-bold rounded-lg border text-center transition-all ${
-                            eventAccessPreset === preset.id
-                              ? 'border-transparent shadow-sm'
-                              : 'bg-slate-100/80 dark:bg-slate-950/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-800/80 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {eventAccessPreset === 'custom' && (
-                      <div className="flex items-center gap-2 pt-1 animate-in fade-in">
-                        <input
-                          type="number"
-                          min="1"
-                          value={customDurationVal}
-                          onChange={(e) => setCustomDurationVal(Math.max(1, Number(e.target.value)))}
-                          className="w-24 bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white font-mono"
-                        />
-                        <select
-                          value={customDurationUnit}
-                          onChange={(e) => setCustomDurationUnit(e.target.value as any)}
-                          className="bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-white"
-                        >
-                          <option value="hours">Hours</option>
-                          <option value="days">Days</option>
-                        </select>
-                      </div>
+                    {accessStartTime && (
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {formatDateTimeDisplay(accessStartTime)}
+                      </span>
                     )}
-
-                    <div style={{ backgroundColor: `${primaryColor}14`, borderColor: `${primaryColor}30`, color: primaryColor }} className="rounded-xl p-3 text-xs leading-relaxed border font-medium">
-                      The existing event-access countdown and expiry logic must not change as part of this styling task.
-                    </div>
                   </div>
-                )}
-              </div>
-
-              {/* Existing Behavior Card */}
-              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-3 shadow-sm transition-all">
-                <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
-                  <Info className="w-5 h-5" style={{ color: primaryColor }} />
-                  <h3>Existing behaviour</h3>
+                  <div 
+                    className="relative cursor-pointer"
+                    onClick={(e) => {
+                      const input = e.currentTarget.querySelector('input');
+                      if (input && 'showPicker' in input) {
+                        try { (input as any).showPicker(); } catch {}
+                      }
+                    }}
+                  >
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <input 
+                      type="datetime-local"
+                      value={accessStartTime}
+                      onChange={(e) => setAccessStartTime(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors font-medium cursor-pointer"
+                    />
+                  </div>
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Keep the current one-choice model: Free, PPV or required subscription plan. Do not add the PDF's simultaneous purchase and subscription options, expiry date controls or new entitlements.
-                </p>
+
+                {/* End time */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      End time
+                    </label>
+                    {accessEndTime && (
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {formatDateTimeDisplay(accessEndTime)}
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    className="relative cursor-pointer"
+                    onClick={(e) => {
+                      const input = e.currentTarget.querySelector('input');
+                      if (input && 'showPicker' in input) {
+                        try { (input as any).showPicker(); } catch {}
+                      }
+                    }}
+                  >
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <input 
+                      type="datetime-local"
+                      value={accessEndTime}
+                      onChange={(e) => setAccessEndTime(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors font-medium cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets row */}
+                <div>
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
+                    Quick duration helper
+                  </span>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[
+                      { id: '3d', label: '3 Days', days: 3 },
+                      { id: '7d', label: '7 Days', days: 7 },
+                      { id: '30d', label: '30 Days', days: 30 },
+                      { id: '1y', label: '1 Year', days: 365 },
+                      { id: 'custom', label: 'Custom', days: 1 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setEventAccessPreset(preset.id as any);
+                          const baseStart = accessStartTime ? new Date(accessStartTime) : (customDate ? new Date(customDate) : new Date());
+                          if (!accessStartTime) setAccessStartTime(baseStart.toISOString().slice(0, 16));
+                          const end = new Date(baseStart.getTime() + preset.days * 24 * 60 * 60 * 1000);
+                          setAccessEndTime(end.toISOString().slice(0, 16));
+                        }}
+                        style={eventAccessPreset === preset.id ? primaryButtonStyle : undefined}
+                        className={`py-1.5 px-1 text-[11px] font-bold rounded-lg border text-center transition-all ${
+                          eventAccessPreset === preset.id
+                            ? 'border-transparent shadow-sm'
+                            : 'bg-slate-100/80 dark:bg-slate-950/40 text-slate-700 dark:text-slate-400 border-slate-200 dark:border-slate-800/80 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

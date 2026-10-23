@@ -129,6 +129,31 @@ async function migrate() {
   } catch (err: any) {}
 
   try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`event_access_starts_at\` DATETIME DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added event_access_starts_at to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`event_access_expires_at\` DATETIME DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added event_access_expires_at to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`time_zone\` VARCHAR(100) DEFAULT 'Europe/London'`);
+    console.log('  ✓ Incremental update: Added time_zone to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`status_mode\` VARCHAR(50) DEFAULT 'manual'`);
+    console.log('  ✓ Incremental update: Added status_mode to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`hide_live_controls\` TINYINT(1) DEFAULT 0`);
+    console.log('  ✓ Incremental update: Added hide_live_controls to matches.');
+  } catch (err: any) {}
+
+  try {
     await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`revoke_status\` VARCHAR(50) DEFAULT NULL`);
     console.log('  ✓ Incremental update: Added revoke_status to matches.');
   } catch (err: any) {}

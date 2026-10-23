@@ -1231,6 +1231,11 @@ export interface Match {
   event_access_enabled?: boolean | number;
   event_access_duration?: number;
   event_access_duration_label?: string;
+  event_access_starts_at?: string | null;
+  event_access_expires_at?: string | null;
+  time_zone?: string;
+  status_mode?: 'manual' | 'automatic';
+  hide_live_controls?: boolean;
   revoke_status?: 'revoked' | 'auto_deleted' | 'normal' | null;
   revoked_at?: string | null;
   revoke_expires_at?: string | null;

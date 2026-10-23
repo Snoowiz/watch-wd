@@ -9981,6 +9981,26 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       }
     });
 
+    execute(`
+      ALTER TABLE \`matches\` ADD COLUMN \`event_access_starts_at\` DATETIME DEFAULT NULL
+    `).catch(() => {});
+
+    execute(`
+      ALTER TABLE \`matches\` ADD COLUMN \`event_access_expires_at\` DATETIME DEFAULT NULL
+    `).catch(() => {});
+
+    execute(`
+      ALTER TABLE \`matches\` ADD COLUMN \`time_zone\` VARCHAR(100) DEFAULT 'Europe/London'
+    `).catch(() => {});
+
+    execute(`
+      ALTER TABLE \`matches\` ADD COLUMN \`status_mode\` VARCHAR(50) DEFAULT 'manual'
+    `).catch(() => {});
+
+    execute(`
+      ALTER TABLE \`matches\` ADD COLUMN \`hide_live_controls\` TINYINT(1) DEFAULT 0
+    `).catch(() => {});
+
     // Ensure security system tables exist (trusted_devices, verification_codes, login_attempts, security_settings)
     execute(`
       CREATE TABLE IF NOT EXISTS \`trusted_devices\` (
