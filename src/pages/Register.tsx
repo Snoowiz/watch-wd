@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore, useSettingsStore } from '../store';
 import { UserPlus, AlertCircle, Building2 } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
 import { SlidingPuzzleCaptcha } from '../components/SlidingPuzzleCaptcha';
 
@@ -23,11 +23,65 @@ export function Register() {
   // Determine where to redirect after registration
   const redirectTo = (location.state as any)?.from || '/';
 
+  useEffect(() => {
+    let isMounted = true;
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (!isMounted || !result || !result.user) return;
+        setIsLoading(true);
+        const user = result.user;
+        const idToken = await user.getIdToken();
+        let device_id = localStorage.getItem('device_id');
+        if (!device_id) {
+          device_id = Math.random().toString(36).substring(2, 15);
+          localStorage.setItem('device_id', device_id);
+        }
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id_token: idToken,
+            token: idToken,
+            email: user.email,
+            name: user.displayName || 'User',
+            avatar: user.photoURL,
+            device_id
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (data.device_id) localStorage.setItem('device_id', data.device_id);
+          setAuth(data.user, data.token);
+          navigate(redirectTo, { state: { from: redirectTo, autoPlay: (location.state as any)?.autoPlay, matchId: (location.state as any)?.matchId } });
+        } else {
+          setError(data.error || 'Google signup failed');
+        }
+      })
+      .catch((err) => {
+        console.warn('Redirect signup check:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => { isMounted = false; };
+  }, []);
+
   const handleGoogleSignup = async () => {
     try {
       setIsLoading(true);
       setError('');
-      const result = await signInWithPopup(auth, googleProvider);
+      let result;
+      try {
+        result = await signInWithPopup(auth, googleProvider);
+      } catch (popupErr: any) {
+        if (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/cancelled-popup-request') {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        }
+        throw popupErr;
+      }
+
       const user = result.user;
       const idToken = await user.getIdToken();
 
@@ -58,7 +112,7 @@ export function Register() {
       navigate(redirectTo, { state: { from: redirectTo, autoPlay: (location.state as any)?.autoPlay, matchId: (location.state as any)?.matchId } });
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('popup-closed-by-user')) {
-        setError('Signup cancelled.');
+        setError('Google sign-up popup was closed before completion. If your browser blocks popups, allow popups for this site or try again.');
       } else if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
         setError('Domain not authorized: Please ensure your current domain is listed in Firebase Console -> Authentication -> Settings -> Authorized domains.');
       } else {

@@ -2911,6 +2911,8 @@ async function startServer() {
     contentSecurityPolicy: false,
     // Disabled to prevent breaking Vite dev server and embedded videos
     crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    // Disabled to allow Firebase Google Auth popup window.opener communication
     crossOriginResourcePolicy: { policy: "cross-origin" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" }
   }));

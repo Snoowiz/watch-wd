@@ -24,6 +24,8 @@ export let auth: Auth = getAuth(firebaseApp);
 export let messaging: Messaging | null = null;
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
 
 // Try initializing messaging if supported in this browser
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
