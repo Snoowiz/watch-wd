@@ -823,8 +823,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
   googleAuthSettings: {
-    enabled: false,
-    clientId: '',
+    enabled: true,
+    clientId: '337562835555.apps.googleusercontent.com',
     clientSecret: '',
     redirectUri: ''
   },

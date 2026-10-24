@@ -37,11 +37,11 @@ __export(server_exports, {
 });
 module.exports = __toCommonJS(server_exports);
 var import_express2 = __toESM(require("express"), 1);
-var import_path2 = __toESM(require("path"), 1);
+var import_path3 = __toESM(require("path"), 1);
 var import_url = require("url");
 var import_vite = require("vite");
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"), 1);
-var import_fs2 = __toESM(require("fs"), 1);
+var import_fs3 = __toESM(require("fs"), 1);
 var import_bcryptjs = __toESM(require("bcryptjs"), 1);
 var import_nodemailer = __toESM(require("nodemailer"), 1);
 var import_stripe = __toESM(require("stripe"), 1);
@@ -946,15 +946,15 @@ var CacheManager = class {
       "/api/tasks"
     ];
     let warmedCount = 0;
-    for (const path3 of pathsToWarm) {
+    for (const path4 of pathsToWarm) {
       try {
-        const data = await fetcherFn(path3);
+        const data = await fetcherFn(path4);
         if (data) {
-          this.set("fragment", path3, data);
+          this.set("fragment", path4, data);
           warmedCount++;
         }
       } catch (err) {
-        console.error(`Failed to warm cache for path ${path3}: ${err.message}`);
+        console.error(`Failed to warm cache for path ${path4}: ${err.message}`);
       }
     }
     this.logEvent("Cache Warming Finished", `Successfully pre-heated ${warmedCount} critical API fragments`, "general");
@@ -1708,8 +1708,8 @@ function mapOp(firestoreOp) {
   return map[firestoreOp] || "=";
 }
 var MySQLAdapter = class {
-  collection(path3) {
-    return new CollectionWrapper(path3);
+  collection(path4) {
+    return new CollectionWrapper(path4);
   }
 };
 
@@ -2000,6 +2000,71 @@ async function getPublicPaymentSettings() {
       merchantCurrency: settings.paystack.merchantCurrency
     }
   };
+}
+
+// db/firebaseAdmin.ts
+var import_firebase_admin = __toESM(require("firebase-admin"), 1);
+var import_fs2 = __toESM(require("fs"), 1);
+var import_path2 = __toESM(require("path"), 1);
+var firebaseAdminApp = null;
+var SERVICE_ACCOUNT_FILE = import_path2.default.join(process.cwd(), "data", "secure_settings", "firebase_service_account.json");
+function getFirebaseAdmin() {
+  if (firebaseAdminApp) return firebaseAdminApp;
+  if (import_firebase_admin.default.apps.length > 0 && import_firebase_admin.default.apps[0]) {
+    firebaseAdminApp = import_firebase_admin.default.apps[0];
+    return firebaseAdminApp;
+  }
+  let serviceAccount = null;
+  try {
+    if (import_fs2.default.existsSync(SERVICE_ACCOUNT_FILE)) {
+      const fileContent = import_fs2.default.readFileSync(SERVICE_ACCOUNT_FILE, "utf8");
+      if (fileContent.trim()) {
+        serviceAccount = JSON.parse(fileContent);
+      }
+    }
+  } catch (err) {
+    console.warn("[FirebaseAdmin] Could not read service account from file:", err.message);
+  }
+  if (!serviceAccount && process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    } catch (_) {
+    }
+  }
+  try {
+    if (serviceAccount && serviceAccount.private_key) {
+      firebaseAdminApp = import_firebase_admin.default.initializeApp({
+        credential: import_firebase_admin.default.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id || "watch-wds"
+      });
+      console.log(`[FirebaseAdmin] Successfully initialized Firebase Admin SDK for project ${serviceAccount.project_id}`);
+    } else {
+      console.warn("[FirebaseAdmin] No service account found in secure storage or environment.");
+    }
+  } catch (initErr) {
+    if (import_firebase_admin.default.apps.length > 0 && import_firebase_admin.default.apps[0]) {
+      firebaseAdminApp = import_firebase_admin.default.apps[0];
+    } else {
+      console.error("[FirebaseAdmin] Failed to initialize Firebase Admin SDK:", initErr.message);
+    }
+  }
+  return firebaseAdminApp;
+}
+async function verifyFirebaseIdToken(token) {
+  if (!token) return null;
+  try {
+    const app = getFirebaseAdmin();
+    if (!app) return null;
+    const decoded = await app.auth().verifyIdToken(token);
+    return {
+      email: decoded.email,
+      name: decoded.name || decoded.displayName || "",
+      picture: decoded.picture || decoded.photoURL || "",
+      uid: decoded.uid
+    };
+  } catch (err) {
+    return null;
+  }
 }
 
 // api/v1/routes/matches.ts
@@ -2492,7 +2557,7 @@ var _filename = "";
 var _dirname = "";
 try {
   _filename = typeof import_meta !== "undefined" && import_meta.url ? (0, import_url.fileURLToPath)(import_meta.url) : typeof __filename !== "undefined" ? __filename : "";
-  _dirname = _filename ? import_path2.default.dirname(_filename) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
+  _dirname = _filename ? import_path3.default.dirname(_filename) : typeof __dirname !== "undefined" ? __dirname : process.cwd();
 } catch (e) {
   _filename = "";
   _dirname = process.cwd();
@@ -2833,7 +2898,7 @@ async function notifyPartnerClub(clubId, title, message, type = "info", link = n
 async function startServer() {
   const app = (0, import_express2.default)();
   const PORT = process.env.APP_PORT || process.env.PORT || 3e3;
-  import_fs2.default.writeFileSync("server-pid.txt", process.pid.toString());
+  import_fs3.default.writeFileSync("server-pid.txt", process.pid.toString());
   let globalAppUrl = process.env.APP_URL || "http://localhost:3000";
   function getRequestBaseUrl(req) {
     const host = req.headers["x-forwarded-host"] || req.get("host") || "watchwds.com";
@@ -3149,26 +3214,34 @@ async function startServer() {
       let verifiedAvatar = reqAvatar || "";
       if (googleToken) {
         try {
-          const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(googleToken)}`);
-          if (!googleRes.ok) {
-            const accessRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
-              headers: { Authorization: `Bearer ${googleToken}` }
-            });
-            if (!accessRes.ok) {
-              return res.status(401).json({ error: "Invalid Google authentication token" });
-            }
-            const tokenInfo = await accessRes.json();
-            verifiedEmail = tokenInfo.email;
-            if (tokenInfo.name) verifiedName = tokenInfo.name;
-            if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+          const fbVerified = await verifyFirebaseIdToken(googleToken);
+          if (fbVerified && fbVerified.email) {
+            verifiedEmail = fbVerified.email;
+            if (fbVerified.name) verifiedName = fbVerified.name;
+            if (fbVerified.picture) verifiedAvatar = fbVerified.picture;
           } else {
-            const tokenInfo = await googleRes.json();
-            verifiedEmail = tokenInfo.email;
-            if (tokenInfo.name) verifiedName = tokenInfo.name;
-            if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+            const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(googleToken)}`);
+            if (!googleRes.ok) {
+              const accessRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
+                headers: { Authorization: `Bearer ${googleToken}` }
+              });
+              if (!accessRes.ok) {
+                return res.status(401).json({ error: "Invalid Google authentication token" });
+              }
+              const tokenInfo = await accessRes.json();
+              verifiedEmail = tokenInfo.email;
+              if (tokenInfo.name) verifiedName = tokenInfo.name;
+              if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+            } else {
+              const tokenInfo = await googleRes.json();
+              verifiedEmail = tokenInfo.email;
+              if (tokenInfo.name) verifiedName = tokenInfo.name;
+              if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+            }
           }
         } catch (verErr) {
-          return res.status(401).json({ error: "Failed to verify Google token with Google servers" });
+          console.error("[GoogleAuth] Verification error:", verErr.message);
+          return res.status(401).json({ error: "Failed to verify Google token with authentication servers" });
         }
       } else {
         if (process.env.NODE_ENV === "production") {
@@ -4340,13 +4413,13 @@ async function startServer() {
       cacheEngine.invalidateCollection("matches");
       const adminsSnap = await db.collection("users").where("role", "==", "admin").get();
       for (const adminDoc of adminsSnap.docs) {
-        const admin = adminDoc.data();
-        sendTemplateEmail(admin.email, "admin_new_match_alert", {
+        const admin2 = adminDoc.data();
+        sendTemplateEmail(admin2.email, "admin_new_match_alert", {
           match_name: req.body.title || "New Match",
           creator_name: req.user.name || "Staff",
           match_date: req.body.start_time || req.body.date || (/* @__PURE__ */ new Date()).toLocaleString(),
           website_url: getRequestBaseUrl(req)
-        }).catch((err) => console.error(`Failed to send admin match alert to ${admin.email}:`, err));
+        }).catch((err) => console.error(`Failed to send admin match alert to ${admin2.email}:`, err));
       }
       res.json({ id: docRef.id });
     } catch (e) {
@@ -4717,10 +4790,10 @@ async function startServer() {
       headerLogoSrc = "cid:platform-logo";
     } else if (chosenLogo.startsWith("/") || chosenLogo.endsWith(".png") || chosenLogo.endsWith(".jpg") || chosenLogo.endsWith(".svg")) {
       const cleanPath = chosenLogo.replace(/^\//, "");
-      const localFilePath = import_path2.default.join(process.cwd(), "public", cleanPath);
-      if (import_fs2.default.existsSync(localFilePath)) {
-        const fileContent = import_fs2.default.readFileSync(localFilePath);
-        const ext = import_path2.default.extname(cleanPath).replace(".", "") || "png";
+      const localFilePath = import_path3.default.join(process.cwd(), "public", cleanPath);
+      if (import_fs3.default.existsSync(localFilePath)) {
+        const fileContent = import_fs3.default.readFileSync(localFilePath);
+        const ext = import_path3.default.extname(cleanPath).replace(".", "") || "png";
         const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" ? "image/jpeg" : "image/png";
         attachments.push({
           filename: `platform-logo.${ext}`,
@@ -5798,9 +5871,11 @@ async function startServer() {
   app.get("/api/auth/google/config", async (req, res) => {
     try {
       const data = await getSecureDocument("settings", "google_auth") || {};
+      const fbData = await getSecureDocument("settings", "firebase_config") || {};
+      const isEnabled = data.enabled !== false && (data.enabled || fbData.enabled || Boolean(fbData.apiKey));
       res.json({
-        enabled: data.enabled || false,
-        clientId: data.clientId || ""
+        enabled: isEnabled,
+        clientId: data.clientId || fbData.appId || "watch-wds"
       });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -11287,7 +11362,7 @@ ${output}`;
       return html;
     }
   }
-  const isProduction = process.env.NODE_ENV === "production" || !import_fs2.default.existsSync(import_path2.default.join(currentDirname, "vite.config.ts")) || currentFilename.endsWith(".cjs");
+  const isProduction = process.env.NODE_ENV === "production" || !import_fs3.default.existsSync(import_path3.default.join(currentDirname, "vite.config.ts")) || currentFilename.endsWith(".cjs");
   if (!isProduction) {
     const vite = await (0, import_vite.createServer)({
       server: { middlewareMode: true, hmr: process.env.DISABLE_HMR === "true" ? false : void 0 },
@@ -11300,8 +11375,8 @@ ${output}`;
       }
       try {
         const url = req.originalUrl;
-        const indexPath = import_path2.default.resolve(currentDirname, "index.html");
-        let template = import_fs2.default.readFileSync(indexPath, "utf-8");
+        const indexPath = import_path3.default.resolve(currentDirname, "index.html");
+        let template = import_fs3.default.readFileSync(indexPath, "utf-8");
         template = await vite.transformIndexHtml(url, template);
         const html = await injectSeoIntoHtml(req, template);
         res.status(200).set({ "Content-Type": "text/html; charset=utf-8" }).send(html);
@@ -11311,13 +11386,13 @@ ${output}`;
       }
     });
   } else {
-    let distPath = import_path2.default.join(currentDirname, "dist");
-    if (!import_fs2.default.existsSync(import_path2.default.join(distPath, "index.html"))) {
-      if (import_fs2.default.existsSync(import_path2.default.join(currentDirname, "index.html"))) {
+    let distPath = import_path3.default.join(currentDirname, "dist");
+    if (!import_fs3.default.existsSync(import_path3.default.join(distPath, "index.html"))) {
+      if (import_fs3.default.existsSync(import_path3.default.join(currentDirname, "index.html"))) {
         distPath = currentDirname;
       } else {
-        const parentDist = import_path2.default.join(currentDirname, "..", "dist");
-        if (import_fs2.default.existsSync(import_path2.default.join(parentDist, "index.html"))) {
+        const parentDist = import_path3.default.join(currentDirname, "..", "dist");
+        if (import_fs3.default.existsSync(import_path3.default.join(parentDist, "index.html"))) {
           distPath = parentDist;
         }
       }
@@ -11328,11 +11403,11 @@ ${output}`;
         return next();
       }
       try {
-        const indexPath = import_path2.default.join(distPath, "index.html");
-        if (!import_fs2.default.existsSync(indexPath)) {
+        const indexPath = import_path3.default.join(distPath, "index.html");
+        if (!import_fs3.default.existsSync(indexPath)) {
           return res.status(404).send("Application not built yet.");
         }
-        const template = import_fs2.default.readFileSync(indexPath, "utf-8");
+        const template = import_fs3.default.readFileSync(indexPath, "utf-8");
         const html = await injectSeoIntoHtml(req, template);
         res.status(200).set({ "Content-Type": "text/html; charset=utf-8" }).send(html);
       } catch (e) {

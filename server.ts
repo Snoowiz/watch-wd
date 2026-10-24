@@ -78,6 +78,7 @@ import {
   isMaskedSecret,
   maskSecret,
 } from "./db/persistentConfig.js";
+import { verifyFirebaseIdToken, getFirebaseAdmin } from "./db/firebaseAdmin.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
 import {
   getClientIp,
@@ -878,26 +879,36 @@ async function startServer() {
 
       if (googleToken) {
         try {
-          const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(googleToken)}`);
-          if (!googleRes.ok) {
-            const accessRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
-              headers: { Authorization: `Bearer ${googleToken}` }
-            });
-            if (!accessRes.ok) {
-              return res.status(401).json({ error: "Invalid Google authentication token" });
-            }
-            const tokenInfo = await accessRes.json();
-            verifiedEmail = tokenInfo.email;
-            if (tokenInfo.name) verifiedName = tokenInfo.name;
-            if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+          // 1. Try Firebase Admin SDK verification first (for tokens issued by Firebase Auth)
+          const fbVerified = await verifyFirebaseIdToken(googleToken);
+          if (fbVerified && fbVerified.email) {
+            verifiedEmail = fbVerified.email;
+            if (fbVerified.name) verifiedName = fbVerified.name;
+            if (fbVerified.picture) verifiedAvatar = fbVerified.picture;
           } else {
-            const tokenInfo = await googleRes.json();
-            verifiedEmail = tokenInfo.email;
-            if (tokenInfo.name) verifiedName = tokenInfo.name;
-            if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+            // 2. Fallback to Google OAuth tokeninfo / userinfo endpoints (for raw Google OAuth2 tokens)
+            const googleRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(googleToken)}`);
+            if (!googleRes.ok) {
+              const accessRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
+                headers: { Authorization: `Bearer ${googleToken}` }
+              });
+              if (!accessRes.ok) {
+                return res.status(401).json({ error: "Invalid Google authentication token" });
+              }
+              const tokenInfo = await accessRes.json();
+              verifiedEmail = tokenInfo.email;
+              if (tokenInfo.name) verifiedName = tokenInfo.name;
+              if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+            } else {
+              const tokenInfo = await googleRes.json();
+              verifiedEmail = tokenInfo.email;
+              if (tokenInfo.name) verifiedName = tokenInfo.name;
+              if (tokenInfo.picture) verifiedAvatar = tokenInfo.picture;
+            }
           }
         } catch (verErr: any) {
-          return res.status(401).json({ error: "Failed to verify Google token with Google servers" });
+          console.error("[GoogleAuth] Verification error:", verErr.message);
+          return res.status(401).json({ error: "Failed to verify Google token with authentication servers" });
         }
       } else {
         if (process.env.NODE_ENV === "production") {
@@ -3971,9 +3982,11 @@ async function startServer() {
   app.get("/api/auth/google/config", async (req, res) => {
     try {
       const data = (await getSecureDocument("settings", "google_auth")) || {};
+      const fbData = (await getSecureDocument("settings", "firebase_config")) || {};
+      const isEnabled = data.enabled !== false && (data.enabled || fbData.enabled || Boolean(fbData.apiKey));
       res.json({
-        enabled: data.enabled || false,
-        clientId: data.clientId || ""
+        enabled: isEnabled,
+        clientId: data.clientId || fbData.appId || "watch-wds"
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

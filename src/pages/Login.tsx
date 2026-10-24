@@ -39,6 +39,7 @@ export function Login() {
       setError('');
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
+      const idToken = await user.getIdToken();
       
       let device_id = localStorage.getItem('device_id');
       if (!device_id) {
@@ -50,6 +51,8 @@ export function Login() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
+          id_token: idToken,
+          token: idToken,
           email: user.email, 
           name: user.displayName || 'User',
           avatar: user.photoURL,
@@ -78,7 +81,13 @@ export function Login() {
       setAuth(data.user, data.token);
       navigate(redirectTo, { state: { from: redirectTo, autoPlay: (location.state as any)?.autoPlay, matchId: (location.state as any)?.matchId } });
     } catch (err: any) {
-      setError(err.message === 'Firebase: Error (auth/popup-closed-by-user).' ? 'Login cancelled.' : err.message);
+      if (err.code === 'auth/popup-closed-by-user' || err.message?.includes('popup-closed-by-user')) {
+        setError('Login cancelled.');
+      } else if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setError('Domain not authorized: Please ensure your current domain is listed in Firebase Console -> Authentication -> Settings -> Authorized domains.');
+      } else {
+        setError(err.message || 'Failed to authenticate with Google');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -211,7 +220,7 @@ export function Login() {
           </button>
         </form>
 
-        {googleAuthSettings?.enabled && (
+        {(googleAuthSettings?.enabled !== false) && (
           <>
             <div className="mt-6 flex items-center justify-between">
               <div className="h-px bg-slate-200 dark:bg-slate-700 flex-1"></div>

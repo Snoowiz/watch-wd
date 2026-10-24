@@ -177,13 +177,13 @@ export interface FirebaseConfigSettings {
 }
 
 const defaultFirebaseConfig: FirebaseConfigSettings = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
-  measurementId: ""
+  apiKey: "AIzaSyC6MuncgZP-yn3mdwjjk9syG9ffO4OXDYs",
+  authDomain: "watch-wds.firebaseapp.com",
+  projectId: "watch-wds",
+  storageBucket: "watch-wds.firebasestorage.app",
+  messagingSenderId: "337562835555",
+  appId: "1:337562835555:web:5d32edc32d1d0652e0b656",
+  measurementId: "G-M0G8P558DZ"
 };
 
 export const getFirebaseConfigSettings = () => fetchSetting<FirebaseConfigSettings>('firebase_config', defaultFirebaseConfig);
