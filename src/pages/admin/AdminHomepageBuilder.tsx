@@ -798,16 +798,16 @@ function SortableBlockItem({
                   </div>
                   <div>
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">
-                      Badge Color Adjustments (Status & Price)
+                      Badge Color Adjustments (Status, Price & Free)
                     </h4>
                     <p className="text-[11px] text-slate-400">
-                      Customize background and text colors for match status and price badges in this section
+                      Customize background and text colors for match status, price, and free badges in this section
                     </p>
                   </div>
                 </div>
 
-                {(block.colors?.statusBgColor || block.colors?.statusTextColor || block.colors?.priceBgColor || block.colors?.priceTextColor ||
-                  block.config?.statusBgColor || block.config?.statusTextColor || block.config?.priceBgColor || block.config?.priceTextColor) && (
+                {(block.colors?.statusBgColor || block.colors?.statusTextColor || block.colors?.priceBgColor || block.colors?.priceTextColor || block.colors?.freeBgColor || block.colors?.freeTextColor ||
+                  block.config?.statusBgColor || block.config?.statusTextColor || block.config?.priceBgColor || block.config?.priceTextColor || block.config?.freeBgColor || block.config?.freeTextColor) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -817,14 +817,18 @@ function SortableBlockItem({
                           statusBgColor: undefined,
                           statusTextColor: undefined,
                           priceBgColor: undefined,
-                          priceTextColor: undefined
+                          priceTextColor: undefined,
+                          freeBgColor: undefined,
+                          freeTextColor: undefined
                         },
                         config: {
                           ...block.config,
                           statusBgColor: undefined,
                           statusTextColor: undefined,
                           priceBgColor: undefined,
-                          priceTextColor: undefined
+                          priceTextColor: undefined,
+                          freeBgColor: undefined,
+                          freeTextColor: undefined
                         }
                       });
                     }}
@@ -848,7 +852,7 @@ function SortableBlockItem({
                   </span>
                 </div>
 
-                <div className="relative h-28 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 flex items-end justify-between p-3.5">
+                <div className="relative h-28 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 flex items-end justify-between p-3.5 gap-2">
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/60 to-slate-800/30 pointer-events-none" />
                   
                   {/* Status Badge Live Simulation */}
@@ -867,26 +871,45 @@ function SortableBlockItem({
                     </div>
                   </div>
 
-                  {/* Price Badge Live Simulation */}
-                  <div className="relative z-10 space-y-1 text-right">
-                    <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-bold">
-                      Price Badge
-                    </span>
-                    <div
-                      className="backdrop-blur-md text-xs font-black px-3.5 py-1.5 rounded-xl border border-white/10 shadow-xl transition-all duration-200 inline-block"
-                      style={{
-                        backgroundColor: block.colors?.priceBgColor || block.config?.priceBgColor || 'rgba(15, 23, 42, 0.9)',
-                        color: block.colors?.priceTextColor || block.config?.priceTextColor || '#FFFFFF'
-                      }}
-                    >
-                      £2.00
+                  {/* Free & Price Badges Live Simulation */}
+                  <div className="relative z-10 flex items-end gap-3 sm:gap-4 flex-wrap justify-end">
+                    {/* Free Badge Live Simulation */}
+                    <div className="space-y-1 text-right">
+                      <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-bold">
+                        Free Badge
+                      </span>
+                      <div
+                        className="backdrop-blur-md text-xs font-black px-3.5 py-1.5 rounded-xl shadow-xl transition-all duration-200 inline-block"
+                        style={{
+                          backgroundColor: block.colors?.freeBgColor || block.config?.freeBgColor || '#22C55E',
+                          color: block.colors?.freeTextColor || block.config?.freeTextColor || '#FFFFFF'
+                        }}
+                      >
+                        FREE
+                      </div>
+                    </div>
+
+                    {/* Price Badge Live Simulation */}
+                    <div className="space-y-1 text-right">
+                      <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-bold">
+                        Price Badge
+                      </span>
+                      <div
+                        className="backdrop-blur-md text-xs font-black px-3.5 py-1.5 rounded-xl border border-white/10 shadow-xl transition-all duration-200 inline-block"
+                        style={{
+                          backgroundColor: block.colors?.priceBgColor || block.config?.priceBgColor || 'rgba(15, 23, 42, 0.9)',
+                          color: block.colors?.priceTextColor || block.config?.priceTextColor || '#FFFFFF'
+                        }}
+                      >
+                        £2.00
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Color Pickers Controls Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {/* 1. Status Badge Colors */}
                 <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/50 space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-700/40 pb-2">
@@ -894,7 +917,7 @@ function SortableBlockItem({
                       Match Status Badge
                     </h5>
                     <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 dark:bg-slate-800 px-2 py-0.5 rounded">
-                      e.g. COMPLETED / LIVE
+                      e.g. FULL MATCH / LIVE
                     </span>
                   </div>
 
@@ -986,6 +1009,58 @@ function SortableBlockItem({
                       onUpdate({
                         colors: { ...block.colors, priceTextColor: undefined },
                         config: { ...block.config, priceTextColor: undefined }
+                      });
+                    }}
+                  />
+                </div>
+
+                {/* 3. Free Badge Colors */}
+                <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-900/50 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-700/40 pb-2">
+                    <h5 className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                      Match Free Badge
+                    </h5>
+                    <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 dark:bg-slate-800 px-2 py-0.5 rounded">
+                      e.g. FREE / COMPLIMENTARY
+                    </span>
+                  </div>
+
+                  {/* Free Background Color */}
+                  <ColorPickerControl
+                    label="Free Background Color"
+                    value={block.colors?.freeBgColor || block.config?.freeBgColor}
+                    defaultValue="#22C55E"
+                    presets={['#22C55E', '#10B981', '#059669', '#2563EB', '#8B5CF6', '#0F172A']}
+                    onChange={(hex) => {
+                      onUpdate({
+                        colors: { ...block.colors, freeBgColor: hex },
+                        config: { ...block.config, freeBgColor: hex }
+                      });
+                    }}
+                    onClear={() => {
+                      onUpdate({
+                        colors: { ...block.colors, freeBgColor: undefined },
+                        config: { ...block.config, freeBgColor: undefined }
+                      });
+                    }}
+                  />
+
+                  {/* Free Text Color */}
+                  <ColorPickerControl
+                    label="Free Text Color"
+                    value={block.colors?.freeTextColor || block.config?.freeTextColor}
+                    defaultValue="#FFFFFF"
+                    presets={['#FFFFFF', '#0F172A', '#DCFCE7', '#FEF08A', '#BAE6FD', '#000000']}
+                    onChange={(hex) => {
+                      onUpdate({
+                        colors: { ...block.colors, freeTextColor: hex },
+                        config: { ...block.config, freeTextColor: hex }
+                      });
+                    }}
+                    onClear={() => {
+                      onUpdate({
+                        colors: { ...block.colors, freeTextColor: undefined },
+                        config: { ...block.config, freeTextColor: undefined }
                       });
                     }}
                   />

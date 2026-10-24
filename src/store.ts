@@ -448,6 +448,8 @@ export interface BlockColors {
   statusTextColor?: string;
   priceBgColor?: string;
   priceTextColor?: string;
+  freeBgColor?: string;
+  freeTextColor?: string;
 }
 
 export interface HomepageBlock {

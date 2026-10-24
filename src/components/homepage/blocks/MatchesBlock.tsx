@@ -133,6 +133,8 @@ export function MatchesBlock({ block }: { block: HomepageBlock }) {
     statusTextColor: block.colors?.statusTextColor || block.config?.statusTextColor,
     priceBgColor: block.colors?.priceBgColor || block.config?.priceBgColor,
     priceTextColor: block.colors?.priceTextColor || block.config?.priceTextColor,
+    freeBgColor: block.colors?.freeBgColor || block.config?.freeBgColor,
+    freeTextColor: block.colors?.freeTextColor || block.config?.freeTextColor,
   };
 
   return (
@@ -267,6 +269,8 @@ function MatchCard({
     statusTextColor?: string;
     priceBgColor?: string;
     priceTextColor?: string;
+    freeBgColor?: string;
+    freeTextColor?: string;
   };
 }) {
   const matchUrl = `/matches/${match.slug || match.id}`;
@@ -323,7 +327,13 @@ function MatchCard({
                 {currencySymbol}{match.price}
               </div>
             ) : (
-              <div className="bg-green-500/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xl">
+              <div
+                className={`backdrop-blur-md text-xs font-black px-3 py-1.5 rounded-xl shadow-xl transition-colors ${!colors?.freeBgColor ? 'bg-green-500/90' : ''} ${!colors?.freeTextColor ? 'text-white' : ''}`}
+                style={{
+                  ...(colors?.freeBgColor ? { backgroundColor: colors.freeBgColor } : {}),
+                  ...(colors?.freeTextColor ? { color: colors.freeTextColor } : {})
+                }}
+              >
                 FREE
               </div>
             )}
@@ -375,6 +385,8 @@ function MatchListItem({
     statusTextColor?: string;
     priceBgColor?: string;
     priceTextColor?: string;
+    freeBgColor?: string;
+    freeTextColor?: string;
   };
 }) {
   const matchUrl = `/matches/${match.slug || match.id}`;
@@ -437,7 +449,13 @@ function MatchListItem({
             {currencySymbol}{match.price}
           </span>
         ) : (
-          <span className="px-3 py-1 rounded-lg text-xs font-black bg-green-500/10 text-green-500 border border-green-500/20">
+          <span
+            className={`px-3 py-1 rounded-lg text-xs font-black border transition-colors ${!colors?.freeBgColor ? 'bg-green-500/10 text-green-500 border-green-500/20' : ''}`}
+            style={{
+              ...(colors?.freeBgColor ? { backgroundColor: colors.freeBgColor, borderColor: 'transparent' } : {}),
+              ...(colors?.freeTextColor ? { color: colors.freeTextColor } : {})
+            }}
+          >
             FREE
           </span>
         )}
