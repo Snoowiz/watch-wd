@@ -87,9 +87,9 @@ export function MyPlans() {
         ) : (
           <div className="text-center py-12 px-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-700">
             <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">No Active Subscription</h3>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">You have no active subscriptions</h3>
             <p className="text-slate-500 mb-6 max-w-md mx-auto">
-              {currentPlan 
+              {user?.planExpiresAt && new Date(user.planExpiresAt) <= new Date()
                 ? "Your previous subscription has expired. Renew your plan to regain access to premium content." 
                 : "You don't have any active subscription plans. Subscribe to unlock premium matches and features."}
             </p>

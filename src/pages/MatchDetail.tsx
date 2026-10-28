@@ -10,7 +10,7 @@ import { AddFundsModal } from '../components/AddFundsModal';
 import { AccountGateModal } from '../components/AccountGateModal';
 import { requestNotificationPermission, subscribeToMatch, setupMessageListener, unsubscribeFromMatch, getNotificationPermission } from '../services/notificationService';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
-import { formatMatchStatus } from '../utils/statusHelper';
+import { formatMatchStatus, isInterview, isHighlights, isVideoOnlyContent, cleanEditorialDescription } from '../utils/statusHelper';
 import { MatchStreamPlayer } from '../components/MatchStreamPlayer';
 
 export function MatchDetail() {
@@ -54,9 +54,18 @@ export function MatchDetail() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isNotified, setIsNotified] = useState(false);
   const [isInfoExpanded, setIsInfoExpanded] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   const [showChatArchive, setShowChatArchive] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<{days: number, hours: number, minutes: number, seconds: number} | null>(null);
   const [isProcessingPurchase, setIsProcessingPurchase] = useState(false);
+
+  const handleShareCopy = () => {
+    try {
+      navigator.clipboard.writeText(window.location.href);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (_) {}
+  };
 
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
   const [mobileVideoStarted, setMobileVideoStarted] = useState(false);
@@ -749,7 +758,6 @@ export function MatchDetail() {
   };
 
   // Second match guard removed — already handled above after all hooks
-
   const handleUnlockClick = () => {
     if (!match) return;
     if (!user) {
@@ -815,7 +823,7 @@ export function MatchDetail() {
     );
   }
 
-  if (!match || isRevoked || isDraft) {
+  if (!match || (isDraft && !isAdmin)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
@@ -826,11 +834,102 @@ export function MatchDetail() {
     );
   }
 
+  const isVideoOnly = isVideoOnlyContent(match);
+  const contentTerm = isVideoOnly ? 'video' : 'match';
+  const aboutHeading = isVideoOnly ? 'About this video' : 'About this match';
+  const assignedClub = clubs.find(c => String(c.id) === String(matchClubId));
+
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-24">
-      {/* Video Player Section */}
-      <div className="-mx-4 -mt-8 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
-        <div className={`bg-black relative flex items-center justify-center overflow-hidden ${effectiveHasAccess ? 'aspect-video' : 'min-h-[290px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
+    <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8 pb-24">
+      {/* 1, 2, 3: Header Section ABOVE the Video Player */}
+      <div className="flex flex-col items-start gap-2.5 text-left w-full px-4 sm:px-0 pt-1 sm:pt-2">
+        <div className="flex items-start justify-between gap-3 sm:gap-4 w-full">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white leading-tight tracking-tight text-left">
+            {match.title}
+          </h1>
+        </div>
+        
+        {/* Metadata row: Status, Competition, Club, Date, Time */}
+        <div className="flex flex-wrap items-center justify-start gap-2.5 sm:gap-3 w-full">
+          {/* Verified broadcast status badge */}
+          <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest ${
+            dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' :
+            dynamicStatus === 'highlights' ? 'bg-purple-600 text-white' :
+            (dynamicStatus === 'full_match' || dynamicStatus === 'completed') ? 'bg-slate-700 text-white' :
+            dynamicStatus === 'upcoming' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' :
+            'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+          }`}>
+            {formatMatchStatus(dynamicStatus, match.title)}
+          </span>
+
+          {/* Competition badge (verified) */}
+          {(() => {
+            const compId = match.competition_id || (match as any).competitionId;
+            const assignedComp = competitions.find(c => String(c.id) === String(compId));
+            if (!assignedComp) return null;
+            return (
+              <Link
+                to={`/matches?competition=${encodeURIComponent(assignedComp.slug || assignedComp.id)}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors shadow-sm"
+                title={`Competition: ${assignedComp.name}`}
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>{assignedComp.name}</span>
+              </Link>
+            );
+          })()}
+
+          {/* Club badge */}
+          {assignedClub && (
+            <Link
+              to={`/matches?club=${encodeURIComponent(assignedClub.id)}`}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors shadow-sm"
+              title={`Club / Organisation: ${assignedClub.name}`}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>{assignedClub.name}</span>
+            </Link>
+          )}
+
+          {/* Date and Time or Published date */}
+          {match.date ? (
+            <>
+              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>{formatDateSafe(match.date, 'MMM d, yyyy')}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{formatDateSafe(match.date, 'h:mm a')}</span>
+              </div>
+            </>
+          ) : (match as any).createdAt ? (
+            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Published {formatDateSafe((match as any).createdAt, 'MMM d, yyyy')}</span>
+            </div>
+          ) : null}
+
+          {/* Timers */}
+          {timeRemaining && dynamicStatus === 'upcoming' && (
+            <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-indigo-200 dark:border-indigo-500/30 transition-all">
+              <Clock className="w-3.5 h-3.5 animate-pulse" />
+              {timeRemaining.days > 0 ? `${timeRemaining.days}d ` : ''}
+              {timeRemaining.hours.toString().padStart(2, '0')}h : {timeRemaining.minutes.toString().padStart(2, '0')}m : {timeRemaining.seconds.toString().padStart(2, '0')}s
+            </div>
+          )}
+          {timeRemaining && dynamicStatus === 'live' && (
+            <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm bg-red-50 dark:bg-red-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-red-200 dark:border-red-500/30 transition-all">
+              <Clock className="w-3.5 h-3.5 animate-pulse" />
+              LIVE {timeRemaining.minutes}' ({timeRemaining.seconds.toString().padStart(2, '0')}s)
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 4. Existing Video Player Section */}
+      <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
+        <div className={`bg-black relative flex items-center justify-center overflow-hidden ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
           <AdOverlay match={match} />
           {effectiveHasAccess && accessCountdown && accessCountdown !== 'Expired' && (
             <div className={`absolute top-4 left-4 z-30 flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg border transition-all ${
@@ -850,61 +949,159 @@ export function MatchDetail() {
               matchDate={formatDateSafe(match.date, 'MMM d, h:mm a')}
               isLive={dynamicStatus === 'live' || match.status === 'live'}
               isMobile={isMobile}
+              status={dynamicStatus}
+              isEnded={dynamicStatus === 'completed' || dynamicStatus === 'ended'}
+              isUnavailable={isRevoked}
             />
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/95 backdrop-blur-xl p-3 sm:p-8 text-center overflow-y-auto">
-              <Link 
-                to="/" 
-                className="absolute top-2.5 right-2.5 sm:top-6 sm:right-6 text-white/70 hover:text-white transition-colors text-[10px] sm:text-sm font-bold flex items-center gap-1 sm:gap-1.5 bg-white/5 hover:bg-white/10 px-2.5 py-1 sm:px-4 sm:py-2 rounded-lg backdrop-blur-md border border-white/10 shadow-lg z-20"
-              >
-                Back to Home
-              </Link>
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4 text-center overflow-hidden">
+              {/* Preserved uploaded match poster */}
+              {match.thumbnail && (
+                <img 
+                  src={match.thumbnail} 
+                  alt="" 
+                  className="absolute inset-0 w-full h-full object-cover opacity-20 filter blur-[1px] pointer-events-none" 
+                  referrerPolicy="no-referrer" 
+                />
+              )}
+
+              {/* Short, focused locked-player message */}
               {isRevoked ? (
-                <div className="flex flex-col items-center justify-center max-w-md mx-auto p-4 text-center">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-xl shadow-amber-500/10">
-                    <ShieldAlert className="w-7 h-7 sm:w-8 sm:h-8" />
+                <div className="flex flex-col items-center justify-center max-w-sm mx-auto p-4 text-center z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 shadow-lg">
+                    <ShieldAlert className="w-6 h-6" />
                   </div>
-                  <h2 className="text-xl sm:text-3xl font-black text-white mb-2 tracking-tight uppercase">
-                    Event Temporarily Taken Down
-                  </h2>
-                  <p className="text-slate-400 mb-5 text-xs sm:text-sm leading-relaxed">
-                    This match has been temporarily taken down by administrators. Broadcast streaming and purchases are currently paused.
+                  <h3 className="text-lg sm:text-xl font-bold text-white mb-1 tracking-tight">
+                    Temporarily unavailable
+                  </h3>
+                  <p className="text-slate-300 text-xs sm:text-sm">
+                    Broadcast streaming paused by administrator
                   </p>
-                  <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3.5 text-xs text-slate-400 text-left flex items-start gap-2.5 shadow-md">
-                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>
-                      <strong className="text-slate-200">Financial Records Preserved:</strong> Any previous purchases, club earnings, and watch entitlements remain securely protected in our system.
-                    </span>
-                  </div>
                 </div>
               ) : isAccessExpired || isLocalExpired ? (
-                <>
-                  <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 sm:mb-4 shadow-lg shadow-amber-500/10">
-                    <Clock className="w-6 h-6 sm:w-8 sm:h-8" />
+                <div className="flex flex-col items-center justify-center max-w-sm mx-auto p-4 text-center z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 shadow-lg">
+                    <Clock className="w-6 h-6" />
                   </div>
-                  <h2 className="text-lg sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-3 tracking-tight uppercase text-balance">
-                    Access Duration Expired
-                  </h2>
-                  <p className="text-slate-400 mb-5 sm:mb-8 max-w-md text-xs sm:text-sm md:text-base leading-relaxed text-balance">
-                    Your time-limited pass for this event has expired{watchPurchase?.access_expires_at ? ` on ${formatDateSafe(watchPurchase.access_expires_at, 'MMM d, h:mm a')}` : ''}. You can repurchase an access pass or request an extension.
+                  <h3 className="text-lg sm:text-xl font-bold text-white mb-1.5 tracking-tight">
+                    Access expired
+                  </h3>
+                  <button 
+                    onClick={handleUnlockClick}
+                    className="mt-2 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-xs sm:text-sm active:scale-95 cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
+                  </button>
+                </div>
+              ) : isFreeGated ? (
+                <div className="flex flex-col items-center justify-center max-w-sm mx-auto p-4 text-center z-10 animate-fade-in">
+                  <button
+                    onClick={handleFreePlayClick}
+                    className="group relative flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 shadow-2xl shadow-yellow-500/40 transition-all duration-300 hover:scale-105 active:scale-95 mb-3 cursor-pointer"
+                    aria-label={`Play Free ${contentTerm}`}
+                  >
+                    <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-0.5 transition-transform group-hover:scale-110" />
+                  </button>
+
+                  <h3 className="text-base sm:text-xl font-bold text-white mb-1">
+                    Watch this {contentTerm} for free
+                  </h3>
+                  <p className="text-slate-300 text-xs sm:text-sm mb-3">
+                    Account required to watch
                   </p>
-                  <div className="flex flex-col sm:flex-row justify-center items-center gap-3 w-full sm:w-auto">
+                  <button
+                    onClick={() => handleAuthGateRedirect('login')}
+                    className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-5 py-2 rounded-xl transition-all shadow-md flex items-center gap-1.5 text-xs sm:text-sm cursor-pointer"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Sign in to watch</span>
+                  </button>
+                </div>
+              ) : match.access_type === 'plan' ? (
+                <div className="flex flex-col items-center justify-center max-w-sm mx-auto p-4 text-center z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mb-3 shadow-lg">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base sm:text-xl font-bold text-white mb-1">
+                    {matchClubId ? 'Watch with a club subscription' : 'Watch with a subscription'}
+                  </h3>
+                  <p className="text-slate-300 text-xs sm:text-sm mb-3">
+                    {matchClubId && assignedClub 
+                      ? `Included with ${assignedClub.name} club subscription`
+                      : 'Included with eligible subscription'}
+                  </p>
+                  <button 
+                    onClick={handleUnlockClick}
+                    className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-1.5 text-xs sm:text-sm active:scale-95 cursor-pointer"
+                  >
+                    <Unlock className="w-4 h-4" />
+                    <span>View eligible plans</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center max-w-sm mx-auto p-4 text-center z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center text-yellow-400 mb-3 shadow-lg">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base sm:text-xl font-bold text-white mb-1">
+                    Watch this {contentTerm} for {currencySymbol}{match.ppv_price || match.price}
+                  </h3>
+                  <p className="text-slate-300 text-xs sm:text-sm mb-3">
+                    One-off payment. No subscription.
+                  </p>
+                  <button 
+                    onClick={handleUnlockClick}
+                    className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-1.5 text-xs sm:text-sm active:scale-95 cursor-pointer"
+                  >
+                    <Unlock className="w-4 h-4" />
+                    <span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-8">
+        {/* Main Column */}
+        <div className="lg:col-span-2 space-y-5 sm:space-y-6">
+          {/* 5. Access Information and Primary Action (when viewing is restricted) */}
+          {!effectiveHasAccess && (
+            <div className="bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 sm:p-6 shadow-sm text-left">
+              {isRevoked ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <ShieldAlert className="w-5 h-5 shrink-0" />
+                    <h2 className="text-lg sm:text-xl font-bold">Broadcast temporarily unavailable</h2>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    This match has been temporarily taken down by administrators. Broadcast streaming and purchases are currently paused. Any previous purchases and watch entitlements remain securely protected.
+                  </p>
+                </div>
+              ) : isAccessExpired || isLocalExpired ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <Clock className="w-5 h-5 shrink-0" />
+                    <h2 className="text-lg sm:text-xl font-bold">Access expired</h2>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Your time-limited pass for this {contentTerm} has expired{watchPurchase?.access_expires_at ? ` on ${formatDateSafe(watchPurchase.access_expires_at, 'MMM d, h:mm a')}` : ''}. You can repurchase an access pass or request an extension.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
                     <button 
                       onClick={handleUnlockClick}
-                      className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-95"
+                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
                     >
                       <RefreshCw className="w-4 h-4" />
-                      <span>Repurchase Access ({currencySymbol}{match.ppv_price || match.price})</span>
+                      <span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
                     </button>
                     {user && (
                       <button 
                         onClick={handleRequestAccess}
                         disabled={requestLoading || requestSent}
-                        className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold transition-all text-sm sm:text-base flex items-center justify-center gap-2 border ${
-                          requestSent 
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 cursor-default' 
-                            : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
-                        }`}
+                        className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-4 py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2"
                       >
                         {requestLoading ? (
                           <>
@@ -913,201 +1110,177 @@ export function MatchDetail() {
                           </>
                         ) : requestSent ? (
                           <>
-                            <CheckCircle className="w-4 h-4 text-emerald-400" />
-                            <span>Request Submitted</span>
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                            <span>Request submitted</span>
                           </>
                         ) : (
                           <>
                             <Unlock className="w-4 h-4" />
-                            <span>Request Extension</span>
+                            <span>Request extension</span>
                           </>
                         )}
                       </button>
                     )}
                   </div>
-                </>
+                </div>
               ) : isFreeGated ? (
-                <div className="flex flex-col items-center justify-center max-w-lg mx-auto p-2 sm:p-6 text-center animate-fade-in w-full">
-                  <div className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 mb-2 sm:mb-4 shadow-lg backdrop-blur-md">
-                    <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                    <span>Free Match Broadcast</span>
+                <div className="space-y-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 mb-2">
+                      Free with an account
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                      Watch this {contentTerm} for free
+                    </h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      Create a free WatchWDS account or sign in to watch.
+                    </p>
                   </div>
-
-                  <button
-                    onClick={handleFreePlayClick}
-                    className="group relative flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 shadow-2xl shadow-yellow-500/40 transition-all duration-300 hover:scale-105 active:scale-95 mb-2.5 sm:mb-5 cursor-pointer"
-                    aria-label="Play Free Match"
-                  >
-                    <Play className="w-5 h-5 sm:w-8 sm:h-8 md:w-10 md:h-10 fill-current ml-0.5 sm:ml-1 transition-transform group-hover:scale-110" />
-                  </button>
-
-                  <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white mb-1.5 sm:mb-2.5 tracking-tight uppercase text-balance leading-tight">
-                    Account Required to Watch Free
-                  </h2>
-                  <p className="text-slate-300 mb-3.5 sm:mb-6 max-w-md text-xs sm:text-sm md:text-base leading-snug sm:leading-relaxed text-balance px-2">
-                    <span className="sm:hidden">Sign in to watch this match for free.</span>
-                    <span className="hidden sm:inline">This match is 100% free to stream live and on replay. Simply sign in or create an account to unlock instant playback.</span>
-                  </p>
-
-                  <div className="flex justify-center items-center w-full sm:w-auto px-4 sm:px-0">
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <button
+                      onClick={() => handleAuthGateRedirect('register')}
+                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-6 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Create a free account</span>
+                    </button>
                     <button
                       onClick={() => handleAuthGateRedirect('login')}
-                      className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-6 py-2.5 sm:px-8 sm:py-3.5 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-2 text-xs sm:text-base active:scale-95 cursor-pointer"
+                      className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-6 py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <LogIn className="w-4 h-4" />
-                      <span>Log In to Watch Free</span>
+                      <span>Sign in</span>
                     </button>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <h2 className="text-lg sm:text-3xl md:text-4xl font-black text-white mb-2 sm:mb-4 tracking-tight uppercase text-balance mt-4 sm:mt-0">
-                    {match.access_type === 'plan' ? 'Subscription Required' : match.access_type === 'ppv' ? 'Pay-Per-View Event' : 'Premium Content'}
-                  </h2>
-                  <p className="text-slate-400 mb-4 sm:mb-10 max-w-md text-xs sm:text-base md:text-lg leading-relaxed text-balance line-clamp-2 md:line-clamp-none">
-                    {match.access_type === 'plan' ? (
-                      matchClubId ? (
-                        <>This match is exclusive to subscribers of the host partner club. An active club pass for this club is required to watch.</>
-                      ) : (
-                        <>This match is exclusive to subscribers of our platform plans. Subscribe to unlock access and enjoy uninterrupted coverage.</>
-                      )
-                    ) : match.access_type === 'ppv' || match.access === 'paid' ? (
-                      <>This match is a Pay-Per-View event. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span> and support grassroots sports.</>
-                    ) : (
-                      <>This match is exclusive. Unlock access for <span className="text-yellow-500 font-bold">{currencySymbol}{match.price}</span>.</>
-                    )}
-                  </p>
-                  <div className="flex flex-row justify-center gap-2 sm:gap-4 w-full sm:w-auto">
+              ) : match.access_type === 'plan' ? (
+                <div className="space-y-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mb-2">
+                      Subscription required
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                      {matchClubId ? 'Watch with a club subscription' : 'Watch with a subscription'}
+                    </h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      {matchClubId && assignedClub 
+                        ? `This broadcast is included in an eligible club subscription for ${assignedClub.name}.`
+                        : 'This broadcast is included in an eligible WatchWDS subscription.'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
                     <button 
                       onClick={handleUnlockClick}
-                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold px-4 py-2 sm:px-10 sm:py-4 rounded-xl transition-all shadow-lg shadow-yellow-500/30 flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-lg active:scale-95 flex-1 sm:flex-auto"
+                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
                     >
                       <Unlock className="w-4 h-4" />
-                      <span className="hidden sm:inline">{match.access_type === 'plan' ? 'View Plans' : 'Unlock Match'}</span>
-                      <span className="sm:hidden">{match.access_type === 'plan' ? 'Plans' : 'Unlock'}</span>
+                      <span>View eligible plans</span>
                     </button>
                     {!user && (
                       <button 
-                        onClick={() => navigate('/register')}
-                        className="bg-white/10 hover:bg-white/20 text-white font-bold px-4 py-2 sm:px-10 sm:py-4 rounded-xl transition-all backdrop-blur-md flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-lg border border-white/10 flex-1 sm:flex-auto"
+                        onClick={() => handleAuthGateRedirect('login')}
+                        className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-6 py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        <UserPlus className="w-4 h-4" />
-                        <span className="hidden sm:inline">Join WatchWDS</span>
-                        <span className="sm:hidden">Join</span>
+                        <LogIn className="w-4 h-4" />
+                        <span>Sign in</span>
+                      </button>
+                    )}
+                    {((match.ppv_price && Number(match.ppv_price) > 0) || (match.price && Number(match.price) > 0)) && (
+                      <button
+                        onClick={handleUnlockClick}
+                        className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-yellow-600 dark:hover:text-yellow-400 underline underline-offset-2 ml-1"
+                      >
+                        Or buy single {contentTerm} access for {currencySymbol}{match.ppv_price || match.price}
                       </button>
                     )}
                   </div>
-                </>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 mb-2">
+                      Pay-per-view
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                      Watch this {contentTerm} for {currencySymbol}{match.ppv_price || match.price}
+                    </h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      One-off payment. No subscription.
+                      {match.event_access_enabled && (
+                        <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          Includes {Math.round((Number(match.event_access_duration) || 4320) / 60)} hours of full playback access.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <button 
+                      onClick={handleUnlockClick}
+                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
+                    >
+                      <Unlock className="w-4 h-4" />
+                      <span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
+                    </button>
+                    {!user && (
+                      <button 
+                        onClick={() => handleAuthGateRedirect('login')}
+                        className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-6 py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        <span>Sign in</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-          {/* Title and Meta Section */}
-          <div className="flex flex-col items-start gap-2 text-left w-full">
-            <div className="flex items-start justify-between gap-3 sm:gap-4 w-full">
-               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white leading-tight tracking-tight text-left">
-                 {match.title}
-               </h1>
-               <div className="flex items-center gap-2">
-                 {match.status === 'upcoming' && (
-                   <button 
-                     onClick={handleToggleNotify}
-                     className={`flex-shrink-0 p-3 rounded-full transition-all border ${
-                       isNotified 
-                         ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30' 
-                         : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm'
-                     }`}
-                     title={isNotified ? "Turn off notifications" : "Notify me when live"}
-                   >
-                     {isNotified ? <BellRing className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
-                   </button>
-                 )}
-                 <button 
-                   onClick={handleToggleSave}
-                   className={`flex-shrink-0 p-3 rounded-full transition-all border ${
-                     isSaved 
-                       ? 'bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-500 border-yellow-200 dark:border-yellow-500/30' 
-                       : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm'
-                   }`}
-                   title={isSaved ? "Remove from Watch Later" : "Save for Watch Later"}
-                 >
-                   <Bookmark className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`} />
-                 </button>
-               </div>
+          {/* 6. Existing Save and Share Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white dark:bg-slate-800/90 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-sm">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleToggleSave}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all border ${
+                  isSaved
+                    ? 'bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-500/30'
+                    : 'bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title={isSaved ? "Remove from Watch Later" : "Save for Watch Later"}
+              >
+                <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
+                <span>{isSaved ? 'Saved' : 'Save'}</span>
+              </button>
+
+              <button
+                onClick={handleShareCopy}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                title="Share broadcast"
+              >
+                {isCopied ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
+                <span>{isCopied ? 'Link copied' : 'Share'}</span>
+              </button>
             </div>
-            
-            <div className="flex flex-wrap items-center justify-start gap-3 w-full mt-2">
-               <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest ${
-                 dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' :
-                 dynamicStatus === 'highlights' ? 'bg-purple-600 text-white' :
-                 (dynamicStatus === 'full_match' || dynamicStatus === 'completed') ? 'bg-slate-700 text-white' :
-                 dynamicStatus === 'upcoming' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' :
-                 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-               }`}>
-                 {formatMatchStatus(dynamicStatus)}
-               </span>
-               {(() => {
-                 const compId = match.competition_id || (match as any).competitionId;
-                 const assignedComp = competitions.find(c => String(c.id) === String(compId));
-                 if (!assignedComp) return null;
-                 return (
-                   <Link
-                     to={`/matches?competition=${encodeURIComponent(assignedComp.slug || assignedComp.id)}`}
-                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors shadow-sm"
-                     title={`Competition: ${assignedComp.name}`}
-                   >
-                     <Trophy className="w-3.5 h-3.5" />
-                     <span>{assignedComp.name}</span>
-                   </Link>
-                 );
-               })()}
-               {(() => {
-                 const rawClub = match.club_id || (match as any).clubId;
-                 const assignedClub = clubs.find(c => String(c.id) === String(rawClub));
-                 if (!assignedClub) return null;
-                 return (
-                   <Link
-                     to={`/matches?club=${encodeURIComponent(assignedClub.id)}`}
-                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors shadow-sm"
-                     title={`Club / Organisation: ${assignedClub.name}`}
-                   >
-                     <Building2 className="w-3.5 h-3.5" />
-                     <span>{assignedClub.name}</span>
-                   </Link>
-                 );
-               })()}
-               <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
-                 <Calendar className="w-3.5 h-3.5" />
-                 {formatDateSafe(match.date, 'MMM d, yyyy')}
-               </div>
-               <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
-                 <Clock className="w-3.5 h-3.5" />
-                 {formatDateSafe(match.date, 'h:mm a')}
-               </div>
-               {timeRemaining && dynamicStatus === 'upcoming' && (
-                 <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-indigo-200 dark:border-indigo-500/30 transition-all">
-                   <Clock className="w-3.5 h-3.5 animate-pulse" />
-                   {timeRemaining.days > 0 ? `${timeRemaining.days}d ` : ''}
-                   {timeRemaining.hours.toString().padStart(2, '0')}h : {timeRemaining.minutes.toString().padStart(2, '0')}m : {timeRemaining.seconds.toString().padStart(2, '0')}s
-                 </div>
-               )}
-               {timeRemaining && dynamicStatus === 'live' && (
-                 <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm bg-red-50 dark:bg-red-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-red-200 dark:border-red-500/30 transition-all">
-                   <Clock className="w-3.5 h-3.5 animate-pulse" />
-                   LIVE {timeRemaining.minutes}' ({timeRemaining.seconds.toString().padStart(2, '0')}s)
-                 </div>
-               )}
-            </div>
+
+            {match.status === 'upcoming' && (
+              <button
+                onClick={handleToggleNotify}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all border ${
+                  isNotified
+                    ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30'
+                    : 'bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+                title={isNotified ? "Turn off notifications" : "Notify me when live"}
+              >
+                {isNotified ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                <span>{isNotified ? 'Notified' : 'Remind me'}</span>
+              </button>
+            )}
           </div>
           
           {/* Creator Channel Block */}
           {match.creatorId && (
-            <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 mt-6">
+            <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
               <div className="flex items-center gap-3">
                  <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 rounded-full flex items-center justify-center">
                     <VideoIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
@@ -1133,49 +1306,56 @@ export function MatchDetail() {
             </div>
           )}
           
-          {/* Collapsible Information Section */}
+          {/* 7. Collapsible Information Section: About this match / About this video */}
           <div 
-             className={`bg-slate-100 dark:bg-slate-800/80 rounded-xl p-4 transition-all relative ${!isInfoExpanded ? "cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700" : ""}`}
+             className={`bg-slate-100 dark:bg-slate-800/80 rounded-xl p-5 sm:p-6 transition-all relative ${!isInfoExpanded ? "cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700" : ""}`}
              onClick={() => !isInfoExpanded && setIsInfoExpanded(true)}
           >
+             <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-3 text-left">
+               {aboutHeading}
+             </h2>
+
              <div className={`relative ${!isInfoExpanded ? "max-h-24 overflow-hidden" : ""}`}>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {match.categories?.map(catId => {
-                    const cat = categories.find(c => Number(c.id) === Number(catId));
-                    return cat ? (
-                      <Link 
-                        key={catId} 
-                        to={`/category/${cat.slug}`}
-                        className="text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        #{cat.slug}
-                      </Link>
-                    ) : null;
-                  })}
-                </div>
+                {match.categories && match.categories.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {match.categories.map(catId => {
+                      const cat = categories.find(c => Number(c.id) === Number(catId));
+                      return cat ? (
+                        <Link 
+                          key={catId} 
+                          to={`/category/${cat.slug}`}
+                          className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {cat.name || cat.slug}
+                        </Link>
+                      ) : null;
+                    })}
+                  </div>
+                )}
                 
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                <div className="prose prose-sm dark:prose-invert max-w-none break-words text-left">
                   <div 
                     className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(match.content || match.description || 'No description provided.') }}
+                    dangerouslySetInnerHTML={{ 
+                      __html: DOMPurify.sanitize(cleanEditorialDescription(match.content || match.description || 'No description provided.')) 
+                    }}
                   />
                 </div>
                 
                 {!isInfoExpanded && (
-                  <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-slate-100 dark:from-slate-800/80 to-transparent flex items-end">
-                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-slate-100 dark:from-slate-800/80 to-transparent flex items-end pointer-events-none" />
                 )}
              </div>
              <button 
-                className="font-bold text-slate-900 dark:text-white mt-2 text-sm hover:underline"
+                className="font-bold text-slate-900 dark:text-white mt-2 text-sm hover:underline cursor-pointer"
                 onClick={(e) => { e.stopPropagation(); setIsInfoExpanded(!isInfoExpanded); }}
              >
                 {isInfoExpanded ? "Show less" : "Show more"}
              </button>
           </div>
 
-          {/* Comments Section */}
+          {/* 8. Comments Section */}
           <div className="mt-6 sm:mt-8">
             <MatchComments match={match} hasAccess={hasAccess} />
           </div>
@@ -1183,7 +1363,7 @@ export function MatchDetail() {
 
         {/* Sidebar */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4 sm:gap-6 lg:self-start">
-          {/* Creator Section */}
+          {/* Creator Tools Section */}
           {user && (user.role === 'creator' || user.creatorStatus === 'approved') && (
             <div className="bg-indigo-600 p-5 sm:p-8 rounded-xl shadow-xl text-white">
               <div className="flex items-center gap-4 mb-6">
@@ -1192,7 +1372,7 @@ export function MatchDetail() {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold">Creator Tools</h3>
-                  <p className="text-indigo-100 text-sm">Embed this match</p>
+                  <p className="text-indigo-100 text-sm">Embed this {contentTerm}</p>
                 </div>
               </div>
               
@@ -1210,11 +1390,11 @@ export function MatchDetail() {
               ) : (
                 <div className="space-y-4">
                   <p className="text-indigo-100 text-sm leading-relaxed">
-                    Get the embed code for <strong className="text-white">{currencySymbol}{match.embedPrice}</strong> to stream this match on your site.
+                    Get the embed code for <strong className="text-white">{currencySymbol}{match.embedPrice}</strong> to stream this {contentTerm} on your site.
                   </p>
                   <button 
                     onClick={handleBuyEmbed}
-                    className="w-full bg-white text-indigo-600 hover:bg-indigo-50 font-bold py-3 rounded-xl transition-colors shadow-lg"
+                    className="w-full bg-white text-indigo-600 hover:bg-indigo-50 font-bold py-3 rounded-xl transition-colors shadow-lg cursor-pointer"
                   >
                     Buy Embed Code
                   </button>
@@ -1223,58 +1403,79 @@ export function MatchDetail() {
             </div>
           )}
 
-          {/* Share Card */}
-          <div className="bg-white dark:bg-slate-800 p-5 sm:p-8 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
+          {/* Share Card (Renamed from "Spread the Word" to "Share") */}
+          <div className="bg-white dark:bg-slate-800 p-5 sm:p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 text-left">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
               <Share2 className="w-5 h-5 text-yellow-500" />
-              Spread the Word
+              <span>Share</span>
             </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <button className="bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-700 p-3 rounded-xl transition-colors flex items-center justify-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400">
-                Twitter
-              </button>
-              <button className="bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-700 p-3 rounded-xl transition-colors flex items-center justify-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400">
+            <div className="grid grid-cols-2 gap-2.5 mb-3">
+              <a 
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Watch ${match.title} on WatchWDS: ${window.location.href}`)}`}
+                target="_blank" 
+                rel="noreferrer"
+                className="bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-700 p-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400"
+              >
+                Twitter / X
+              </a>
+              <a 
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`}
+                target="_blank" 
+                rel="noreferrer"
+                className="bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-700 p-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400"
+              >
                 Facebook
-              </button>
+              </a>
             </div>
+            <button
+              onClick={handleShareCopy}
+              className="w-full bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-700 p-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-xs font-bold text-slate-600 dark:text-slate-400 cursor-pointer"
+            >
+              {isCopied ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
+              <span>{isCopied ? 'Link copied to clipboard' : 'Copy link'}</span>
+            </button>
           </div>
 
-          {/* Related Matches Section (Sidebar) */}
+          {/* Related Broadcasts Section (Sidebar, renamed from "Up Next" to "More broadcasts") */}
           {relatedMatches.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-4 text-left">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                Up Next
+                <span>More broadcasts</span>
               </h3>
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
                 {relatedMatches.map(m => (
                   <Link key={m.id} to={`/matches/${m.slug}`} className="group block">
                     <div className="flex gap-3 bg-white dark:bg-slate-800 rounded-xl p-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border border-slate-100 dark:border-slate-700 shadow-sm">
-                      <div className="w-40 aspect-video rounded-lg overflow-hidden relative shrink-0">
+                      <div className="w-36 aspect-video rounded-lg overflow-hidden relative shrink-0 bg-slate-900">
                         <img 
                           src={m.thumbnail}
                           alt={m.title}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           referrerPolicy="no-referrer"
                         />
                         <div className="absolute top-1 left-1 flex gap-1">
                           <div className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest ${
                             m.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500/90 text-slate-900'
                           }`}>
-                            {m.status}
+                            {formatMatchStatus(m.status, m.title)}
                           </div>
                         </div>
                       </div>
-                      <div className="flex-1 py-1 pr-2 min-w-0">
-                        <h4 className="font-bold text-sm text-slate-900 dark:text-white line-clamp-2 leading-tight group-hover:text-yellow-500 transition-colors mb-1">
+                      <div className="flex-1 py-1 pr-1 min-w-0">
+                        <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white line-clamp-2 leading-tight group-hover:text-yellow-500 transition-colors mb-1">
                           {m.title}
                         </h4>
                         <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          <span className="truncate">{formatDateSafe(m.date, 'MMM d, yyyy')}</span>
+                          <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{m.date ? formatDateSafe(m.date, 'MMM d, yyyy') : 'Published'}</span>
                         </div>
-                        {m.access === 'paid' ? (
+                        {m.access_type === 'plan' ? (
+                          <div className="mt-1 text-[10px] font-black text-indigo-500 uppercase">
+                            Subscription
+                          </div>
+                        ) : m.access === 'paid' ? (
                           <div className="mt-1 text-[10px] font-black text-yellow-500 uppercase">
-                            {currencySymbol}{m.price}
+                            {currencySymbol}{m.ppv_price || m.price}
                           </div>
                         ) : (
                           <div className="mt-1 text-[10px] font-black text-green-500 uppercase">
@@ -1294,30 +1495,30 @@ export function MatchDetail() {
       {/* Confirmation Modal */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-xl p-8 shadow-2xl border border-slate-200 dark:border-slate-700">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-700 text-left">
             <div className="text-center">
-              <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Info className="w-10 h-10 text-yellow-500" />
+              <div className="w-16 h-16 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-5">
+                <Info className="w-8 h-8 text-yellow-500" />
               </div>
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Confirm Access</h3>
-              <p className="text-slate-500 dark:text-slate-400 mb-8">
-                You are about to unlock this match for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span>.{walletEnabled ? ' You can pay directly or deduct from your wallet balance.' : ' Choose your payment method at checkout.'}
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-2">Confirm Access</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+                You are about to unlock this {contentTerm} for <span className="text-yellow-500 font-bold">{currencySymbol}{match.ppv_price || match.price}</span>.{walletEnabled ? ' You can pay directly or deduct from your wallet balance.' : ' Choose your payment method at checkout.'}
               </p>
               <div className="flex flex-col gap-3">
                 <button 
                   onClick={confirmUnlock}
                   disabled={isProcessingPurchase}
-                  className={`w-full font-bold py-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${isProcessingPurchase ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-yellow-500/20'}`}
+                  className={`w-full font-bold py-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer ${isProcessingPurchase ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-400 text-slate-900 shadow-yellow-500/20'}`}
                 >
                   {isProcessingPurchase ? (
-                    <><div className="w-5 h-5 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div> Processing...</>
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
                   ) : (
-                    'Confirm & Unlock'
+                    `Buy access for ${currencySymbol}${match.ppv_price || match.price}`
                   )}
                 </button>
                 <button 
                   onClick={() => setShowConfirmModal(false)}
-                  className="w-full bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold py-4 rounded-xl transition-all"
+                  className="w-full bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 font-bold py-3 rounded-xl transition-all hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1326,7 +1527,6 @@ export function MatchDetail() {
           </div>
         </div>
       )}
-
 
       {showCheckoutModal && checkoutData && (
         <AddFundsModal

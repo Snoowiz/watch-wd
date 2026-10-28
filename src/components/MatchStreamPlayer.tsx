@@ -9,6 +9,9 @@ export interface MatchStreamPlayerProps {
   matchDate?: string;
   isLive?: boolean;
   isMobile?: boolean;
+  status?: string;
+  isEnded?: boolean;
+  isUnavailable?: boolean;
 }
 
 export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
@@ -18,6 +21,9 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
   matchDate,
   isLive = false,
   isMobile = false,
+  status,
+  isEnded = false,
+  isUnavailable = false,
 }: MatchStreamPlayerProps) {
   const [mobileVideoStarted, setMobileVideoStarted] = useState(false);
   const [isAssetProcessing, setIsAssetProcessing] = useState(false);
@@ -125,6 +131,34 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
   }, [sanitizedStreamHtml, handleCheckStreamReady]);
 
   if (!rawStreamContent) {
+    if (isUnavailable) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900 p-4 text-center">
+          <AlertCircle className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 text-amber-400" />
+          <h3 className="text-base sm:text-lg md:text-xl font-bold text-white/90 tracking-tight">
+            Temporarily unavailable
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-sm">
+            We are experiencing technical issues loading this stream. Please check back shortly.
+          </p>
+        </div>
+      );
+    }
+
+    if (isEnded || status === 'completed' || status === 'full_match') {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900 p-4 text-center">
+          <PlayCircle className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 text-slate-600" />
+          <h3 className="text-base sm:text-lg md:text-xl font-bold text-white/80 tracking-tight">
+            Broadcast ended
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-500 mt-2">
+            No replay is currently available for this broadcast.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900 p-4 text-center">
         <PlayCircle className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 mx-auto mb-4 sm:mb-6 text-yellow-500/50" />
@@ -149,7 +183,7 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
       {/* 1. Mobile Tap-to-Play Overlay (preserves user interaction requirement) */}
       {!mobileVideoStarted && isMobile ? (
         <div
-          className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer bg-slate-900"
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center cursor-pointer bg-slate-900"
           onClick={handleMobilePlay}
         >
           {thumbnail && (
@@ -159,7 +193,12 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
               className="absolute inset-0 w-full h-full object-cover opacity-50"
             />
           )}
-          <PlayCircle className="w-16 h-16 text-white drop-shadow-xl z-20 hover:scale-110 transition-transform" />
+          <div className="flex flex-col items-center gap-2 z-20">
+            <PlayCircle className="w-16 h-16 text-white drop-shadow-xl hover:scale-110 transition-transform" />
+            <span className="text-xs sm:text-sm font-bold text-white bg-slate-950/80 px-3 py-1 rounded-full backdrop-blur-md border border-white/20 shadow-md">
+              {isLive ? 'Watch live' : 'Play replay'}
+            </span>
+          </div>
           <div
             className="absolute inset-0 -z-10"
             dangerouslySetInnerHTML={{ __html: sanitizedStreamHtml }}

@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PlayCircle, Calendar, Clock, Video, LayoutGrid, List as ListIcon, Tag, Bookmark, Search, X, Trophy, Building2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useSettingsStore, useMatchStore, useCategoryStore, useAuthStore, useSavedMatchesStore } from '../store';
-import { formatMatchStatus } from '../utils/statusHelper';
+import { formatMatchStatus, isInterview, isHighlights } from '../utils/statusHelper';
 
 export function Matches() {
   const navigate = useNavigate();
@@ -19,6 +19,7 @@ export function Matches() {
   const [selectedCompetition, setSelectedCompetition] = useState<string | 'all'>(searchParams.get('competition') || 'all');
   const [clubs, setClubs] = useState<{ id: string; name: string }[]>([]);
   const [competitions, setCompetitions] = useState<{ id: string; name: string; slug?: string; season?: string }[]>([]);
+  const [plans, setPlans] = useState<{ id: string | number; name: string }[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -37,6 +38,11 @@ export function Matches() {
     fetch('/api/competitions/active')
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setCompetitions(data); })
+      .catch(() => {});
+
+    fetch('/api/plans')
+      .then(res => res.json())
+      .then(data => { if (Array.isArray(data)) setPlans(data); })
       .catch(() => {});
   }, []);
 
@@ -65,6 +71,68 @@ export function Matches() {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return 'TBA';
     return format(date, formatStr);
+  };
+
+  const getClassification = (m: any) => {
+    if (isInterview(m)) return 'Interview';
+    if (isHighlights(m)) return 'Highlights';
+    if (m.status === 'live') return 'Live Now';
+    if (m.status === 'upcoming') return 'Upcoming';
+    return formatMatchStatus(m.status, m.title);
+  };
+
+  const getClassificationBadgeClass = (m: any) => {
+    if (isInterview(m)) return 'bg-sky-600 text-white';
+    if (isHighlights(m)) return 'bg-purple-600 text-white';
+    if (m.status === 'live') return 'bg-red-500 text-white animate-pulse';
+    if (m.status === 'upcoming') return 'bg-yellow-500 text-white';
+    return 'bg-slate-700 text-white';
+  };
+
+  const getAccessBadgeInfo = (m: any) => {
+    if (m.access_type === 'plan' || (!m.access_type && m.access === 'paid' && Number(m.price || 0) === 0)) {
+      const assignedPlan = plans.find(p => String(p.id) === String(m.required_plan_id));
+      if (assignedPlan) {
+        return {
+          label: `Included with ${assignedPlan.name}`,
+          shortLabel: 'Included with plan',
+          className: 'bg-indigo-600/90 text-white',
+          subClassName: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400'
+        };
+      }
+      return {
+        label: 'Subscription required',
+        shortLabel: 'Subscription required',
+        className: 'bg-indigo-600/90 text-white',
+        subClassName: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400'
+      };
+    }
+
+    if (m.access === 'paid' || m.access_type === 'ppv') {
+      const priceVal = m.ppv_price || m.price;
+      return {
+        label: `Watch for ${currencySymbol}${priceVal}`,
+        shortLabel: `${currencySymbol}${priceVal}`,
+        className: 'bg-slate-900/90 text-white border border-white/10',
+        subClassName: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400'
+      };
+    }
+
+    if (user) {
+      return {
+        label: 'Free',
+        shortLabel: 'Free',
+        className: 'bg-green-600/90 text-white',
+        subClassName: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+      };
+    }
+
+    return {
+      label: 'Free with an account',
+      shortLabel: 'Free with an account',
+      className: 'bg-emerald-600/90 text-white',
+      subClassName: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+    };
   };
 
   const filteredMatches = matches.filter(m => {
@@ -109,7 +177,7 @@ export function Matches() {
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Broadcasts</h1>
+          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">Browse broadcasts</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-2">Watch live and on-demand grassroots sports from around the world.</p>
         </div>
         
@@ -200,7 +268,7 @@ export function Matches() {
               : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700 hover:border-yellow-500'
           }`}
         >
-          All Sports
+          All broadcasts
         </button>
         {categories.map(cat => (
           <button 
@@ -232,13 +300,8 @@ export function Matches() {
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent"></div>
                   
                   <div className="absolute top-4 left-4 flex gap-2">
-                    <div className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest shadow-lg ${
-                      match.status === 'live' ? 'bg-red-500 text-white animate-pulse' :
-                      match.status === 'highlights' ? 'bg-purple-600 text-white' :
-                      (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700 text-white' :
-                      'bg-yellow-500 text-white'
-                    }`}>
-                      {formatMatchStatus(match.status)}
+                    <div className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-widest shadow-lg ${getClassificationBadgeClass(match)}`}>
+                      {getClassification(match)}
                     </div>
                   </div>
                   <button 
@@ -249,7 +312,7 @@ export function Matches() {
                   </button>
 
                   <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
-                    <div className="flex flex-wrap gap-1 max-w-[70%]">
+                    <div className="flex flex-wrap gap-1 max-w-[55%]">
                       {((match.categories || []) as number[]).slice(0, 2).map(catId => {
                         const cat = categories.find(c => Number(c.id) === Number(catId));
                         return cat ? (
@@ -259,19 +322,14 @@ export function Matches() {
                         ) : null;
                       })}
                     </div>
-                    {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
-                      <div className="bg-indigo-600/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xl uppercase tracking-wider">
-                        PLAN
-                      </div>
-                    ) : match.access === 'paid' ? (
-                      <div className="bg-slate-900/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl border border-white/10 shadow-xl">
-                        {currencySymbol}{match.price}
-                      </div>
-                    ) : (
-                      <div className="bg-green-500/90 backdrop-blur-md text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xl">
-                        FREE
-                      </div>
-                    )}
+                    {(() => {
+                      const badge = getAccessBadgeInfo(match);
+                      return (
+                        <div className={`${badge.className} backdrop-blur-md text-xs font-black px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-1`}>
+                          {badge.label}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 bg-slate-900/40 backdrop-blur-[2px]">
                     <div className="w-16 h-16 rotating-border-effect play-rotating-border transform scale-75 group-hover:scale-100 transition-transform duration-500 shadow-2xl">
@@ -306,14 +364,25 @@ export function Matches() {
                     {match.title}
                   </h3>
                   <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 font-bold">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-yellow-500" />
-                      {formatDateSafe(match.date, 'MMM d, yyyy')}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-yellow-500" />
-                      {formatDateSafe(match.date, 'h:mm a')}
-                    </div>
+                    {match.date ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-yellow-500" />
+                          {formatDateSafe(match.date, 'MMM d, yyyy')}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-yellow-500" />
+                          {formatDateSafe(match.date, 'h:mm a')}
+                        </div>
+                      </>
+                    ) : (
+                      (match as any)?.createdAt && (
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-yellow-500" />
+                          <span>Published {formatDateSafe((match as any).createdAt, 'MMM d, yyyy')}</span>
+                        </div>
+                      )
+                    )}
                   </div>
                 </div>
               </div>
@@ -353,31 +422,17 @@ export function Matches() {
                   <div className="min-w-0">
                     {/* Badges row */}
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mb-1 sm:mb-2 text-slate-100">
-                      <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-widest ${
-                        match.status === 'live' ? 'bg-red-500 text-white animate-pulse' :
-                        match.status === 'highlights' ? 'bg-purple-600 text-white' :
-                        (match.status === 'full_match' || match.status === 'completed') ? 'bg-slate-700 text-white' :
-                        'bg-yellow-500 text-white'
-                      }`}>
-                        {formatMatchStatus(match.status)}
+                      <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-widest ${getClassificationBadgeClass(match)}`}>
+                        {getClassification(match)}
                       </span>
-                      <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-widest ${
-                        match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0)
-                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400'
-                          : match.access === 'free'
-                          ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400'
-                      }`}>
-                        {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? 'PLAN' : match.access === 'free' ? 'FREE' : 'PPV'}
-                      </span>
-                      {/* Price on mobile/tablet view only (hidden on large desktop) */}
-                      <span className="md:hidden text-[10px] sm:text-sm font-black text-slate-900 dark:text-white">
-                        {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0)
-                          ? 'PLAN'
-                          : match.access === 'paid'
-                          ? `${currencySymbol}${match.price}`
-                          : 'FREE'}
-                      </span>
+                      {(() => {
+                        const badge = getAccessBadgeInfo(match);
+                        return (
+                          <span className={`text-[8px] sm:text-[10px] font-black px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg uppercase tracking-wider ${badge.subClassName}`}>
+                            {badge.label}
+                          </span>
+                        );
+                      })()}
                       {match.competition_id && (
                         <span className="inline-flex items-center gap-1 text-[8px] sm:text-[10px] font-bold text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg">
                           <Trophy className="w-3 h-3 shrink-0" />
@@ -402,15 +457,26 @@ export function Matches() {
 
                     {/* Metadata line */}
                     <div className="flex flex-wrap items-center gap-2 sm:gap-6 text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold">
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500" />
-                        <span className="hidden xs:inline">{formatDateSafe(match.date, 'MMMM d, yyyy')}</span>
-                        <span className="xs:hidden">{formatDateSafe(match.date, 'MMM d')}</span>
-                      </div>
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500" />
-                        <span>{formatDateSafe(match.date, 'h:mm a')}</span>
-                      </div>
+                      {match.date ? (
+                        <>
+                          <div className="flex items-center gap-1 sm:gap-2">
+                            <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500" />
+                            <span className="hidden xs:inline">{formatDateSafe(match.date, 'MMMM d, yyyy')}</span>
+                            <span className="xs:hidden">{formatDateSafe(match.date, 'MMM d')}</span>
+                          </div>
+                          <div className="flex items-center gap-1 sm:gap-2">
+                            <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500" />
+                            <span>{formatDateSafe(match.date, 'h:mm a')}</span>
+                          </div>
+                        </>
+                      ) : (
+                        (match as any)?.createdAt && (
+                          <div className="flex items-center gap-1 sm:gap-2">
+                            <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500" />
+                            <span>Published {formatDateSafe((match as any).createdAt, 'MMM d, yyyy')}</span>
+                          </div>
+                        )
+                      )}
                       <div className="hidden sm:flex items-center gap-2">
                         <Tag className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500" />
                         <span>{match.categories?.length || 0} Categories</span>
@@ -419,19 +485,16 @@ export function Matches() {
                   </div>
 
                   {/* Desktop-only price column */}
-                  <div className="hidden md:block text-right pr-6 shrink-0 font-black">
-                    {match.access_type === 'plan' || (!match.access_type && match.access === 'paid' && Number(match.price || 0) === 0) ? (
-                      <div className="text-2xl text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                        PLAN
+                  {(() => {
+                    const badge = getAccessBadgeInfo(match);
+                    return (
+                      <div className="hidden md:block text-right pr-6 shrink-0 font-black">
+                        <div className="text-xl sm:text-2xl text-slate-900 dark:text-white">
+                          {badge.label}
+                        </div>
                       </div>
-                    ) : match.access === 'paid' ? (
-                      <div className="text-3xl text-slate-900 dark:text-white">
-                        {currencySymbol}{match.price}
-                      </div>
-                    ) : (
-                      <div className="text-3xl text-green-500">FREE</div>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </div>
               </div>
             </Link>

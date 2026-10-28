@@ -68,7 +68,7 @@ export const AccountGateModal: React.FC<AccountGateModalProps> = ({
               <div className="min-w-0 flex-1">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-1">
                   <Sparkles className="w-3 h-3" />
-                  100% Free Match
+                  {match.status === 'highlights' || match.title?.toLowerCase().includes('interview') || match.title?.toLowerCase().includes('highlight') ? 'Free Video' : 'Free Match Broadcast'}
                 </span>
                 <h3 className="text-base sm:text-lg font-bold text-white truncate">
                   {match.title}
@@ -78,14 +78,15 @@ export const AccountGateModal: React.FC<AccountGateModalProps> = ({
           </div>
 
           {/* Modal Body */}
-          <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+          <div className="p-5 sm:p-6 space-y-5">
             <div>
               <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight">
-                Account Required to Watch Free
+                {match.status === 'highlights' || match.title?.toLowerCase().includes('interview') || match.title?.toLowerCase().includes('highlight')
+                  ? 'Watch this video for free'
+                  : 'Watch this match for free'}
               </h2>
-              <p className="mt-1 text-xs sm:text-sm text-slate-300 leading-relaxed">
-                <span className="sm:hidden">Sign in to watch this match for free. New users can create an account directly from the login page.</span>
-                <span className="hidden sm:inline">Enjoy complimentary, full-stream match coverage and on-demand replays. Sign in or create a free WatchWDS account to start watching instantly.</span>
+              <p className="mt-1.5 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Create a free WatchWDS account or sign in to watch.
               </p>
             </div>
 
@@ -93,31 +94,39 @@ export const AccountGateModal: React.FC<AccountGateModalProps> = ({
             <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 sm:p-4 space-y-2 sm:space-y-2.5 text-xs text-slate-300">
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Instant access to free livestreams and full replay archives</span>
+                <span>Complimentary access to free grassroots sports broadcasts</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Save matches to your watchlist & get kickoff alerts</span>
+                <span>Save broadcasts to your watchlist and get event reminders</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Participate in live match chat & interact with fans</span>
+                <span>Participate in community match discussions and comments</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <Shield className="w-4 h-4 text-yellow-400 shrink-0" />
-                <span className="font-semibold text-slate-200">Zero cost — no credit card needed</span>
+                <span className="font-semibold text-slate-200">Zero cost — no credit card required</span>
               </div>
             </div>
 
-            {/* Action Button: Single Login Button */}
-            <div className="space-y-2">
+            {/* Action Buttons: Create Account & Sign In */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onRegister}
+                className="flex-1 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black py-3 sm:py-3.5 px-5 rounded-xl transition-all shadow-lg shadow-yellow-500/25 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-[0.98] cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Create a free account</span>
+              </button>
               <button
                 type="button"
                 onClick={onLogin}
-                className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black py-3 sm:py-3.5 px-5 rounded-xl transition-all shadow-lg shadow-yellow-500/25 flex items-center justify-center gap-2.5 text-sm sm:text-base active:scale-[0.98] cursor-pointer"
+                className="flex-1 bg-white/10 hover:bg-white/20 text-white font-bold py-3 sm:py-3.5 px-5 rounded-xl transition-all border border-white/10 flex items-center justify-center gap-2 text-sm sm:text-base active:scale-[0.98] cursor-pointer"
               >
                 <LogIn className="w-4 h-4" />
-                <span>Log In to Watch Free</span>
+                <span>Sign in</span>
               </button>
             </div>
 
