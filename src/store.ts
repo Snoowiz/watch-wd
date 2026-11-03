@@ -1261,6 +1261,15 @@ export interface Match {
   start_time?: string | null;
   publish_status?: 'pending' | 'approved' | 'rejected' | 'published' | 'draft' | 'scheduled' | 'deleted' | null;
   stream_provider?: 'youtube' | 'mux' | 'custom' | null;
+  sport?: 'football' | 'tennis' | 'basketball' | string | null;
+  home_team?: string | null;
+  away_team?: string | null;
+  player_pair_1?: string | null;
+  player_pair_2?: string | null;
+  homeTeam?: string | null;
+  awayTeam?: string | null;
+  playerPair1?: string | null;
+  playerPair2?: string | null;
 }
 
 export interface Plan {
@@ -2817,6 +2826,7 @@ export interface Competition {
   description?: string | null;
   logo?: string | null;
   season?: string | null;
+  sport?: string | null;
   is_active?: boolean | number;
   match_count?: number;
   created_at?: string;

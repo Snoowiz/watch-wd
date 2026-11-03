@@ -233,6 +233,10 @@ function camelToSnake(str: string, tableName?: string): string {
     created_at: 'created_at',
     updated_at: 'updated_at',
     reply_count: 'reply_count',
+    homeTeam: 'home_team',
+    awayTeam: 'away_team',
+    playerPair1: 'player_pair_1',
+    playerPair2: 'player_pair_2',
   };
   return overrides[str] || str;
 }
@@ -338,6 +342,10 @@ function snakeToCamel(str: string, tableName?: string): string {
     response_text: 'responseText',
     email_sent: 'emailSent',
     is_guest: 'isGuest',
+    home_team: 'homeTeam',
+    away_team: 'awayTeam',
+    player_pair_1: 'playerPair1',
+    player_pair_2: 'playerPair2',
   };
   return overrides[str] || str;
 }

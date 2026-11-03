@@ -223,6 +223,43 @@ async function migrate() {
     console.log('  ✓ Incremental update: Added competition_id to matches.');
   } catch (err: any) {}
 
+  // Multi-Sport Architecture Incremental Updates
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`sport\` VARCHAR(50) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added sport column to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`home_team\` VARCHAR(255) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added home_team column to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`away_team\` VARCHAR(255) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added away_team column to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`player_pair_1\` VARCHAR(255) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added player_pair_1 column to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD COLUMN \`player_pair_2\` VARCHAR(255) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added player_pair_2 column to matches.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`matches\` ADD INDEX \`idx_matches_sport\` (\`sport\`)`);
+    console.log('  ✓ Incremental update: Added idx_matches_sport index.');
+  } catch (err: any) {}
+
+  try {
+    await rootConn.query(`ALTER TABLE \`competitions\` ADD COLUMN \`sport\` VARCHAR(50) DEFAULT NULL`);
+    console.log('  ✓ Incremental update: Added sport column to competitions.');
+  } catch (err: any) {}
+
+
   // Step 3: Seed default data
   console.log('[4/4] Seeding default data...');
 

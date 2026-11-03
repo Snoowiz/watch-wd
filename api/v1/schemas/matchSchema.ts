@@ -43,6 +43,9 @@ export const createMatchSchema = z.object({
   }),
 
   // === Optional fields (aligned with matches table) ===
+  sport: z.string().max(50).optional(),
+  player_pair_1: z.string().max(255).optional(),
+  player_pair_2: z.string().max(255).optional(),
   title: z.string().max(500).optional(),
   slug: z.string().max(500).optional(),
   description: z.string().optional(),

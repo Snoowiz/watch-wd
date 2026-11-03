@@ -1870,7 +1870,19 @@ async function startServer() {
       const rStatus = match.revoke_status || match.revokeStatus;
       const pStatus = match.publish_status || match.publishStatus;
       if ((rStatus && rStatus !== 'normal') || pStatus === 'draft' || pStatus === 'deleted') {
-        return res.status(404).json({ error: "Match not found" });
+        let isStaff = false;
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          try {
+            const decoded = jwt.verify(authHeader.split(" ")[1], JWT_SECRET) as any;
+            if (decoded && (decoded.role === "admin" || decoded.role === "operator")) {
+              isStaff = true;
+            }
+          } catch (e) {}
+        }
+        if (!isStaff) {
+          return res.status(404).json({ error: "Match not found" });
+        }
       }
       res.json(sanitizeMatchForPublic({ id: doc.id, ...match }));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -2257,6 +2269,12 @@ async function startServer() {
         ppvPrice: 'ppv_price',
         requiredPlanId: 'required_plan_id',
         clubId: 'club_id',
+        competitionId: 'competition_id',
+        homeTeam: 'home_team',
+        awayTeam: 'away_team',
+        playerPair1: 'player_pair_1',
+        playerPair2: 'player_pair_2',
+        publishStatus: 'publish_status',
         liveCommenting: 'live_commenting',
         commentAlignment: 'comment_alignment',
         adSettings: 'ad_settings',
@@ -2283,7 +2301,8 @@ async function startServer() {
       // Invalidate cache immediately on update
       cacheEngine.invalidateCollection("matches");
 
-      // Send email alert to admins
+      // Send email alert to admins only for published/scheduled matches (not drafts)
+      if (matchData.publish_status !== 'draft') {
       const adminsSnap = await db.collection("users").where("role", "==", "admin").get();
       for (const adminDoc of adminsSnap.docs) {
         const admin = adminDoc.data();
@@ -2293,6 +2312,7 @@ async function startServer() {
           match_date: req.body.start_time || req.body.date || new Date().toLocaleString(),
           website_url: getRequestBaseUrl(req)
         }).catch(err => console.error(`Failed to send admin match alert to ${admin.email}:`, err));
+      }
       }
 
       res.json({ id: docRef.id });
@@ -2324,6 +2344,12 @@ async function startServer() {
         ppvPrice: 'ppv_price',
         requiredPlanId: 'required_plan_id',
         clubId: 'club_id',
+        competitionId: 'competition_id',
+        homeTeam: 'home_team',
+        awayTeam: 'away_team',
+        playerPair1: 'player_pair_1',
+        playerPair2: 'player_pair_2',
+        publishStatus: 'publish_status',
         liveCommenting: 'live_commenting',
         commentAlignment: 'comment_alignment',
         adSettings: 'ad_settings',

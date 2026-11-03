@@ -80,10 +80,16 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `revoke_reason` TEXT DEFAULT NULL,
   `revoked_by` VARCHAR(100) DEFAULT NULL,
   `original_status` VARCHAR(50) DEFAULT NULL,
+  `sport` VARCHAR(50) DEFAULT NULL,
+  `home_team` VARCHAR(255) DEFAULT NULL,
+  `away_team` VARCHAR(255) DEFAULT NULL,
+  `player_pair_1` VARCHAR(255) DEFAULT NULL,
+  `player_pair_2` VARCHAR(255) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_matches_competition` (`competition_id`),
-  INDEX `idx_matches_club` (`club_id`)
+  INDEX `idx_matches_club` (`club_id`),
+  INDEX `idx_matches_sport` (`sport`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
@@ -460,6 +466,7 @@ CREATE TABLE IF NOT EXISTS `competitions` (
   `logo` TEXT DEFAULT NULL,
   `season` VARCHAR(100) DEFAULT NULL,
   `is_active` TINYINT(1) DEFAULT 1,
+  `sport` VARCHAR(50) DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_competition_slug` (`slug`),
