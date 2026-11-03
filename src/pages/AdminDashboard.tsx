@@ -20,6 +20,7 @@ import { NewMatch } from './admin/NewMatch';
 import { Categories } from './admin/Categories';
 import { AdminClubs } from './admin/AdminClubs';
 import { AdminCompetitions } from './admin/AdminCompetitions';
+import { CreateEvent } from './admin/CreateEvent';
 
 import { AdminCreators } from './admin/AdminCreators';
 import { CreatorDetail } from './admin/CreatorDetail';
@@ -347,7 +348,7 @@ export function AdminDashboard() {
               )}
               <Route path="/homepage" element={<AdminHomepageBuilder />} />
               <Route path="/matches" element={<AdminMatches />} />
-              <Route path="/matches/new" element={<NewMatch />} />
+              <Route path="/matches/new" element={<CreateEvent />} />
               <Route path="/matches/:id/edit" element={<NewMatch />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/features" element={<AdminFeatures />} />
