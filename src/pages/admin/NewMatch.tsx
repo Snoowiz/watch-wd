@@ -62,6 +62,8 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
   // Form states
   const [title, setTitle] = useState(existingMatch?.title || '');
+  const [tennisParticipant1, setTennisParticipant1] = useState('');
+  const [tennisParticipant2, setTennisParticipant2] = useState('');
   const [slug, setSlug] = useState(existingMatch?.slug || '');
   const [content, setContent] = useState(existingMatch?.content || '');
   const [description, setDescription] = useState(existingMatch?.description || '');
@@ -179,6 +181,16 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
       .catch(console.error);
   }, []);
 
+  // In this first phase tennis participants are reflected in the canonical event title.
+  // Separate participant records and a sport-scoped tournament model need backend work.
+  useEffect(() => {
+    if (!isEditing && initialSport === 'tennis') {
+      setTitle(tennisParticipant1.trim() && tennisParticipant2.trim()
+        ? `${tennisParticipant1.trim()} vs ${tennisParticipant2.trim()}`
+        : '');
+    }
+  }, [initialSport, isEditing, tennisParticipant1, tennisParticipant2]);
+
   // Auto-generate slug from title (only when creating a new match)
   useEffect(() => {
     if (!isEditing && title) {
@@ -266,6 +278,11 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
   const currentEffectiveStatus = isManualOverride ? status : getCalculatedStatus();
 
   const handleSave = async () => {
+    if (!isEditing && initialSport === 'tennis' && (!tennisParticipant1.trim() || !tennisParticipant2.trim())) {
+      addToast('Please enter both players or pairs.', 'error');
+      setActiveTab('details');
+      return;
+    }
     if (!title || !slug) {
       addToast('Please fill in the title and slug.', 'error');
       setActiveTab('details');
@@ -526,6 +543,29 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   <h3>Event details</h3>
                 </div>
 
+                {!isEditing && initialSport && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold dark:border-slate-700 dark:bg-slate-800">
+                    Sport: {initialSport === 'football' ? 'Football' : 'Tennis'}
+                  </div>
+                )}
+                {!isEditing && initialSport === 'tennis' && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Player or pair 1
+                      <input value={tennisParticipant1} onChange={event => setTennisParticipant1(event.target.value)}
+                        required className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        placeholder="Player or pair 1" />
+                    </label>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Player or pair 2
+                      <input value={tennisParticipant2} onChange={event => setTennisParticipant2(event.target.value)}
+                        required className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        placeholder="Player or pair 2" />
+                    </label>
+                    <p className="col-span-full text-xs text-slate-500 dark:text-slate-400">Player/pair names are combined into the event title. Dedicated participant records are not yet available.</p>
+                  </div>
+                )}
+
                 {/* Title */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
@@ -535,6 +575,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
+                    readOnly={!isEditing && initialSport === 'tennis'}
                     placeholder={initialSport === 'tennis' ? "Player or pair 1 vs Player or pair 2" : "Home club vs Away club"}
                     className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
                   />
@@ -595,7 +636,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                         <Trophy className="w-3.5 h-3.5 text-slate-400" />
-                        Competition
+                        {initialSport === 'tennis' ? 'Tournament' : 'Competition'}
                       </label>
                       <span className="text-[11px] font-semibold text-slate-400">Optional</span>
                     </div>
@@ -605,7 +646,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                       id="select-match-competition"
                     >
-                      <option value="">No competition assigned</option>
+                      <option value="">{initialSport === 'tennis' ? 'No tournament assigned' : 'No competition assigned'}</option>
                       {competitions.map(comp => (
                         <option key={comp.id} value={comp.id}>
                           {comp.name} {comp.season ? `(${comp.season})` : ''}
@@ -613,7 +654,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       ))}
                     </select>
                     <p className="text-[11px] text-slate-500 mt-1.5">
-                      Assigning a competition links this match to tournament schedules.
+                      {initialSport === 'tennis' ? 'Choose a tournament only if it is configured for tennis. Tournament records are not yet sport-scoped.' : 'Assigning a competition links this match to tournament schedules.'}
                     </p>
                   </div>
                 </div>
@@ -719,6 +760,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleCategory(cat.id)}
+                          disabled={initialSportCategoryId !== undefined && Number(cat.id) === initialSportCategoryId}
                           style={{ accentColor: primaryColor }}
                           className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-0"
                         />
