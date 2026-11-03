@@ -25,7 +25,7 @@ import {
 
 type TabId = 'details' | 'video' | 'pricing' | 'promotion' | 'review';
 
-export function NewMatch() {
+export function NewMatch({ initialSport, initialSportCategoryId }: { initialSport?: 'football' | 'tennis'; initialSportCategoryId?: number } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { matches = [], addMatch, updateMatch } = useMatchStore();
@@ -100,7 +100,11 @@ export function NewMatch() {
     return isNaN(d.getTime()) ? null : d.toISOString();
   };
 
-  const [selectedCategories, setSelectedCategories] = useState<any[]>((existingMatch?.categories || []).map((c: any) => Number(c)));
+  const [selectedCategories, setSelectedCategories] = useState<any[]>(
+    initialSportCategoryId !== undefined && !isEditing
+      ? [initialSportCategoryId]
+      : (existingMatch?.categories || []).map((c: any) => Number(c))
+  );
   const [seo, setSeo] = useState(existingMatch?.seo || { keywords: '', metaDescription: '' });
   const [publishMode, setPublishMode] = useState<'now' | 'scheduled'>(existingMatch?.scheduledDate ? 'scheduled' : 'now');
   const [scheduledDate, setScheduledDate] = useState(existingMatch?.scheduledDate || '');
@@ -428,7 +432,7 @@ export function NewMatch() {
               <X className="w-5 h-5" />
             </button>
             <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {isEditing ? 'Edit Match' : 'New Match'}
+              {isEditing ? 'Edit Match' : 'Event details'}
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -499,7 +503,7 @@ export function NewMatch() {
               {activeTab === 'review' && 'Review & publish'}
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {activeTab === 'details' && 'Basic match information, description, cover image and existing categories.'}
+              {activeTab === 'details' && 'Event information, description, cover image and existing categories.'}
               {activeTab === 'video' && 'Existing video provider, stream embed, match timing, status and comments.'}
               {activeTab === 'pricing' && 'Existing viewing access, PPV, subscription, club association and timed access.'}
               {activeTab === 'promotion' && 'Search metadata and current match advertising controls.'}
@@ -519,19 +523,19 @@ export function NewMatch() {
               <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-5 shadow-sm transition-all">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Layout className="w-5 h-5" style={{ color: primaryColor }} />
-                  <h3>Match details</h3>
+                  <h3>Event details</h3>
                 </div>
 
                 {/* Title */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                    Match title
+                    Event title
                   </label>
                   <input 
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Home Club v Away Club"
+                    placeholder={initialSport === 'tennis' ? "Player or pair 1 vs Player or pair 2" : "Home club vs Away club"}
                     className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
                   />
                 </div>
@@ -560,7 +564,7 @@ export function NewMatch() {
                 {/* Clubs / Organisation & Competition (Inline side by side) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Clubs / Organisation Selector */}
-                  <div>
+                  {initialSport !== 'tennis' && <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -584,7 +588,7 @@ export function NewMatch() {
                     <p className="text-[11px] text-slate-500 mt-1.5">
                       Assigning a club displays club branding and enables filtering.
                     </p>
-                  </div>
+                  </div>}
 
                   {/* Competition Selector */}
                   <div>
