@@ -320,7 +320,7 @@ export function AdminMatches() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Match Management</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Create, edit, and schedule broadcasts, or moderate user comments.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Create and manage events, schedule broadcasts, or moderate viewer comments.</p>
         </div>
         <div className="flex items-center gap-3">
           <button 
@@ -335,7 +335,7 @@ export function AdminMatches() {
             className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-2.5 px-6 rounded-xl transition-all shadow-lg shadow-yellow-500/20 flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
-            New Match
+            Create event
           </button>
         </div>
       </div>
@@ -648,7 +648,7 @@ export function AdminMatches() {
                               onClick={() => navigate('/admin/matches/new')}
                               className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold text-xs px-4 py-1.5 rounded-xl transition-colors shadow-sm"
                             >
-                              Create new match
+                              Create event
                             </button>
                           </div>
                         </div>
