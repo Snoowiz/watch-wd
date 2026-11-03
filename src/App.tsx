@@ -16,6 +16,10 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Matches } from './pages/Matches';
 import { MatchDetail } from './pages/MatchDetail';
+import { ClubsPage } from './pages/clubs/ClubsPage';
+import { ClubDetailPage } from './pages/clubs/ClubDetailPage';
+import { CompetitionsPage } from './pages/competition/CompetitionsPage';
+import { CompetitionDetailPage } from './pages/competition/CompetitionDetailPage';
 import { Forum } from './pages/Forum';
 import { ForumCategory } from './pages/ForumCategory';
 import { ForumTopic } from './pages/ForumTopic';
@@ -270,7 +274,15 @@ export default function App() {
                   <Route path="/register" element={<Register />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/browse" element={<Matches />} />
+                  <Route path="/all-events" element={<Navigate to="/browse" replace />} />
                   <Route path="/matches" element={<Matches />} />
+                  <Route path="/clubs" element={<ClubsPage />} />
+                  <Route path="/clubs/:slug" element={<ClubDetailPage />} />
+                  <Route path="/competition" element={<CompetitionsPage />} />
+                  <Route path="/competitions" element={<CompetitionsPage />} />
+                  <Route path="/competition/:slug" element={<CompetitionDetailPage />} />
+                  <Route path="/competitions/:slug" element={<CompetitionDetailPage />} />
                   <Route path="/matches/:slug" element={<MatchDetail />} />
                   <Route path="/category/:slug" element={<CategoryPage />} />
                   <Route path="/search" element={<SearchPage />} />

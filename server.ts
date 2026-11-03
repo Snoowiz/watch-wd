@@ -6974,6 +6974,25 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     }
   });
 
+
+  app.get("/api/competitions/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const rows: any = await query(`
+        SELECT id, name, slug, logo, season, description, sport, is_active
+        FROM competitions
+        WHERE (slug = ? OR id = ?) AND is_active = 1
+        LIMIT 1
+      `, [slug, slug]);
+      if (rows && rows.length > 0) {
+        res.json(rows[0]);
+      } else {
+        res.status(404).json({ error: "Competition not found" });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/api/competitions/active", async (req, res) => {
     try {
       const rows = await query(`
@@ -7025,6 +7044,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (req.body.description !== undefined) updateData.description = req.body.description;
       if (req.body.logo !== undefined) updateData.logo = req.body.logo;
       if (req.body.season !== undefined) updateData.season = req.body.season;
+      if (req.body.sport !== undefined) updateData.sport = req.body.sport;
       if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive ? 1 : 0;
 
       await db.collection("competitions").doc(id).update(updateData);
@@ -7058,6 +7078,29 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+
+  app.get("/api/clubs/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const snap = await db.collection("clubs").where("is_active", "==", 1).get();
+      const match = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .find(c => c.slug === slug || c.id === slug);
+      if (match) {
+        res.json({
+          id: match.id,
+          name: match.name,
+          slug: match.slug,
+          logo: match.logo,
+          description: match.description || null
+        });
+      } else {
+        res.status(404).json({ error: "Club not found" });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/api/clubs/active", async (req, res) => {
     try {
       const snap = await db.collection("clubs").where("is_active", "==", 1).get();

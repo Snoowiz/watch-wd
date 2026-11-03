@@ -36,12 +36,18 @@ export function createMatchRouter({ db, cacheEngine }: MatchRouterDeps): Router 
       // 1. Validate request body
       const parsed = createMatchSchema.parse(req.body);
 
+      // Determine participant display for title/description
+      const isTennis = parsed.sport === "tennis";
+      const slot1 = isTennis ? parsed.player_pair_1 : parsed.home_team;
+      const slot2 = isTennis ? parsed.player_pair_2 : parsed.away_team;
+      const derivedTitle = slot1 && slot2 ? `${slot1} vs ${slot2}` : (slot1 || slot2 || "Untitled Event");
+
       // 2. Build the database record
       //    Map the API fields to match the existing matches table schema
       const matchRecord: Record<string, any> = {
-        title: parsed.title || `${parsed.home_team} vs ${parsed.away_team}`,
-        slug: parsed.slug || generateSlug(parsed.home_team, parsed.away_team, parsed.match_date),
-        description: parsed.description || `${parsed.home_team} vs ${parsed.away_team}`,
+        title: parsed.title || derivedTitle,
+        slug: parsed.slug || generateSlug(slot1, slot2, parsed.match_date),
+        description: parsed.description || derivedTitle,
         content: parsed.content || "",
         date: parsed.match_date,
         start_time: parsed.match_date,
@@ -58,43 +64,27 @@ export function createMatchRouter({ db, cacheEngine }: MatchRouterDeps): Router 
         access_type: parsed.access_type || (parsed.access === "subscription" ? "plan" : (parsed.price > 0 || parsed.access === "ppv" ? "ppv" : "free")),
         ppv_price: parsed.ppv_price ?? (parsed.price > 0 ? parsed.price : null),
         required_plan_id: parsed.required_plan_id || null,
+        thumbnail: parsed.thumbnail || null,
+        categories: parsed.categories ? JSON.stringify(parsed.categories) : JSON.stringify([parsed.category]),
+        live_commenting: parsed.live_commenting ? 1 : 0,
+        comment_alignment: parsed.comment_alignment || "right",
         club_id: parsed.club_id || null,
         competition_id: parsed.competition_id || null,
-        thumbnail: parsed.thumbnail || null,
-        categories: parsed.categories
-          ? JSON.stringify(parsed.categories)
-          : JSON.stringify([parsed.category]),
-        live_commenting: parsed.live_commenting !== undefined ? (parsed.live_commenting ? 1 : 0) : 1,
-        comment_alignment: parsed.comment_alignment || "right",
-        views: 0,
-        operator_id: "api-v1",
-        creator_id: "api-v1",
-        created_at: new Date().toISOString(),
       };
 
-      // 3. Persist to database
-      const docRef = await db.collection("matches").add(matchRecord);
+      // 3. Insert into the database
+      const result = await db.collection("matches").add(matchRecord);
 
-      // 4. Invalidate match cache so public endpoints reflect new data
+      // 4. Invalidate the matches cache collection
       cacheEngine.invalidateCollection("matches");
 
-      // 5. Return success
-      console.log(`[API v1] Match created: ${docRef.id} — ${matchRecord.title}`);
-
-      res.status(201).json({
-        success: true,
-        message: "Match created successfully",
-        data: {
-          id: docRef.id,
-          title: matchRecord.title,
-          home_team: parsed.home_team,
-          away_team: parsed.away_team,
-          match_date: parsed.match_date,
-          category: parsed.category,
-          price: parsed.price,
-          status: parsed.status,
-          created_at: matchRecord.created_at,
-        },
+      // 5. Return 201 Created with the saved record
+      return res.status(201).json({
+        id: result.id,
+        ...matchRecord,
+        categories: parsed.categories || [parsed.category],
+        live_commenting: !!parsed.live_commenting,
+        created_at: new Date().toISOString(),
       });
     } catch (err: any) {
       // Zod validation failure → 400
@@ -123,13 +113,13 @@ export function createMatchRouter({ db, cacheEngine }: MatchRouterDeps): Router 
 }
 
 /**
- * Generate a URL-safe slug from team names and date.
+ * Generate a URL-safe slug from participant names and date.
  */
-function generateSlug(home: string, away: string, dateStr: string): string {
-  const dateSlug = dateStr.slice(0, 10); // YYYY-MM-DD
-  const slug = `${home}-vs-${away}-${dateSlug}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug;
+function generateSlug(part1?: string | null, part2?: string | null, dateStr?: string): string {
+  const dateSlug = (dateStr || "").slice(0, 10);
+  const p1 = (part1 || "event").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const p2 = (part2 || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const base = p2 ? `${p1}-vs-${p2}` : p1;
+  const slug = dateSlug ? `${base}-${dateSlug}` : base;
+  return slug.replace(/^-|-$/g, "") || `event-${Date.now()}`;
 }

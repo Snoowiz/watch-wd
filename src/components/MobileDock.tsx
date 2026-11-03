@@ -40,7 +40,7 @@ export function MobileDock() {
                 <Link to="/" className={`transition-colors ${location.pathname === '/' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-500'}`}>
                   <Home className="w-5 h-5" />
                 </Link>
-                <Link to="/matches" className={`transition-colors ${(location.pathname.startsWith('/matches') || location.pathname.startsWith('/category')) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-500'}`}>
+                <Link to="/browse" className={`transition-colors ${(location.pathname.startsWith('/browse') || location.pathname.startsWith('/matches') || location.pathname.startsWith('/clubs') || location.pathname.startsWith('/competition')) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:text-blue-500'}`}>
                   <Video className="w-5 h-5" />
                 </Link>
                 {blogEnabled && (

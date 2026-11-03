@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuthStore, useFeatureStore, useSettingsStore, useThemeStore } from '../store';
-import { Video, MessageSquare, Menu, X, Sun, Moon, Monitor, Home, LogIn, Search } from 'lucide-react';
+import { Video, MessageSquare, Menu, X, Sun, Moon, Monitor, Home, LogIn, Search, ChevronDown, Trophy, Building2, Compass } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 import { UserDropdown } from './UserDropdown';
 import { MobileDock } from './MobileDock';
@@ -18,6 +18,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useThemeStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isBrowseOpen, setIsBrowseOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
   const isHomePage = location.pathname === '/';

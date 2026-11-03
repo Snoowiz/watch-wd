@@ -4,24 +4,25 @@
  * Validates incoming match payloads from third-party services
  * against the `matches` table schema in the database.
  * 
- * Required fields: home_team, away_team, match_date, category, price, status
- * Optional fields map to additional columns in the matches table.
+ * Supports Football (home_team, away_team) and Tennis (player_pair_1, player_pair_2).
+ * Required common fields: match_date, category, price, status
  */
 
 import { z } from "zod";
 
 export const createMatchSchema = z.object({
-  // === Required fields ===
-  home_team: z
-    .string({ error: "home_team is required" })
-    .min(1, "home_team cannot be empty")
-    .max(255, "home_team must be 255 characters or fewer"),
+  // === Sport discriminator ===
+  sport: z.enum(["football", "tennis", "basketball"], {
+    error: "sport must be one of: football, tennis, basketball",
+  }).optional().default("football"),
 
-  away_team: z
-    .string({ error: "away_team is required" })
-    .min(1, "away_team cannot be empty")
-    .max(255, "away_team must be 255 characters or fewer"),
+  // === Participant fields (sport-specific) ===
+  home_team: z.string().max(255).optional(),
+  away_team: z.string().max(255).optional(),
+  player_pair_1: z.string().max(255).optional(),
+  player_pair_2: z.string().max(255).optional(),
 
+  // === Common required fields ===
   match_date: z
     .string({ error: "match_date is required (ISO 8601 format)" })
     .refine(
@@ -36,16 +37,15 @@ export const createMatchSchema = z.object({
 
   price: z
     .number({ error: "price is required and must be a number" })
-    .min(0, "price must be 0 or greater"),
+    .min(0, "price must be 0 or greater")
+    .optional()
+    .default(0),
 
   status: z.enum(["upcoming", "live", "completed", "full_match", "highlights", "cancelled", "postponed"], {
     error: "status must be one of: upcoming, live, full_match, completed, highlights, cancelled, postponed",
-  }),
+  }).optional().default("upcoming"),
 
-  // === Optional fields (aligned with matches table) ===
-  sport: z.string().max(50).optional(),
-  player_pair_1: z.string().max(255).optional(),
-  player_pair_2: z.string().max(255).optional(),
+  // === Optional fields ===
   title: z.string().max(500).optional(),
   slug: z.string().max(500).optional(),
   description: z.string().optional(),
@@ -62,7 +62,35 @@ export const createMatchSchema = z.object({
   comment_alignment: z.enum(["left", "right"]).optional(),
   club_id: z.string().max(100).nullable().optional(),
   competition_id: z.string().max(100).nullable().optional(),
+}).superRefine((data, ctx) => {
+  if (data.sport === 'tennis') {
+    if (!data.player_pair_1 && !data.title) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "player_pair_1 or title is required for tennis",
+        path: ["player_pair_1"]
+      });
+    }
+  } else if (data.sport === 'football') {
+    if (!data.home_team && !data.title) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "home_team or title is required for football",
+        path: ["home_team"]
+      });
+    }
+    if (!data.away_team && !data.title) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "away_team or title is required for football",
+        path: ["away_team"]
+      });
+    }
+  }
 });
+
+/** Alias for backward and forward compatibility */
+export const matchSchema = createMatchSchema;
 
 /** TypeScript type inferred from the schema */
 export type CreateMatchInput = z.infer<typeof createMatchSchema>;
