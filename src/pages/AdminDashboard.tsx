@@ -190,7 +190,7 @@ export function AdminDashboard() {
             className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" />
-            New Match
+            Create event
           </button>
         </div>
 
