@@ -60,10 +60,69 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<TabId>('details');
 
-  // Form states
+  // Authoritative Sport Classification
+  const initialDetectedSport = (existingMatch?.sport as 'football' | 'tennis' | 'basketball') || initialSport || 'football';
+  const [currentSport, setCurrentSport] = useState<'football' | 'tennis' | 'basketball'>(initialDetectedSport);
+
+  // Form states & Structured Participants
   const [title, setTitle] = useState(existingMatch?.title || '');
-  const [tennisParticipant1, setTennisParticipant1] = useState('');
-  const [tennisParticipant2, setTennisParticipant2] = useState('');
+  const [isTitleCustomized, setIsTitleCustomized] = useState(false);
+  const [homeTeam, setHomeTeam] = useState(
+    existingMatch?.home_team || (existingMatch as any)?.homeTeam || ''
+  );
+  const [awayTeam, setAwayTeam] = useState(
+    existingMatch?.away_team || (existingMatch as any)?.awayTeam || ''
+  );
+  const [playerPair1, setPlayerPair1] = useState(
+    existingMatch?.player_pair_1 || (existingMatch as any)?.playerPair1 || ''
+  );
+  const [playerPair2, setPlayerPair2] = useState(
+    existingMatch?.player_pair_2 || (existingMatch as any)?.playerPair2 || ''
+  );
+  const handleHomeTeamChange = (val: string) => {
+    setHomeTeam(val);
+    if (!isTitleCustomized) {
+      const generated = val && awayTeam ? `${val} vs ${awayTeam}` : val || awayTeam || '';
+      setTitle(generated);
+      if (!isEditing && !slug) {
+        setSlug(generated.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+      }
+    }
+  };
+
+  const handleAwayTeamChange = (val: string) => {
+    setAwayTeam(val);
+    if (!isTitleCustomized) {
+      const generated = homeTeam && val ? `${homeTeam} vs ${val}` : homeTeam || val || '';
+      setTitle(generated);
+      if (!isEditing && !slug) {
+        setSlug(generated.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+      }
+    }
+  };
+
+  const handlePlayerPair1Change = (val: string) => {
+    setPlayerPair1(val);
+    if (!isTitleCustomized) {
+      const generated = val && playerPair2 ? `${val} vs ${playerPair2}` : val || playerPair2 || '';
+      setTitle(generated);
+      if (!isEditing && !slug) {
+        setSlug(generated.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+      }
+    }
+  };
+
+  const handlePlayerPair2Change = (val: string) => {
+    setPlayerPair2(val);
+    if (!isTitleCustomized) {
+      const generated = playerPair1 && val ? `${playerPair1} vs ${val}` : playerPair1 || val || '';
+      setTitle(generated);
+      if (!isEditing && !slug) {
+        setSlug(generated.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+      }
+    }
+  };
+
   const [slug, setSlug] = useState(existingMatch?.slug || '');
   const [content, setContent] = useState(existingMatch?.content || '');
   const [description, setDescription] = useState(existingMatch?.description || '');
@@ -181,15 +240,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
       .catch(console.error);
   }, []);
 
-  // In this first phase tennis participants are reflected in the canonical event title.
-  // Separate participant records and a sport-scoped tournament model need backend work.
-  useEffect(() => {
-    if (!isEditing && initialSport === 'tennis') {
-      setTitle(tennisParticipant1.trim() && tennisParticipant2.trim()
-        ? `${tennisParticipant1.trim()} vs ${tennisParticipant2.trim()}`
-        : '');
-    }
-  }, [initialSport, isEditing, tennisParticipant1, tennisParticipant2]);
+
 
   // Auto-generate slug from title (only when creating a new match)
   useEffect(() => {
@@ -277,20 +328,67 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
   const currentEffectiveStatus = isManualOverride ? status : getCalculatedStatus();
 
-  const handleSave = async () => {
-    if (!isEditing && initialSport === 'tennis' && (!tennisParticipant1.trim() || !tennisParticipant2.trim())) {
-      addToast('Please enter both players or pairs.', 'error');
-      setActiveTab('details');
-      return;
+  const handleSave = async (targetPublishStatus?: 'published' | 'draft' | 'scheduled') => {
+    const effectiveStatus = targetPublishStatus || (publishMode === 'scheduled' ? 'scheduled' : 'published');
+    // Sport-specific participant validation
+    if (currentSport === 'football') {
+      if (!homeTeam.trim() && !title.trim()) {
+        addToast('Please enter the Home team name.', 'error');
+        setActiveTab('details');
+        return;
+      }
+      if (!awayTeam.trim() && !title.trim()) {
+        addToast('Please enter the Away team name.', 'error');
+        setActiveTab('details');
+        return;
+      }
+    } else if (currentSport === 'tennis') {
+      if (!playerPair1.trim() && !title.trim()) {
+        addToast('Please enter Player or pair 1.', 'error');
+        setActiveTab('details');
+        return;
+      }
+      if (!playerPair2.trim() && !title.trim()) {
+        addToast('Please enter Player or pair 2.', 'error');
+        setActiveTab('details');
+        return;
+      }
+    } else {
+      if (!title.trim()) {
+        addToast('Please enter an event title.', 'error');
+        setActiveTab('details');
+        return;
+      }
     }
-    if (!title || !slug) {
-      addToast('Please fill in the title and slug.', 'error');
-      setActiveTab('details');
-      return;
+
+    let finalTitle = title.trim();
+    if (!finalTitle) {
+      if (currentSport === 'football') {
+        finalTitle = `${homeTeam.trim()} vs ${awayTeam.trim()}`;
+      } else if (currentSport === 'tennis') {
+        finalTitle = `${playerPair1.trim()} vs ${playerPair2.trim()}`;
+      } else {
+        finalTitle = 'Untitled Event';
+      }
+    }
+
+    let finalSlug = slug.trim();
+    if (!finalSlug) {
+      finalSlug = finalTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
     }
 
     setIsSaving(true);
-    const toastId = addToast(isEditing ? 'Updating match...' : 'Creating match...', 'loading');
+    const toastId = addToast(
+      effectiveStatus === 'draft'
+        ? 'Saving draft...'
+        : isEditing
+          ? 'Updating event...'
+          : 'Publishing event...',
+      'loading'
+    );
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 600));
@@ -328,18 +426,29 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
       const matchData: Match = {
         id: (isEditing ? String(id) : String(Date.now())) as any,
-        title,
-        slug,
+        title: finalTitle,
+        slug: finalSlug,
+        sport: currentSport,
+        home_team: currentSport === 'football' ? homeTeam.trim() : null,
+        away_team: currentSport === 'football' ? awayTeam.trim() : null,
+        player_pair_1: currentSport === 'tennis' ? playerPair1.trim() : null,
+        player_pair_2: currentSport === 'tennis' ? playerPair2.trim() : null,
+        homeTeam: currentSport === 'football' ? homeTeam.trim() : null,
+        awayTeam: currentSport === 'football' ? awayTeam.trim() : null,
+        playerPair1: currentSport === 'tennis' ? playerPair1.trim() : null,
+        playerPair2: currentSport === 'tennis' ? playerPair2.trim() : null,
         date: finalDate,
         price: accessType === 'ppv' ? ppvPrice : 0,
         access_type: accessType,
         ppv_price: ppvPrice,
         required_plan_id: requiredPlanId,
-        club_id: clubId,
+        club_id: currentSport === 'football' ? clubId : null,
         competition_id: competitionId,
         stream_provider: streamProvider,
         embedPrice: ppvPrice * 10,
         status: computedStatus as any,
+        publish_status: effectiveStatus,
+        publishStatus: effectiveStatus,
         duration: Number(duration) || 120,
         time_zone: timeZone,
         status_mode: statusMode,
@@ -367,7 +476,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
       if (finalThumbnail) {
         useMediaStore.getState().addMedia({
-          name: `${title || 'Match'} Thumbnail`,
+          name: `${finalTitle} Thumbnail`,
           url: finalThumbnail,
           type: 'image'
         });
@@ -376,17 +485,23 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
       if (isEditing) {
         await updateMatch(String(id) as any, matchData);
         await useMatchStore.getState().fetchMatches();
-        updateToast(toastId, { message: 'Match updated successfully!', type: 'success' });
+        const successMsg = effectiveStatus === 'draft' ? 'Event saved as draft!' : 'Match updated successfully!';
+        updateToast(toastId, { message: successMsg, type: 'success' });
       } else {
         await addMatch(matchData);
         await useMatchStore.getState().fetchMatches();
-        updateToast(toastId, { message: 'Match published successfully!', type: 'success' });
+        const successMsg = effectiveStatus === 'draft'
+          ? 'Event saved as draft!'
+          : effectiveStatus === 'scheduled'
+            ? 'Event scheduled successfully!'
+            : 'Match published successfully!';
+        updateToast(toastId, { message: successMsg, type: 'success' });
       }
 
       navigate('/admin/matches');
     } catch (err) {
       console.error('Failed to save match:', err);
-      updateToast(toastId, { message: 'Failed to save match. Please try again.', type: 'error' });
+      updateToast(toastId, { message: 'Failed to save event. Please try again.', type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -468,7 +583,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
             </button>
             <button 
               type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={isSaving}
               style={primaryButtonStyle}
               className="disabled:opacity-60 font-bold px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 text-xs sm:text-sm hover:opacity-90 active:scale-95 shadow-md"
@@ -543,26 +658,94 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   <h3>Event details</h3>
                 </div>
 
-                {!isEditing && initialSport && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold dark:border-slate-700 dark:bg-slate-800">
-                    Sport: {initialSport === 'football' ? 'Football' : 'Tennis'}
+                {/* Sport Classification Banner & Switcher */}
+                <div className="flex items-center justify-between p-3.5 bg-slate-50/80 dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800/80">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Sport:</span>
+                    <span className="px-2.5 py-0.5 rounded-lg text-xs font-black uppercase tracking-wider bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30">
+                      {currentSport === 'tennis' ? 'Tennis' : currentSport === 'basketball' ? 'Basketball' : 'Football'}
+                    </span>
+                  </div>
+                  {!isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const hasData = homeTeam || awayTeam || playerPair1 || playerPair2;
+                        if (!hasData || window.confirm('Changing sport will clear participant names while keeping shared event data. Proceed?')) {
+                          const next = currentSport === 'football' ? 'tennis' : 'football';
+                          setCurrentSport(next);
+                          setHomeTeam('');
+                          setAwayTeam('');
+                          setPlayerPair1('');
+                          setPlayerPair2('');
+                          setTitle('');
+                          setSlug('');
+                        }
+                      }}
+                      className="text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-yellow-600 underline underline-offset-2 transition-colors"
+                    >
+                      Switch to {currentSport === 'football' ? 'Tennis' : 'Football'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Football Participant Fields */}
+                {currentSport === 'football' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                        Home team <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        type="text"
+                        value={homeTeam}
+                        onChange={(e) => handleHomeTeamChange(e.target.value)}
+                        placeholder="Home team name"
+                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                        Away team <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        type="text"
+                        value={awayTeam}
+                        onChange={(e) => handleAwayTeamChange(e.target.value)}
+                        placeholder="Away team name"
+                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
+                      />
+                    </div>
                   </div>
                 )}
-                {!isEditing && initialSport === 'tennis' && (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Player or pair 1
-                      <input value={tennisParticipant1} onChange={event => setTennisParticipant1(event.target.value)}
-                        required className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                        placeholder="Player or pair 1" />
-                    </label>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Player or pair 2
-                      <input value={tennisParticipant2} onChange={event => setTennisParticipant2(event.target.value)}
-                        required className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                        placeholder="Player or pair 2" />
-                    </label>
-                    <p className="col-span-full text-xs text-slate-500 dark:text-slate-400">Player/pair names are combined into the event title. Dedicated participant records are not yet available.</p>
+
+                {/* Tennis Participant Fields */}
+                {currentSport === 'tennis' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                        Player or pair 1 <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        type="text"
+                        value={playerPair1}
+                        onChange={(e) => handlePlayerPair1Change(e.target.value)}
+                        placeholder="e.g. C. Alcaraz or Salisbury / Ram"
+                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                        Player or pair 2 <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        type="text"
+                        value={playerPair2}
+                        onChange={(e) => handlePlayerPair2Change(e.target.value)}
+                        placeholder="e.g. J. Sinner or Koolhof / Mektic"
+                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -1703,7 +1886,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
                 <button
                   type="button"
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   disabled={isSaving}
                   style={primaryButtonStyle}
                   className="w-full disabled:opacity-60 font-bold px-6 py-3.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm hover:opacity-90 active:scale-95"
