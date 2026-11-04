@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMatchStore, useCategoryStore, useSettingsStore, useCommentStore } from '../../store';
+import { useMatchStore, useCategoryStore, useSettingsStore, useCommentStore, useSportStore } from '../../store';
 import { useUIStore } from '../../store/uiStore';
 import { 
   Plus, Search, Video, Edit2, Trash2, ExternalLink, 
@@ -24,6 +24,12 @@ export function AdminMatches() {
   const { comments = [], fetchAllComments, updateComment, deleteComment } = useCommentStore();
 
   const [activeTab, setActiveTab] = useState<'matches' | 'comments'>('matches');
+  const { sports, fetchActiveSports } = useSportStore();
+  const [selectedSport, setSelectedSport] = useState<string>('all');
+
+  React.useEffect(() => {
+    fetchActiveSports();
+  }, [fetchActiveSports]);
   
   // Matches search/filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -169,7 +175,7 @@ export function AdminMatches() {
 
       return true;
     });
-  }, [effectiveMatches, filterStatus, searchQuery, categories]);
+  }, [effectiveMatches, filterStatus, searchQuery, selectedSport, categories]);
 
   const handleRevokeMatch = async () => {
     if (!revokeConfirmMatch) return;
@@ -319,7 +325,7 @@ export function AdminMatches() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Match Management</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Event Management</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Create and manage events, schedule broadcasts, or moderate viewer comments.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -353,7 +359,7 @@ export function AdminMatches() {
         >
           <div className="flex items-center gap-2">
             <Video className="w-4 h-4" />
-            Match List
+            Event List
           </div>
         </button>
         <button
@@ -382,7 +388,7 @@ export function AdminMatches() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search matches by title or slug..."
+                placeholder="Search events by title, slug, or team..."
                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 dark:text-white transition-colors"
               />
             </div>
@@ -424,7 +430,7 @@ export function AdminMatches() {
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                     <th className="p-4 w-10"></th>
-                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Match Info</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Event Info</th>
                     <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
                     <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Access</th>
                     <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Categories</th>

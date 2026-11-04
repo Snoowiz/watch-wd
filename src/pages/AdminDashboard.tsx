@@ -21,6 +21,8 @@ import { Categories } from './admin/Categories';
 import { AdminClubs } from './admin/AdminClubs';
 import { AdminCompetitions } from './admin/AdminCompetitions';
 import { CreateEvent } from './admin/CreateEvent';
+import { AdminSports } from './admin/AdminSports';
+import { AdminMenuManager } from './admin/AdminMenuManager';
 
 import { AdminCreators } from './admin/AdminCreators';
 import { CreatorDetail } from './admin/CreatorDetail';
@@ -98,8 +100,8 @@ export function AdminDashboard() {
     { id: 'finance-payouts', type: 'finance', title: 'Finance Payout Settings', subtitle: 'Club balances, threshold & auto payouts', icon: DollarSign, path: '/admin/finance' },
     { id: 'finance-balances', type: 'finance', title: 'Club Balances & Earnings', subtitle: 'View club revenue and pending balances', icon: Building2, path: '/admin/finance' },
     { id: 'feedback-hub', type: 'feedback', title: 'User Feedback & Reviews', subtitle: 'Ratings, CSAT scores, customer reviews & replies', icon: MessageSquare, path: '/admin/feedback' },
-    { id: 'match-access-duration', type: 'match', title: 'PPV Event Access & Duration', subtitle: 'Time-limited access rules & financial record protection', icon: Clock, path: '/admin/matches' },
-    { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Match Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/matches' },
+    { id: 'match-access-duration', type: 'match', title: 'PPV Event Access & Duration', subtitle: 'Time-limited access rules & financial record protection', icon: Clock, path: '/admin/events' },
+    { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Event Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/events' },
     { id: 'settings-site-colors', type: 'settings', title: 'Site Color Configuration', subtitle: 'Brand accents, theme palettes & button text color', icon: Palette, path: '/admin/settings' },
     { id: 'cache-management', type: 'system', title: 'Performance & Multi-Layer Cache', subtitle: 'Purge cache, telemetry, Hit/Miss ratios & warming', icon: Zap, path: '/admin/cache' },
     { id: 'free-audience-gate', type: 'analytics', title: 'Free Match Audience Gate & Analytics', subtitle: 'Unique viewers, watch time, viewing journeys & gate conversion', icon: Eye, path: '#free-audience-analytics' },
@@ -128,7 +130,9 @@ export function AdminDashboard() {
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/homepage', icon: LayoutGrid, label: 'Homepage Builder' },
     { path: '/admin/users', icon: Users, label: 'Users' },
-    { path: '/admin/matches', icon: Video, label: 'Matches' },
+    { path: '/admin/events', icon: Video, label: 'Events' },
+    { path: '/admin/sports', icon: Trophy, label: 'Sports' },
+    { path: '/admin/menus', icon: Menu, label: 'Menu Management' },
     { path: '/admin/competitions', icon: Trophy, label: 'Competitions' },
     { path: '/admin/feedback', icon: MessageSquare, label: 'User Feedback' },
     { path: '/admin/seo', icon: Globe, label: 'SEO Manager' },
@@ -186,7 +190,7 @@ export function AdminDashboard() {
 
         <div className="p-4 shrink-0">
           <button
-            onClick={() => navigate('/admin/matches/new')}
+            onClick={() => navigate('/admin/events/new')}
             className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
           >
             <Plus className="w-5 h-5" />
@@ -244,7 +248,7 @@ export function AdminDashboard() {
               <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
-                placeholder="Search matches, users, or data..."
+                placeholder="Search events, users, or data..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
@@ -347,6 +351,11 @@ export function AdminDashboard() {
                 </>
               )}
               <Route path="/homepage" element={<AdminHomepageBuilder />} />
+              <Route path="/events" element={<AdminMatches />} />
+              <Route path="/events/new" element={<CreateEvent />} />
+              <Route path="/events/:id/edit" element={<NewMatch />} />
+              <Route path="/sports" element={<AdminSports />} />
+              <Route path="/menus" element={<AdminMenuManager />} />
               <Route path="/matches" element={<AdminMatches />} />
               <Route path="/matches/new" element={<CreateEvent />} />
               <Route path="/matches/:id/edit" element={<NewMatch />} />
@@ -602,7 +611,7 @@ function AdminOverview() {
 
   const stats = [
     { label: 'Total Users', value: totalUsers.toLocaleString(), trend: '+12%', icon: Users, color: 'border-l-yellow-500', subtitle: `${newUsersCount} registered this week`, path: '/admin/users' },
-    { label: 'Active Matches', value: activeMatchesCount.toString(), trend: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : '+5%', icon: Video, color: revokedMatchesCount > 0 ? 'border-l-amber-500' : 'border-l-green-500', subtitle: revokedMatchesCount > 0 ? `${revokedMatchesCount} taken down under review` : `${liveCount} broadcasting now`, path: '/admin/matches' },
+    { label: 'Active Events', value: activeMatchesCount.toString(), trend: revokedMatchesCount > 0 ? `${revokedMatchesCount} Revoked` : liveCount > 0 ? `${liveCount} Live` : '+5%', icon: Video, color: revokedMatchesCount > 0 ? 'border-l-amber-500' : 'border-l-green-500', subtitle: revokedMatchesCount > 0 ? `${revokedMatchesCount} taken down under review` : `${liveCount} broadcasting now`, path: '/admin/events' },
     { label: 'Total Revenue', value: `${getCurrencySymbol(currency)}${Number(totalRevenue).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`, trend: '+18%', icon: getCurrencyIcon(currency), color: 'border-l-yellow-500', subtitle: `${purchasesCount} live purchase(s)`, path: '/admin/transactions' },
     { label: 'SEO & Search Index', value: `${seoOverrideCount} Overrides`, trend: isSiteIndexed ? '100% OK' : 'NoIndex', icon: Globe, color: 'border-l-purple-500', subtitle: isSiteIndexed ? 'Search Engines Active' : 'Indexing Disabled', path: '/admin/seo' },
   ];
@@ -622,7 +631,7 @@ function AdminOverview() {
   // Auto-discovered active platform modules (deduplicated: Users & Matches are prominently represented in main KPI stats)
   const activeModules = useMemo(() => [
     { name: 'Free Match Gate', count: freeViewingData.summary.uniqueViewers, label: 'Unique Viewers', icon: Eye, path: '#free-audience-analytics', status: `${freeViewingData.summary.conversionRate}% Conv`, color: 'text-yellow-500' },
-    ...(revokedMatchesCount > 0 ? [{ name: 'Revoked Matches', count: revokedMatchesCount, label: 'Under Review', icon: Shield, path: '/admin/matches', status: 'Retention Active', color: 'text-amber-500' }] : []),
+    ...(revokedMatchesCount > 0 ? [{ name: 'Revoked Matches', count: revokedMatchesCount, label: 'Under Review', icon: Shield, path: '/admin/events', status: 'Retention Active', color: 'text-amber-500' }] : []),
     { name: 'Partner Applications', count: overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending, label: 'Pending Review', icon: Building2, path: '/admin/clubs?tab=applications', status: (overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending) > 0 ? `${overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending} Pending` : 'All Reviewed', color: (overviewStats?.pendingPartnerAppsCount ?? partnerAppsStats.pending) > 0 ? 'text-amber-500' : 'text-emerald-500' },
     { name: 'Partner Clubs', count: overviewStats?.partnerClubsCount ?? 1, label: 'Portals & Split', icon: Building2, path: '/admin/clubs', status: 'Active', color: 'text-amber-500' },
     { name: 'Competitions', count: overviewStats?.competitionsCount ?? 1, label: 'Leagues & Cups', icon: Trophy, path: '/admin/competitions', status: 'Active', color: 'text-yellow-500' },
@@ -977,7 +986,7 @@ function AdminOverview() {
         </div>
       </div>
 
-      {/* Free Match Audience & Viewing Engagement Analytics Section */}
+      {/* Free Event Audience & Viewing Engagement Analytics Section */}
       <div id="free-audience-analytics" className="border-t border-slate-200 dark:border-slate-800 pt-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -986,7 +995,7 @@ function AdminOverview() {
               <span>Mandatory Free Gate Telemetry</span>
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              Free Match Audience & Engagement Analytics
+              Free Event Audience & Engagement Analytics
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Live funnel performance tracking users from free match gate access to authentication, play start, and watch engagement.
@@ -1056,7 +1065,7 @@ function AdminOverview() {
           {/* Top Free Matches */}
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 flex items-center justify-between">
-              <span>Top Performing Free Matches</span>
+              <span>Top Performing Free Events</span>
               <span className="text-xs font-mono text-slate-400 font-normal">Audience Leaderboard</span>
             </h3>
 
@@ -1065,7 +1074,7 @@ function AdminOverview() {
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-700/60 text-slate-400 uppercase font-bold text-[10px]">
-                      <th className="pb-3">Match Title</th>
+                      <th className="pb-3">Event Title</th>
                       <th className="pb-3 text-center">Attempts</th>
                       <th className="pb-3 text-center">Unique Viewers</th>
                       <th className="pb-3 text-center">Total Plays</th>
@@ -1270,7 +1279,7 @@ function AdminOverview() {
               </div>
               <div className="relative">
                 <div className="absolute -left-[21px] top-1.5 w-3 h-3 rounded-full bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600"></div>
-                <div className="font-bold text-sm text-slate-900 dark:text-white text-xs">Match Feed Updated</div>
+                <div className="font-bold text-sm text-slate-900 dark:text-white text-xs">Event Feed Updated</div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Final metrics successfully calculated from active streams.</div>
                 <div className="text-[9px] font-bold text-slate-400 mt-1 font-mono">09:12 AM</div>
               </div>

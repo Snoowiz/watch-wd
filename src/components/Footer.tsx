@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Heart, Facebook, Twitter, Linkedin, Youtube, Instagram, Rss } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getSocialSettings, SocialSettings } from '../services/settingsService';
-import { useSettingsStore } from '../store';
+import { useSettingsStore, useMenuStore } from '../store';
 
 const SocialLinks = ({ social }: { social?: SocialSettings | null }) => {
   if (!social) return null;
@@ -53,11 +53,19 @@ const SocialLinks = ({ social }: { social?: SocialSettings | null }) => {
 export function Footer() {
   const [socialSettings, setSocialSettings] = useState<SocialSettings | null>(null);
   const { platformName: storedPlatformName } = useSettingsStore();
+  const { menus, fetchMenus } = useMenuStore();
   const platformName = storedPlatformName || 'WatchWDS';
 
   useEffect(() => {
     getSocialSettings().then(d => setSocialSettings(d));
-  }, []);
+    fetchMenus();
+  }, [fetchMenus]);
+
+  const footerLinks = (menus?.footer && menus.footer.length > 0) ? menus.footer : [
+    { id: 'f-about', label: 'About Us', url: '/about' },
+    { id: 'f-terms', label: 'Terms of Use', url: '/terms' },
+    { id: 'f-privacy', label: 'Privacy Policy', url: '/privacy' },
+  ];
 
   return (
     <>
@@ -77,12 +85,19 @@ export function Footer() {
             </span>
           </div>
 
-          <div className="flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400 mb-2">
-            <Link to="/about" className="hover:text-yellow-500 transition-colors">About Us</Link>
-            <span>&bull;</span>
-            <Link to="/terms" className="hover:text-yellow-500 transition-colors">Terms of Use</Link>
-            <span>&bull;</span>
-            <Link to="/privacy" className="hover:text-yellow-500 transition-colors">Privacy Policy</Link>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-slate-500 dark:text-slate-400 mb-2">
+            {footerLinks.map((link, idx) => (
+              <React.Fragment key={link.id}>
+                {idx > 0 && <span>&bull;</span>}
+                <Link 
+                  to={link.url} 
+                  target={link.target || '_self'} 
+                  className="hover:text-yellow-500 transition-colors"
+                >
+                  {link.label}
+                </Link>
+              </React.Fragment>
+            ))}
           </div>
 
           <div className="flex md:hidden items-center gap-1 sm:gap-2 flex-wrap justify-center">

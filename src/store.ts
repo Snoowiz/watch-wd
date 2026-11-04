@@ -2994,3 +2994,242 @@ export const useClubStore = create<ClubState>((set) => ({
   }
 }));
 
+
+
+// ============================================
+// SPORTS STORE
+// ============================================
+export interface Sport {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  icon?: string | null;
+  is_active?: boolean | number;
+  participant_type?: 'teams' | 'players_or_pairs' | 'combatants';
+  slot1_label?: string;
+  slot1_placeholder?: string;
+  slot2_label?: string;
+  slot2_placeholder?: string;
+  competition_label?: string;
+  time_label?: string;
+  requires_club?: boolean | number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface SportState {
+  sports: Sport[];
+  activeSports: Sport[];
+  isLoading: boolean;
+  fetchSports: () => Promise<void>;
+  fetchActiveSports: () => Promise<void>;
+  addSport: (sport: Partial<Sport>) => Promise<boolean>;
+  updateSport: (id: string, updates: Partial<Sport>) => Promise<boolean>;
+  deleteSport: (id: string) => Promise<boolean>;
+}
+
+export const useSportStore = create<SportState>((set, get) => ({
+  sports: [],
+  activeSports: [],
+  isLoading: false,
+  fetchSports: async () => {
+    try {
+      set({ isLoading: true });
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/sports', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) set({ sports: data });
+      }
+    } catch (e) {
+      console.error('Failed to fetch sports', e);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  fetchActiveSports: async () => {
+    try {
+      const res = await fetch('/api/sports');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) set({ activeSports: data });
+      }
+    } catch (e) {
+      console.error('Failed to fetch active sports', e);
+    }
+  },
+  addSport: async (sport) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/sports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(sport)
+      });
+      if (res.ok) {
+        get().fetchSports();
+        get().fetchActiveSports();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Failed to add sport', e);
+      return false;
+    }
+  },
+  updateSport: async (id, updates) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/admin/sports/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        get().fetchSports();
+        get().fetchActiveSports();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Failed to update sport', e);
+      return false;
+    }
+  },
+  deleteSport: async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/admin/sports/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        get().fetchSports();
+        get().fetchActiveSports();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Failed to delete sport', e);
+      return false;
+    }
+  }
+}));
+
+// ============================================
+// NAVIGATION MENUS STORE
+// ============================================
+export interface MenuItem {
+  id: string;
+  label: string;
+  url: string;
+  type?: 'page' | 'sport' | 'custom' | 'category';
+  target?: '_self' | '_blank';
+  children?: MenuItem[];
+}
+
+export interface NavigationMenusConfig {
+  primary: MenuItem[];
+  mobile: MenuItem[];
+  footer: MenuItem[];
+}
+
+export const DEFAULT_NAVIGATION_MENUS: NavigationMenusConfig = {
+  primary: [
+    { id: 'home', label: 'Home', url: '/', type: 'page' },
+    {
+      id: 'browse',
+      label: 'Browse',
+      url: '/browse',
+      type: 'page',
+      children: [
+        { id: 'all-events', label: 'All events', url: '/browse', type: 'page' },
+        { id: 'clubs', label: 'Clubs', url: '/clubs', type: 'page' },
+        { id: 'competition', label: 'Competition', url: '/competition', type: 'page' },
+      ]
+    },
+    { id: 'blog', label: 'Blog', url: '/blog', type: 'page' },
+    { id: 'community', label: 'Community', url: '/forum', type: 'page' },
+    { id: 'search', label: 'Search', url: '/search', type: 'page' },
+  ],
+  mobile: [
+    { id: 'm-home', label: 'Home', url: '/', type: 'page' },
+    { id: 'm-all-events', label: 'All events', url: '/browse', type: 'page' },
+    { id: 'm-clubs', label: 'Clubs', url: '/clubs', type: 'page' },
+    { id: 'm-competition', label: 'Competition', url: '/competition', type: 'page' },
+    { id: 'm-blog', label: 'Blog', url: '/blog', type: 'page' },
+    { id: 'm-community', label: 'Community', url: '/forum', type: 'page' },
+    { id: 'm-search', label: 'Search', url: '/search', type: 'page' },
+  ],
+  footer: [
+    { id: 'f-about', label: 'About', url: '/about', type: 'page' },
+    { id: 'f-terms', label: 'Terms of Use', url: '/terms', type: 'page' },
+    { id: 'f-privacy', label: 'Privacy Policy', url: '/privacy', type: 'page' },
+    { id: 'f-events', label: 'All events', url: '/browse', type: 'page' },
+    { id: 'f-clubs', label: 'Clubs', url: '/clubs', type: 'page' },
+  ]
+};
+
+interface MenuState {
+  menus: NavigationMenusConfig;
+  isLoading: boolean;
+  fetchMenus: () => Promise<void>;
+  saveMenus: (newMenus: NavigationMenusConfig) => Promise<boolean>;
+}
+
+export const useMenuStore = create<MenuState>((set, get) => ({
+  menus: DEFAULT_NAVIGATION_MENUS,
+  isLoading: false,
+  fetchMenus: async () => {
+    try {
+      set({ isLoading: true });
+      const res = await fetch('/api/settings/navigation_menus');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.primary || data.mobile || data.footer)) {
+          set({
+            menus: {
+              primary: Array.isArray(data.primary) && data.primary.length > 0 ? data.primary : DEFAULT_NAVIGATION_MENUS.primary,
+              mobile: Array.isArray(data.mobile) && data.mobile.length > 0 ? data.mobile : DEFAULT_NAVIGATION_MENUS.mobile,
+              footer: Array.isArray(data.footer) && data.footer.length > 0 ? data.footer : DEFAULT_NAVIGATION_MENUS.footer,
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch navigation menus', e);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  saveMenus: async (newMenus) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/settings/navigation_menus', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(newMenus)
+      });
+      if (res.ok) {
+        set({ menus: newMenus });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Failed to save navigation menus', e);
+      return false;
+    }
+  }
+}));

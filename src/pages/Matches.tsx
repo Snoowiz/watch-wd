@@ -8,10 +8,10 @@ import {
 import { format } from 'date-fns';
 import { 
   useSettingsStore, useMatchStore, useCategoryStore, useAuthStore, 
-  useSavedMatchesStore, useCompetitionStore, useClubStore 
+  useSavedMatchesStore, useCompetitionStore, useClubStore, useSportStore 
 } from '../store';
 import { formatMatchStatus, isInterview, isHighlights } from '../utils/statusHelper';
-import { CONFIGURED_SPORTS, getSportConfig, SportId } from '../config/sports';
+import { CONFIGURED_SPORTS, getSportConfig, SportId, SPORTS_REGISTRY } from '../config/sports';
 
 export function Matches() {
   const navigate = useNavigate();
@@ -21,6 +21,33 @@ export function Matches() {
   const { categories = [], fetchCategories } = useCategoryStore();
   const { currencySymbol } = useSettingsStore();
   const { savedMatches = [], saveMatch, unsaveMatch, fetchSavedMatches } = useSavedMatchesStore();
+  const { sports = [], fetchActiveSports } = useSportStore();
+
+  useEffect(() => {
+    fetchActiveSports();
+  }, [fetchActiveSports]);
+
+  const activeSportsList = useMemo(() => {
+    if (!sports || sports.length === 0) return CONFIGURED_SPORTS;
+    const list = [];
+    const seen = new Set();
+    for (const s of sports) {
+      const reg = SPORTS_REGISTRY[s.id] || SPORTS_REGISTRY[s.slug];
+      const isActive = s.is_active === 1 || s.is_active === true;
+      if (reg) {
+        list.push({ ...reg, available: isActive });
+      } else {
+        const resolved = getSportConfig(s.id, sports);
+        if (resolved) list.push({ ...resolved, available: isActive });
+      }
+      seen.add(s.id);
+      seen.add(s.slug);
+    }
+    for (const c of CONFIGURED_SPORTS) {
+      if (!seen.has(c.id) && !seen.has(c.slug)) list.push(c);
+    }
+    return list;
+  }, [sports]);
 
   const [clubs, setClubs] = useState<{ id: string; name: string; slug?: string }[]>([]);
   const [competitions, setCompetitions] = useState<{ id: string; name: string; slug?: string; season?: string; sport?: string | null }[]>([]);
@@ -364,7 +391,7 @@ export function Matches() {
             All sports
           </button>
 
-          {CONFIGURED_SPORTS.map(sport => {
+          {activeSportsList.map(sport => {
             const isSelected = sportParam === sport.id;
             if (!sport.available) {
               return (

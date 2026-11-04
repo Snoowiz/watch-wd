@@ -1236,7 +1236,11 @@ function camelToSnake(str, tableName) {
     is_read: "is_read",
     created_at: "created_at",
     updated_at: "updated_at",
-    reply_count: "reply_count"
+    reply_count: "reply_count",
+    homeTeam: "home_team",
+    awayTeam: "away_team",
+    playerPair1: "player_pair_1",
+    playerPair2: "player_pair_2"
   };
   return overrides[str] || str;
 }
@@ -1340,7 +1344,11 @@ function snakeToCamel(str, tableName) {
     admin_name: "adminName",
     response_text: "responseText",
     email_sent: "emailSent",
-    is_guest: "isGuest"
+    is_guest: "isGuest",
+    home_team: "homeTeam",
+    away_team: "awayTeam",
+    player_pair_1: "playerPair1",
+    player_pair_2: "playerPair2"
   };
   return overrides[str] || str;
 }
@@ -2134,19 +2142,26 @@ function bearerAuth(req, res, next) {
 // api/v1/schemas/matchSchema.ts
 var import_zod = require("zod");
 var createMatchSchema = import_zod.z.object({
-  // === Required fields ===
-  home_team: import_zod.z.string({ error: "home_team is required" }).min(1, "home_team cannot be empty").max(255, "home_team must be 255 characters or fewer"),
-  away_team: import_zod.z.string({ error: "away_team is required" }).min(1, "away_team cannot be empty").max(255, "away_team must be 255 characters or fewer"),
+  // === Sport discriminator ===
+  sport: import_zod.z.enum(["football", "tennis", "basketball", "boxing"], {
+    error: "sport must be one of: football, tennis, basketball, boxing"
+  }).optional().default("football"),
+  // === Participant fields (sport-specific) ===
+  home_team: import_zod.z.string().max(255).optional(),
+  away_team: import_zod.z.string().max(255).optional(),
+  player_pair_1: import_zod.z.string().max(255).optional(),
+  player_pair_2: import_zod.z.string().max(255).optional(),
+  // === Common required fields ===
   match_date: import_zod.z.string({ error: "match_date is required (ISO 8601 format)" }).refine(
     (val) => !isNaN(Date.parse(val)),
     { message: "match_date must be a valid ISO 8601 date string (e.g. 2026-07-10T18:00:00Z)" }
   ),
   category: import_zod.z.string({ error: "category is required" }).min(1, "category cannot be empty").max(255, "category must be 255 characters or fewer"),
-  price: import_zod.z.number({ error: "price is required and must be a number" }).min(0, "price must be 0 or greater"),
+  price: import_zod.z.number({ error: "price is required and must be a number" }).min(0, "price must be 0 or greater").optional().default(0),
   status: import_zod.z.enum(["upcoming", "live", "completed", "full_match", "highlights", "cancelled", "postponed"], {
     error: "status must be one of: upcoming, live, full_match, completed, highlights, cancelled, postponed"
-  }),
-  // === Optional fields (aligned with matches table) ===
+  }).optional().default("upcoming"),
+  // === Optional fields ===
   title: import_zod.z.string().max(500).optional(),
   slug: import_zod.z.string().max(500).optional(),
   description: import_zod.z.string().optional(),
@@ -2163,6 +2178,40 @@ var createMatchSchema = import_zod.z.object({
   comment_alignment: import_zod.z.enum(["left", "right"]).optional(),
   club_id: import_zod.z.string().max(100).nullable().optional(),
   competition_id: import_zod.z.string().max(100).nullable().optional()
+}).superRefine((data, ctx) => {
+  const sportKey = (data.sport || "football").toLowerCase();
+  if (sportKey === "tennis") {
+    if (!data.player_pair_1 && !data.title) {
+      ctx.addIssue({
+        code: import_zod.z.ZodIssueCode.custom,
+        message: "player_pair_1 or title is required for tennis",
+        path: ["player_pair_1"]
+      });
+    }
+  } else if (sportKey === "boxing") {
+    if (!data.player_pair_1 && !data.home_team && !data.title) {
+      ctx.addIssue({
+        code: import_zod.z.ZodIssueCode.custom,
+        message: "Fighter 1 or title is required for combat sports",
+        path: ["player_pair_1"]
+      });
+    }
+  } else {
+    if (!data.home_team && !data.title) {
+      ctx.addIssue({
+        code: import_zod.z.ZodIssueCode.custom,
+        message: "home_team or title is required",
+        path: ["home_team"]
+      });
+    }
+    if (!data.away_team && !data.title) {
+      ctx.addIssue({
+        code: import_zod.z.ZodIssueCode.custom,
+        message: "away_team or title is required",
+        path: ["away_team"]
+      });
+    }
+  }
 });
 
 // api/v1/routes/matches.ts
@@ -2171,49 +2220,45 @@ function createMatchRouter({ db: db2, cacheEngine: cacheEngine2 }) {
   router.post("/", bearerAuth, async (req, res) => {
     try {
       const parsed = createMatchSchema.parse(req.body);
+      const isTennis = parsed.sport === "tennis";
+      const slot1 = isTennis ? parsed.player_pair_1 : parsed.home_team;
+      const slot2 = isTennis ? parsed.player_pair_2 : parsed.away_team;
+      const derivedTitle = slot1 && slot2 ? `${slot1} vs ${slot2}` : slot1 || slot2 || "Untitled Event";
       const matchRecord = {
-        title: parsed.title || `${parsed.home_team} vs ${parsed.away_team}`,
-        slug: parsed.slug || generateSlug(parsed.home_team, parsed.away_team, parsed.match_date),
-        description: parsed.description || `${parsed.home_team} vs ${parsed.away_team}`,
+        title: parsed.title || derivedTitle,
+        slug: parsed.slug || generateSlug(slot1, slot2, parsed.match_date),
+        description: parsed.description || derivedTitle,
         content: parsed.content || "",
         date: parsed.match_date,
         start_time: parsed.match_date,
         price: parsed.price,
         embed_price: parsed.embed_price ?? 0,
         status: parsed.status,
+        sport: parsed.sport || "football",
+        home_team: parsed.home_team || null,
+        away_team: parsed.away_team || null,
+        player_pair_1: parsed.player_pair_1 || null,
+        player_pair_2: parsed.player_pair_2 || null,
         publish_status: parsed.publish_status || "published",
         access: parsed.access === "free" ? "free" : parsed.price > 0 || parsed.access === "ppv" || parsed.access === "subscription" ? "paid" : "free",
         access_type: parsed.access_type || (parsed.access === "subscription" ? "plan" : parsed.price > 0 || parsed.access === "ppv" ? "ppv" : "free"),
         ppv_price: parsed.ppv_price ?? (parsed.price > 0 ? parsed.price : null),
         required_plan_id: parsed.required_plan_id || null,
-        club_id: parsed.club_id || null,
-        competition_id: parsed.competition_id || null,
         thumbnail: parsed.thumbnail || null,
         categories: parsed.categories ? JSON.stringify(parsed.categories) : JSON.stringify([parsed.category]),
-        live_commenting: parsed.live_commenting !== void 0 ? parsed.live_commenting ? 1 : 0 : 1,
+        live_commenting: parsed.live_commenting ? 1 : 0,
         comment_alignment: parsed.comment_alignment || "right",
-        views: 0,
-        operator_id: "api-v1",
-        creator_id: "api-v1",
-        created_at: (/* @__PURE__ */ new Date()).toISOString()
+        club_id: parsed.club_id || null,
+        competition_id: parsed.competition_id || null
       };
-      const docRef = await db2.collection("matches").add(matchRecord);
+      const result = await db2.collection("matches").add(matchRecord);
       cacheEngine2.invalidateCollection("matches");
-      console.log(`[API v1] Match created: ${docRef.id} \u2014 ${matchRecord.title}`);
-      res.status(201).json({
-        success: true,
-        message: "Match created successfully",
-        data: {
-          id: docRef.id,
-          title: matchRecord.title,
-          home_team: parsed.home_team,
-          away_team: parsed.away_team,
-          match_date: parsed.match_date,
-          category: parsed.category,
-          price: parsed.price,
-          status: parsed.status,
-          created_at: matchRecord.created_at
-        }
+      return res.status(201).json({
+        id: result.id,
+        ...matchRecord,
+        categories: parsed.categories || [parsed.category],
+        live_commenting: !!parsed.live_commenting,
+        created_at: (/* @__PURE__ */ new Date()).toISOString()
       });
     } catch (err) {
       if (err instanceof import_zod2.ZodError) {
@@ -2235,10 +2280,13 @@ function createMatchRouter({ db: db2, cacheEngine: cacheEngine2 }) {
   });
   return router;
 }
-function generateSlug(home, away, dateStr) {
-  const dateSlug = dateStr.slice(0, 10);
-  const slug = `${home}-vs-${away}-${dateSlug}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return slug;
+function generateSlug(part1, part2, dateStr) {
+  const dateSlug = (dateStr || "").slice(0, 10);
+  const p1 = (part1 || "event").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const p2 = (part2 || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const base = p2 ? `${p1}-vs-${p2}` : p1;
+  const slug = dateSlug ? `${base}-${dateSlug}` : base;
+  return slug.replace(/^-|-$/g, "") || `event-${Date.now()}`;
 }
 
 // securityManager.ts
@@ -4059,7 +4107,20 @@ async function startServer() {
       const rStatus = match.revoke_status || match.revokeStatus;
       const pStatus = match.publish_status || match.publishStatus;
       if (rStatus && rStatus !== "normal" || pStatus === "draft" || pStatus === "deleted") {
-        return res.status(404).json({ error: "Match not found" });
+        let isStaff = false;
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          try {
+            const decoded = import_jsonwebtoken.default.verify(authHeader.split(" ")[1], JWT_SECRET);
+            if (decoded && (decoded.role === "admin" || decoded.role === "operator")) {
+              isStaff = true;
+            }
+          } catch (e) {
+          }
+        }
+        if (!isStaff) {
+          return res.status(404).json({ error: "Match not found" });
+        }
       }
       res.json(sanitizeMatchForPublic({ id: doc.id, ...match }));
     } catch (e) {
@@ -4394,6 +4455,12 @@ async function startServer() {
         ppvPrice: "ppv_price",
         requiredPlanId: "required_plan_id",
         clubId: "club_id",
+        competitionId: "competition_id",
+        homeTeam: "home_team",
+        awayTeam: "away_team",
+        playerPair1: "player_pair_1",
+        playerPair2: "player_pair_2",
+        publishStatus: "publish_status",
         liveCommenting: "live_commenting",
         commentAlignment: "comment_alignment",
         adSettings: "ad_settings",
@@ -4413,15 +4480,17 @@ async function startServer() {
       }
       const docRef = await db.collection("matches").add({ ...matchData, operator_id: req.user.id, created_at: (/* @__PURE__ */ new Date()).toISOString() });
       cacheEngine.invalidateCollection("matches");
-      const adminsSnap = await db.collection("users").where("role", "==", "admin").get();
-      for (const adminDoc of adminsSnap.docs) {
-        const admin2 = adminDoc.data();
-        sendTemplateEmail(admin2.email, "admin_new_match_alert", {
-          match_name: req.body.title || "New Match",
-          creator_name: req.user.name || "Staff",
-          match_date: req.body.start_time || req.body.date || (/* @__PURE__ */ new Date()).toLocaleString(),
-          website_url: getRequestBaseUrl(req)
-        }).catch((err) => console.error(`Failed to send admin match alert to ${admin2.email}:`, err));
+      if (matchData.publish_status !== "draft") {
+        const adminsSnap = await db.collection("users").where("role", "==", "admin").get();
+        for (const adminDoc of adminsSnap.docs) {
+          const admin2 = adminDoc.data();
+          sendTemplateEmail(admin2.email, "admin_new_match_alert", {
+            match_name: req.body.title || "New Match",
+            creator_name: req.user.name || "Staff",
+            match_date: req.body.start_time || req.body.date || (/* @__PURE__ */ new Date()).toLocaleString(),
+            website_url: getRequestBaseUrl(req)
+          }).catch((err) => console.error(`Failed to send admin match alert to ${admin2.email}:`, err));
+        }
       }
       res.json({ id: docRef.id });
     } catch (e) {
@@ -4449,6 +4518,12 @@ async function startServer() {
         ppvPrice: "ppv_price",
         requiredPlanId: "required_plan_id",
         clubId: "club_id",
+        competitionId: "competition_id",
+        homeTeam: "home_team",
+        awayTeam: "away_team",
+        playerPair1: "player_pair_1",
+        playerPair2: "player_pair_2",
+        publishStatus: "publish_status",
         liveCommenting: "live_commenting",
         commentAlignment: "comment_alignment",
         adSettings: "ad_settings",
@@ -7906,6 +7981,150 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
+  app.get("/api/sports", async (_req, res) => {
+    try {
+      const rows = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC");
+      res.json(rows || []);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/admin/sports", authenticate, requireRole(["admin"]), async (_req, res) => {
+    try {
+      const rows = await query("SELECT * FROM sports ORDER BY name ASC");
+      res.json(rows || []);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/sports", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const {
+        name,
+        slug,
+        description,
+        icon,
+        is_active,
+        participant_type,
+        slot1_label,
+        slot1_placeholder,
+        slot2_label,
+        slot2_placeholder,
+        competition_label,
+        time_label,
+        requires_club
+      } = req.body;
+      if (!name || !slug) return res.status(400).json({ error: "Name and slug are required" });
+      const id = slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      await execute(`
+        INSERT INTO sports (
+          id, name, slug, description, icon, is_active, 
+          participant_type, slot1_label, slot1_placeholder, 
+          slot2_label, slot2_placeholder, competition_label, 
+          time_label, requires_club
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          name = VALUES(name), description = VALUES(description), icon = VALUES(icon),
+          is_active = VALUES(is_active), participant_type = VALUES(participant_type),
+          slot1_label = VALUES(slot1_label), slot1_placeholder = VALUES(slot1_placeholder),
+          slot2_label = VALUES(slot2_label), slot2_placeholder = VALUES(slot2_placeholder),
+          competition_label = VALUES(competition_label), time_label = VALUES(time_label),
+          requires_club = VALUES(requires_club)
+      `, [
+        id,
+        name.trim(),
+        slug.trim(),
+        description || null,
+        icon || null,
+        is_active !== void 0 ? is_active ? 1 : 0 : 1,
+        participant_type || "teams",
+        slot1_label || "Home team",
+        slot1_placeholder || "",
+        slot2_label || "Away team",
+        slot2_placeholder || "",
+        competition_label || "Competition",
+        time_label || "Start time",
+        requires_club ? 1 : 0
+      ]);
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true, id, name, slug });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.put("/api/admin/sports/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        name,
+        slug,
+        description,
+        icon,
+        is_active,
+        participant_type,
+        slot1_label,
+        slot1_placeholder,
+        slot2_label,
+        slot2_placeholder,
+        competition_label,
+        time_label,
+        requires_club
+      } = req.body;
+      await execute(`
+        UPDATE sports SET 
+          name = COALESCE(?, name),
+          slug = COALESCE(?, slug),
+          description = COALESCE(?, description),
+          icon = COALESCE(?, icon),
+          is_active = COALESCE(?, is_active),
+          participant_type = COALESCE(?, participant_type),
+          slot1_label = COALESCE(?, slot1_label),
+          slot1_placeholder = COALESCE(?, slot1_placeholder),
+          slot2_label = COALESCE(?, slot2_label),
+          slot2_placeholder = COALESCE(?, slot2_placeholder),
+          competition_label = COALESCE(?, competition_label),
+          time_label = COALESCE(?, time_label),
+          requires_club = COALESCE(?, requires_club)
+        WHERE id = ? OR slug = ?
+      `, [
+        name,
+        slug,
+        description,
+        icon,
+        is_active !== void 0 ? is_active ? 1 : 0 : null,
+        participant_type,
+        slot1_label,
+        slot1_placeholder,
+        slot2_label,
+        slot2_placeholder,
+        competition_label,
+        time_label,
+        requires_club !== void 0 ? requires_club ? 1 : 0 : null,
+        id,
+        id
+      ]);
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.delete("/api/admin/sports/:id", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const countRows = await query("SELECT COUNT(*) as count FROM matches WHERE sport = ?", [id]);
+      if (countRows && countRows[0]?.count > 0) {
+        await execute("UPDATE sports SET is_active = 0 WHERE id = ?", [id]);
+        cacheEngine.invalidateCollection("sports");
+        return res.json({ success: true, deactivated: true, message: "Sport was deactivated because existing events reference it." });
+      }
+      await execute("DELETE FROM sports WHERE id = ?", [id]);
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/api/blog-categories", requireBlogEnabled, async (_req, res) => {
     try {
       const rows = await query("SELECT * FROM blog_categories ORDER BY name ASC");
@@ -8444,6 +8663,24 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       res.status(500).json({ error: e.message });
     }
   });
+  app.get("/api/competitions/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const rows = await query(`
+        SELECT id, name, slug, logo, season, description, sport, is_active
+        FROM competitions
+        WHERE (slug = ? OR id = ?) AND is_active = 1
+        LIMIT 1
+      `, [slug, slug]);
+      if (rows && rows.length > 0) {
+        res.json(rows[0]);
+      } else {
+        res.status(404).json({ error: "Competition not found" });
+      }
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/api/competitions/active", async (req, res) => {
     try {
       const rows = await query(`
@@ -8491,6 +8728,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (req.body.description !== void 0) updateData.description = req.body.description;
       if (req.body.logo !== void 0) updateData.logo = req.body.logo;
       if (req.body.season !== void 0) updateData.season = req.body.season;
+      if (req.body.sport !== void 0) updateData.sport = req.body.sport;
       if (req.body.isActive !== void 0) updateData.isActive = req.body.isActive ? 1 : 0;
       await db.collection("competitions").doc(id).update(updateData);
       cacheEngine.invalidateCollection("competitions");
@@ -8516,6 +8754,26 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const snap = await db.collection("clubs").get();
       const clubs = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       res.json(clubs);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/clubs/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const snap = await db.collection("clubs").where("is_active", "==", 1).get();
+      const match = snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((c) => c.slug === slug || c.id === slug);
+      if (match) {
+        res.json({
+          id: match.id,
+          name: match.name,
+          slug: match.slug,
+          logo: match.logo,
+          description: match.description || null
+        });
+      } else {
+        res.status(404).json({ error: "Club not found" });
+      }
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

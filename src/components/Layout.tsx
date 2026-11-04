@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useAuthStore, useFeatureStore, useSettingsStore, useThemeStore } from '../store';
+import { useAuthStore, useFeatureStore, useSettingsStore, useThemeStore, useMenuStore, MenuItem } from '../store';
 import { Video, MessageSquare, Menu, X, Sun, Moon, Monitor, Home, LogIn, Search, ChevronDown, Trophy, Building2, Compass } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 import { UserDropdown } from './UserDropdown';
@@ -18,6 +18,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
   const { theme, setTheme, isDarkMode, toggleDarkMode } = useThemeStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const { menus, fetchMenus } = useMenuStore();
+
+  useEffect(() => {
+    fetchMenus();
+  }, [fetchMenus]);
   const [isBrowseOpen, setIsBrowseOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
@@ -75,27 +81,68 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </Link>
               
-              <div className="hidden md:ml-10 md:flex md:space-x-8">
-                <Link to="/matches" className="text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2">
-                  <Video className="w-4 h-4" />
-                  Matches
-                </Link>
-                {blogEnabled && (
-                  <Link to="/blog" className="text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4" />
-                    Blog
-                  </Link>
-                )}
-                {isFeatureActive('community_forum') && (
-                  <Link to="/forum" className="text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4" />
-                    Community
-                  </Link>
-                )}
-                <Link to="/search" className="text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400 px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2">
-                  <Search className="w-4 h-4 text-slate-400" />
-                  Search
-                </Link>
+              <div className="hidden md:ml-10 md:flex md:space-x-6 items-center">
+                {(menus?.primary || []).map((item) => {
+                  const hasChildren = item.children && item.children.length > 0;
+                  const isCurrentActive = location.pathname === item.url || (item.url !== '/' && location.pathname.startsWith(item.url)) ||
+                    (hasChildren && item.children!.some(c => location.pathname === c.url || (c.url !== '/' && location.pathname.startsWith(c.url))));
+
+                  if (hasChildren) {
+                    const isOpen = openDropdownId === item.id;
+                    return (
+                      <div 
+                        key={item.id} 
+                        className="relative"
+                        onMouseEnter={() => setOpenDropdownId(item.id)}
+                        onMouseLeave={() => setOpenDropdownId(null)}
+                      >
+                        <Link
+                          to={item.url}
+                          target={item.target || '_self'}
+                          className={`px-3 py-2 rounded-md text-sm font-medium flex items-center gap-1 transition-colors ${
+                            isCurrentActive
+                              ? 'text-yellow-500 font-bold'
+                              : 'text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400'
+                          }`}
+                        >
+                          <span>{item.label}</span>
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                        </Link>
+
+                        {isOpen && (
+                          <div className="absolute top-full left-0 mt-1 w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2">
+                            {item.children!.map((child) => (
+                              <Link
+                                key={child.id}
+                                to={child.url}
+                                target={child.target || '_self'}
+                                onClick={() => setOpenDropdownId(null)}
+                                className="block px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                              >
+                                {child.label}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={item.id}
+                      to={item.url}
+                      target={item.target || '_self'}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        isCurrentActive
+                          ? 'text-yellow-500 font-bold'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-yellow-500 dark:hover:text-yellow-400'
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
 
@@ -147,31 +194,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="fixed inset-0 z-40 bg-transparent md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
             <div className="absolute right-4 top-16 w-56 md:hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] rounded-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 origin-top-right">
               <div className="p-2">
-                <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <Home className="w-4 h-4" />
-                  Home
-                </Link>
-                <Link to="/matches" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <Video className="w-4 h-4" />
-                  Matches
-                </Link>
-                {blogEnabled && (
-                  <Link to="/blog" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                    <MessageSquare className="w-4 h-4" />
-                    Blog
-                  </Link>
-                )}
-                {isFeatureActive('community_forum') && (
-                  <Link to="/forum" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                    <MessageSquare className="w-4 h-4" />
-                    Community
-                  </Link>
-                )}
-                <Link to="/search" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                  <Search className="w-4 h-4 text-slate-400" />
-                  Search
-                </Link>
-                
+                {(menus?.mobile || []).map((item) => {
+                  const hasChildren = item.children && item.children.length > 0;
+                  return (
+                    <div key={item.id}>
+                      <Link
+                        to={item.url}
+                        target={item.target || '_self'}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                      >
+                        <span>{item.label}</span>
+                        {hasChildren && <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                      </Link>
+                      {hasChildren && (
+                        <div className="pl-4 ml-2 border-l border-slate-200 dark:border-slate-700 space-y-1 mb-1">
+                          {item.children!.map((child) => (
+                            <Link
+                              key={child.id}
+                              to={child.url}
+                              target={child.target || '_self'}
+                              onClick={() => setIsMobileMenuOpen(false)}
+                              className="block px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-yellow-500 hover:bg-slate-50 dark:hover:bg-slate-700/30"
+                            >
+                              {child.label}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
                 {user && (
                    <>
                     <div className="h-px bg-slate-100 dark:bg-slate-700/50 my-1 mx-2"></div>

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore, useMediaStore } from '../../store';
+import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore, useMediaStore, useSportStore } from '../../store';
+import { getSportConfig, SPORTS_REGISTRY } from '../../config/sports';
 import { useUIStore } from '../../store/uiStore';
 import { 
   Save, X, Image as ImageIcon, Globe, Lock, DollarSign, 
@@ -25,7 +26,7 @@ import {
 
 type TabId = 'details' | 'video' | 'pricing' | 'promotion' | 'review';
 
-export function NewMatch({ initialSport, initialSportCategoryId }: { initialSport?: 'football' | 'tennis'; initialSportCategoryId?: number } = {}) {
+export function NewMatch({ initialSport, initialSportCategoryId }: { initialSport?: string; initialSportCategoryId?: number } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { matches = [], addMatch, updateMatch } = useMatchStore();
@@ -61,8 +62,18 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
   const [activeTab, setActiveTab] = useState<TabId>('details');
 
   // Authoritative Sport Classification
-  const initialDetectedSport = (existingMatch?.sport as 'football' | 'tennis' | 'basketball') || initialSport || 'football';
-  const [currentSport, setCurrentSport] = useState<'football' | 'tennis' | 'basketball'>(initialDetectedSport);
+    // Authoritative Sport Classification
+  const initialDetectedSport = (existingMatch?.sport as string) || initialSport || 'football';
+  const [currentSport, setCurrentSport] = useState<string>(initialDetectedSport);
+  const { sports: dynamicSports = [], fetchActiveSports } = useSportStore();
+
+  useEffect(() => {
+    fetchActiveSports();
+  }, [fetchActiveSports]);
+
+  const activeSportConfig = useMemo(() => {
+    return getSportConfig(currentSport, dynamicSports) || SPORTS_REGISTRY[currentSport] || SPORTS_REGISTRY.football;
+  }, [currentSport, dynamicSports]);
 
   // Form states & Structured Participants
   const [title, setTitle] = useState(existingMatch?.title || '');
@@ -498,7 +509,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
         updateToast(toastId, { message: successMsg, type: 'success' });
       }
 
-      navigate('/admin/matches');
+      navigate('/admin/events');
     } catch (err) {
       console.error('Failed to save match:', err);
       updateToast(toastId, { message: 'Failed to save event. Please try again.', type: 'error' });
@@ -557,9 +568,9 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
           <div className="flex items-center gap-3">
             <button 
               type="button"
-              onClick={() => navigate('/admin/matches')}
+              onClick={() => navigate('/admin/events')}
               className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition-colors"
-              title="Back to Match Management"
+              title="Back to Event Management"
             >
               <X className="w-5 h-5" />
             </button>
@@ -663,7 +674,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Sport:</span>
                     <span className="px-2.5 py-0.5 rounded-lg text-xs font-black uppercase tracking-wider bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30">
-                      {currentSport === 'tennis' ? 'Tennis' : currentSport === 'basketball' ? 'Basketball' : 'Football'}
+                      {activeSportConfig.name || currentSport.toUpperCase()}
                     </span>
                   </div>
                   {!isEditing && (
@@ -819,7 +830,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                         <Trophy className="w-3.5 h-3.5 text-slate-400" />
-                        {initialSport === 'tennis' ? 'Tournament' : 'Competition'}
+                        {activeSportConfig.participants.competitionLabel || 'Competition'}
                       </label>
                       <span className="text-[11px] font-semibold text-slate-400">Optional</span>
                     </div>
@@ -829,7 +840,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white outline-none transition-colors"
                       id="select-match-competition"
                     >
-                      <option value="">{initialSport === 'tennis' ? 'No tournament assigned' : 'No competition assigned'}</option>
+                      <option value="">{`No ${(activeSportConfig.participants.competitionLabel || 'competition').toLowerCase()} assigned`}</option>
                       {competitions.map(comp => (
                         <option key={comp.id} value={comp.id}>
                           {comp.name} {comp.season ? `(${comp.season})` : ''}

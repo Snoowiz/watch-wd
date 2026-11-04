@@ -16,11 +16,11 @@ describe('WatchWDS Multi-Sport Event Architecture & Ingestion', () => {
       expect(SPORTS_REGISTRY.basketball).toBeDefined();
     });
 
-    it('enables Football and Tennis, while keeping Basketball strictly disabled until schema approval', () => {
+    it('enables Football, Tennis, Basketball, and Boxing as active configured sports', () => {
       expect(SPORTS_REGISTRY.football.available).toBe(true);
       expect(SPORTS_REGISTRY.tennis.available).toBe(true);
-      expect(SPORTS_REGISTRY.basketball.available).toBe(false);
-      expect(SPORTS_REGISTRY.basketball.unavailableReason).toBeTruthy();
+      expect(SPORTS_REGISTRY.basketball.available).toBe(true);
+      expect(SPORTS_REGISTRY.boxing.available).toBe(true);
     });
 
     it('configures Football with team participants and Competition labeling', () => {
@@ -101,6 +101,50 @@ describe('WatchWDS Multi-Sport Event Architecture & Ingestion', () => {
         expect(result.data.player_pair_1).toBe('C. Norrie');
         expect(result.data.player_pair_2).toBe('A. Murray');
         expect(result.data.publish_status).toBe('draft');
+      }
+    });
+
+    it('validates a basketball event with home_team and away_team', () => {
+      const validBasketball = {
+        title: 'Highland Hoops Championship',
+        home_team: 'Inverness Slammers',
+        away_team: 'Moray Dunks',
+        sport: 'basketball',
+        match_date: '2026-10-05T19:00:00Z',
+        category: 'basketball',
+        price: 12,
+        status: 'upcoming' as const,
+        publish_status: 'published' as const
+      };
+
+      const result = matchSchema.safeParse(validBasketball);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.sport).toBe('basketball');
+        expect(result.data.home_team).toBe('Inverness Slammers');
+        expect(result.data.away_team).toBe('Moray Dunks');
+      }
+    });
+
+    it('validates a combat sports (boxing) event with combatants', () => {
+      const validBoxing = {
+        title: 'Undisputed World Title Fight',
+        player_pair_1: 'Tyson Fury',
+        player_pair_2: 'Oleksandr Usyk',
+        sport: 'boxing',
+        match_date: '2026-11-20T22:00:00Z',
+        category: 'boxing',
+        price: 25,
+        status: 'upcoming' as const,
+        publish_status: 'published' as const
+      };
+
+      const result = matchSchema.safeParse(validBoxing);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.sport).toBe('boxing');
+        expect(result.data.player_pair_1).toBe('Tyson Fury');
+        expect(result.data.player_pair_2).toBe('Oleksandr Usyk');
       }
     });
 

@@ -367,6 +367,86 @@ async function migrate() {
     console.log('  ✓ Seeded default email branding.');
   }
 
+  
+  // Ensure sports table exists and seed default sports
+  await rootConn.query(`
+    CREATE TABLE IF NOT EXISTS \`sports\` (
+      \`id\` VARCHAR(50) PRIMARY KEY,
+      \`name\` VARCHAR(100) NOT NULL,
+      \`slug\` VARCHAR(100) NOT NULL UNIQUE,
+      \`description\` TEXT DEFAULT NULL,
+      \`icon\` VARCHAR(100) DEFAULT NULL,
+      \`is_active\` TINYINT(1) DEFAULT 1,
+      \`participant_type\` ENUM('teams', 'players_or_pairs', 'combatants') DEFAULT 'teams',
+      \`slot1_label\` VARCHAR(100) DEFAULT 'Home team',
+      \`slot1_placeholder\` VARCHAR(255) DEFAULT '',
+      \`slot2_label\` VARCHAR(100) DEFAULT 'Away team',
+      \`slot2_placeholder\` VARCHAR(255) DEFAULT '',
+      \`competition_label\` VARCHAR(100) DEFAULT 'Competition',
+      \`time_label\` VARCHAR(100) DEFAULT 'Start time',
+      \`requires_club\` TINYINT(1) DEFAULT 0,
+      \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  const [existingSports] = await rootConn.query(`SELECT COUNT(*) as count FROM sports`) as any;
+  if (existingSports[0].count === 0) {
+    const defaultSports = [
+      {
+        id: 'football', name: 'Football', slug: 'football',
+        description: 'Club and competition matches with home and away teams',
+        icon: 'Trophy', is_active: 1, participant_type: 'teams',
+        slot1_label: 'Home team', slot1_placeholder: 'e.g. Manchester Red',
+        slot2_label: 'Away team', slot2_placeholder: 'e.g. London Blue',
+        competition_label: 'Competition', time_label: 'Kick-off time', requires_club: 1
+      },
+      {
+        id: 'tennis', name: 'Tennis', slug: 'tennis',
+        description: 'Singles or doubles tournament matches with players or pairs',
+        icon: 'Trophy', is_active: 1, participant_type: 'players_or_pairs',
+        slot1_label: 'Player or pair 1', slot1_placeholder: 'e.g. C. Alcaraz or Salisbury / Ram',
+        slot2_label: 'Player or pair 2', slot2_placeholder: 'e.g. J. Sinner or Koolhof / Mektic',
+        competition_label: 'Tournament', time_label: 'Start time', requires_club: 0
+      },
+      {
+        id: 'basketball', name: 'Basketball', slug: 'basketball',
+        description: 'Team basketball fixtures, league games, and tournament championships',
+        icon: 'Trophy', is_active: 1, participant_type: 'teams',
+        slot1_label: 'Home team', slot1_placeholder: 'e.g. Boston Green',
+        slot2_label: 'Away team', slot2_placeholder: 'e.g. Los Angeles Gold',
+        competition_label: 'Competition', time_label: 'Tip-off time', requires_club: 0
+      },
+      {
+        id: 'boxing', name: 'Boxing & MMA', slug: 'boxing',
+        description: 'Combat sports, championship title bouts, and fight cards',
+        icon: 'Trophy', is_active: 1, participant_type: 'combatants',
+        slot1_label: 'Fighter 1', slot1_placeholder: 'e.g. Tyson Fury',
+        slot2_label: 'Fighter 2', slot2_placeholder: 'e.g. Oleksandr Usyk',
+        competition_label: 'Card / Event', time_label: 'Ring-walk time', requires_club: 0
+      }
+    ];
+
+    for (const sp of defaultSports) {
+      await rootConn.query(
+        `INSERT INTO sports (
+          id, name, slug, description, icon, is_active, 
+          participant_type, slot1_label, slot1_placeholder, 
+          slot2_label, slot2_placeholder, competition_label, 
+          time_label, requires_club
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)`,
+        [
+          sp.id, sp.name, sp.slug, sp.description, sp.icon, sp.is_active,
+          sp.participant_type, sp.slot1_label, sp.slot1_placeholder,
+          sp.slot2_label, sp.slot2_placeholder, sp.competition_label,
+          sp.time_label, sp.requires_club
+        ]
+      );
+    }
+    console.log('  ✓ Seeded default sports (Football, Tennis, Basketball, Boxing & MMA).');
+  }
+
   await rootConn.end();
 
   console.log('\n===========================================');

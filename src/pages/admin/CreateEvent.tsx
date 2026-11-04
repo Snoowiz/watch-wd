@@ -1,14 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, X, ShieldAlert } from 'lucide-react';
-import { useCategoryStore } from '../../store';
-import { CONFIGURED_SPORTS, SportConfig, SportId } from '../../config/sports';
+import { useCategoryStore, useSportStore } from '../../store';
+import { CONFIGURED_SPORTS, SportConfig, getSportConfig, SPORTS_REGISTRY } from '../../config/sports';
 import { NewMatch } from './NewMatch';
 
 /**
  * Sport-first entry point for new events.
  * 
- * Presents an accessible "Select sport" dialog derived from CONFIGURED_SPORTS.
+ * Presents an accessible "Select sport" dialog derived dynamically from
+ * sports management and CONFIGURED_SPORTS.
  * Once a sport is selected, the unified event details editor opens with the
  * sport preselected and required categories mapped.
  * 
@@ -17,6 +18,7 @@ import { NewMatch } from './NewMatch';
 export function CreateEvent() {
   const navigate = useNavigate();
   const { categories, fetchCategories } = useCategoryStore();
+  const { sports = [], fetchActiveSports } = useSportStore();
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const [selectedSport, setSelectedSport] = useState<SportConfig | null>(null);
@@ -25,13 +27,55 @@ export function CreateEvent() {
 
   useEffect(() => {
     fetchCategories();
-  }, [fetchCategories]);
+    fetchActiveSports();
+  }, [fetchCategories, fetchActiveSports]);
 
   useEffect(() => {
     if (!selectedSport) {
       dialogRef.current?.focus();
     }
   }, [selectedSport]);
+
+  // Combine static registry with dynamic sports from DB
+  const availableSportsList: SportConfig[] = useMemo(() => {
+    if (!sports || sports.length === 0) {
+      return CONFIGURED_SPORTS;
+    }
+
+    const list: SportConfig[] = [];
+    const seen = new Set<string>();
+
+    // Dynamic sports from database
+    for (const s of sports) {
+      const reg = SPORTS_REGISTRY[s.id] || SPORTS_REGISTRY[s.slug];
+      const isActive = s.is_active === 1 || s.is_active === true;
+      if (reg) {
+        list.push({
+          ...reg,
+          available: isActive,
+        });
+      } else {
+        const resolved = getSportConfig(s.id, sports);
+        if (resolved) {
+          list.push({
+            ...resolved,
+            available: isActive,
+          });
+        }
+      }
+      seen.add(s.id);
+      seen.add(s.slug);
+    }
+
+    // Add any configured sports not yet in dynamic list
+    for (const c of CONFIGURED_SPORTS) {
+      if (!seen.has(c.id) && !seen.has(c.slug)) {
+        list.push(c);
+      }
+    }
+
+    return list;
+  }, [sports]);
 
   const handleSelectSport = (sport: SportConfig) => {
     if (!sport.available) return;
@@ -69,7 +113,7 @@ export function CreateEvent() {
                 Sport selected: <span className="text-yellow-600 dark:text-yellow-400 font-black">{selectedSport.name}</span>
               </span>
               <span className="hidden md:inline text-xs text-slate-500 dark:text-slate-400">
-                — {selectedSport.participants.type === 'teams' ? 'Home & away team fixture' : 'Player or pair tournament match'}
+                — {selectedSport.participants.type === 'teams' ? 'Home & away team fixture' : (selectedSport.participants.type === 'combatants' ? 'Fighter card / championship match' : 'Player or pair tournament match')}
               </span>
             </div>
 
@@ -136,7 +180,7 @@ export function CreateEvent() {
         aria-describedby="create-event-dialog-description"
         tabIndex={-1}
         onKeyDown={(e) => {
-          if (e.key === 'Escape') navigate('/admin/matches');
+          if (e.key === 'Escape') navigate('/admin/events');
         }}
         className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl outline-none sm:p-8 dark:border-slate-800 dark:bg-slate-900 transition-all"
       >
@@ -156,7 +200,7 @@ export function CreateEvent() {
           <button
             type="button"
             aria-label="Close dialog"
-            onClick={() => navigate('/admin/matches')}
+            onClick={() => navigate('/admin/events')}
             className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white transition-colors"
           >
             <X className="h-5 w-5" />
@@ -165,7 +209,7 @@ export function CreateEvent() {
 
         {/* Sport Options List */}
         <div className="space-y-3">
-          {CONFIGURED_SPORTS.map((sport) => {
+          {availableSportsList.map((sport) => {
             const isAvailable = sport.available;
             return (
               <button
@@ -221,7 +265,7 @@ export function CreateEvent() {
           </p>
           <button
             type="button"
-            onClick={() => navigate('/admin/matches')}
+            onClick={() => navigate('/admin/events')}
             className="text-xs font-bold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             Cancel

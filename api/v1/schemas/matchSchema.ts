@@ -1,10 +1,10 @@
 /**
  * Match Data Validation Schema (Zod)
  * 
- * Validates incoming match payloads from third-party services
+ * Validates incoming match/event payloads from third-party services
  * against the `matches` table schema in the database.
  * 
- * Supports Football (home_team, away_team) and Tennis (player_pair_1, player_pair_2).
+ * Supports Football, Tennis, Basketball, Boxing, and dynamic configured sports.
  * Required common fields: match_date, category, price, status
  */
 
@@ -12,8 +12,8 @@ import { z } from "zod";
 
 export const createMatchSchema = z.object({
   // === Sport discriminator ===
-  sport: z.enum(["football", "tennis", "basketball"], {
-    error: "sport must be one of: football, tennis, basketball",
+  sport: z.enum(["football", "tennis", "basketball", "boxing"], {
+    error: "sport must be one of: football, tennis, basketball, boxing",
   }).optional().default("football"),
 
   // === Participant fields (sport-specific) ===
@@ -63,7 +63,8 @@ export const createMatchSchema = z.object({
   club_id: z.string().max(100).nullable().optional(),
   competition_id: z.string().max(100).nullable().optional(),
 }).superRefine((data, ctx) => {
-  if (data.sport === 'tennis') {
+  const sportKey = (data.sport || 'football').toLowerCase();
+  if (sportKey === 'tennis') {
     if (!data.player_pair_1 && !data.title) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -71,18 +72,27 @@ export const createMatchSchema = z.object({
         path: ["player_pair_1"]
       });
     }
-  } else if (data.sport === 'football') {
+  } else if (sportKey === 'boxing') {
+    if (!data.player_pair_1 && !data.home_team && !data.title) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Fighter 1 or title is required for combat sports",
+        path: ["player_pair_1"]
+      });
+    }
+  } else {
+    // Team sports (Football, Basketball, etc.)
     if (!data.home_team && !data.title) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "home_team or title is required for football",
+        message: "home_team or title is required",
         path: ["home_team"]
       });
     }
     if (!data.away_team && !data.title) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "away_team or title is required for football",
+        message: "away_team or title is required",
         path: ["away_team"]
       });
     }

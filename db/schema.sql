@@ -710,3 +710,26 @@ CREATE TABLE IF NOT EXISTS `partner_onboarding_fields` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
+
+
+-- ============================================
+-- SPORTS (Dynamic Sporting Disciplines)
+-- ============================================
+CREATE TABLE IF NOT EXISTS `sports` (
+  `id` VARCHAR(50) PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL,
+  `slug` VARCHAR(100) NOT NULL UNIQUE,
+  `description` TEXT DEFAULT NULL,
+  `icon` VARCHAR(100) DEFAULT NULL,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `participant_type` ENUM('teams', 'players_or_pairs', 'combatants') DEFAULT 'teams',
+  `slot1_label` VARCHAR(100) DEFAULT 'Home team',
+  `slot1_placeholder` VARCHAR(255) DEFAULT '',
+  `slot2_label` VARCHAR(100) DEFAULT 'Away team',
+  `slot2_placeholder` VARCHAR(255) DEFAULT '',
+  `competition_label` VARCHAR(100) DEFAULT 'Competition',
+  `time_label` VARCHAR(100) DEFAULT 'Start time',
+  `requires_club` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -6372,6 +6372,129 @@ async function startServer() {
     }
   });
 
+
+  // === SPORTS MANAGEMENT API ===
+  app.get("/api/sports", async (_req, res) => {
+    try {
+      const rows: any = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC");
+      res.json(rows || []);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/admin/sports", authenticate, requireRole(["admin"]), async (_req, res) => {
+    try {
+      const rows: any = await query("SELECT * FROM sports ORDER BY name ASC");
+      res.json(rows || []);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/sports", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { 
+        name, slug, description, icon, is_active, 
+        participant_type, slot1_label, slot1_placeholder, 
+        slot2_label, slot2_placeholder, competition_label, 
+        time_label, requires_club 
+      } = req.body;
+
+      if (!name || !slug) return res.status(400).json({ error: "Name and slug are required" });
+      const id = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+      await execute(`
+        INSERT INTO sports (
+          id, name, slug, description, icon, is_active, 
+          participant_type, slot1_label, slot1_placeholder, 
+          slot2_label, slot2_placeholder, competition_label, 
+          time_label, requires_club
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          name = VALUES(name), description = VALUES(description), icon = VALUES(icon),
+          is_active = VALUES(is_active), participant_type = VALUES(participant_type),
+          slot1_label = VALUES(slot1_label), slot1_placeholder = VALUES(slot1_placeholder),
+          slot2_label = VALUES(slot2_label), slot2_placeholder = VALUES(slot2_placeholder),
+          competition_label = VALUES(competition_label), time_label = VALUES(time_label),
+          requires_club = VALUES(requires_club)
+      `, [
+        id, name.trim(), slug.trim(), description || null, icon || null,
+        is_active !== undefined ? (is_active ? 1 : 0) : 1,
+        participant_type || 'teams',
+        slot1_label || 'Home team', slot1_placeholder || '',
+        slot2_label || 'Away team', slot2_placeholder || '',
+        competition_label || 'Competition',
+        time_label || 'Start time',
+        requires_club ? 1 : 0
+      ]);
+
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true, id, name, slug });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/admin/sports/:id", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { 
+        name, slug, description, icon, is_active, 
+        participant_type, slot1_label, slot1_placeholder, 
+        slot2_label, slot2_placeholder, competition_label, 
+        time_label, requires_club 
+      } = req.body;
+
+      await execute(`
+        UPDATE sports SET 
+          name = COALESCE(?, name),
+          slug = COALESCE(?, slug),
+          description = COALESCE(?, description),
+          icon = COALESCE(?, icon),
+          is_active = COALESCE(?, is_active),
+          participant_type = COALESCE(?, participant_type),
+          slot1_label = COALESCE(?, slot1_label),
+          slot1_placeholder = COALESCE(?, slot1_placeholder),
+          slot2_label = COALESCE(?, slot2_label),
+          slot2_placeholder = COALESCE(?, slot2_placeholder),
+          competition_label = COALESCE(?, competition_label),
+          time_label = COALESCE(?, time_label),
+          requires_club = COALESCE(?, requires_club)
+        WHERE id = ? OR slug = ?
+      `, [
+        name, slug, description, icon,
+        is_active !== undefined ? (is_active ? 1 : 0) : null,
+        participant_type, slot1_label, slot1_placeholder,
+        slot2_label, slot2_placeholder, competition_label,
+        time_label, requires_club !== undefined ? (requires_club ? 1 : 0) : null,
+        id, id
+      ]);
+
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/admin/sports/:id", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const countRows: any = await query("SELECT COUNT(*) as count FROM matches WHERE sport = ?", [id]);
+      if (countRows && countRows[0]?.count > 0) {
+        await execute("UPDATE sports SET is_active = 0 WHERE id = ?", [id]);
+        cacheEngine.invalidateCollection("sports");
+        return res.json({ success: true, deactivated: true, message: "Sport was deactivated because existing events reference it." });
+      }
+      await execute("DELETE FROM sports WHERE id = ?", [id]);
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // === BLOG CATEGORIES API (Dedicated Table) ===
   app.get("/api/blog-categories", requireBlogEnabled, async (_req, res) => {
     try {

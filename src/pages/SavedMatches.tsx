@@ -66,13 +66,13 @@ export function SavedMatches() {
       ) : matches.length === 0 ? (
         <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
           <Bookmark className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No saved matches</h3>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No saved events</h3>
           <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-6">
-            When you find a match you want to watch later, click the save button and it will show up here.
+            When you find an event you want to watch later, click the save button and it will show up here.
           </p>
           <Link to="/matches" className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-lg font-bold transition-colors">
             <Play className="w-5 h-5" />
-            Explore Matches
+            Explore Events
           </Link>
         </div>
       ) : (
