@@ -5,13 +5,13 @@ import {
   Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
   Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
-  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid, Palette, Trophy
+  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid, Palette, Trophy, ChevronDown
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area
 } from 'recharts';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { UserAvatar } from '../components/UserAvatar';
 import { compressImage } from '../lib/imageCompressor';
 
@@ -126,31 +126,107 @@ export function AdminDashboard() {
     return <Navigate to="/" replace />;
   }
 
-  const navItems = [
+    // Touch detection and expandable menu state
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    }
+  }, []);
+
+  interface NavSubItem {
+    path: string;
+    label: string;
+    icon?: any;
+  }
+
+  interface NavItem {
+    path: string;
+    icon: any;
+    label: string;
+    children?: NavSubItem[];
+  }
+
+  const navItems: NavItem[] = [
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/admin/homepage', icon: LayoutGrid, label: 'Homepage Builder' },
+    { 
+      path: '/admin/events', 
+      icon: Video, 
+      label: 'Events',
+      children: [
+        { path: '/admin/events', label: 'All Events', icon: Video },
+        { path: '/admin/sports', label: 'Sports Management', icon: Trophy },
+        { path: '/admin/competitions', label: 'Competitions', icon: Award },
+      ]
+    },
+    { 
+      path: '/admin/homepage', 
+      icon: LayoutGrid, 
+      label: 'Homepage Builder',
+      children: [
+        { path: '/admin/homepage', label: 'Builder Overview', icon: LayoutGrid },
+        { path: '/admin/menus', label: 'Menu Management', icon: Menu },
+      ]
+    },
     { path: '/admin/users', icon: Users, label: 'Users' },
-    { path: '/admin/events', icon: Video, label: 'Events' },
-    { path: '/admin/sports', icon: Trophy, label: 'Sports' },
-    { path: '/admin/menus', icon: Menu, label: 'Menu Management' },
-    { path: '/admin/competitions', icon: Trophy, label: 'Competitions' },
+    { path: '/admin/clubs', icon: Building2, label: 'Partner Clubs' },
+    { path: '/admin/plans', icon: CreditCard, label: 'Subscriptions' },
+    { 
+      path: '/admin/finance', 
+      icon: DollarSign, 
+      label: 'Finance & Payouts',
+      children: [
+        { path: '/admin/finance', label: 'Payouts & Balances', icon: DollarSign },
+        { path: '/admin/transactions', label: 'Transactions', icon: DollarSign },
+      ]
+    },
     { path: '/admin/feedback', icon: MessageSquare, label: 'User Feedback' },
     { path: '/admin/seo', icon: Globe, label: 'SEO Manager' },
     { path: '/admin/media', icon: ImageIcon, label: 'Media' },
     ...(blogEnabled ? [{ path: '/admin/blog', icon: Newspaper, label: 'Blog' }] : []),
-    { path: '/admin/plans', icon: CreditCard, label: 'Subscriptions' },
-    { path: '/admin/clubs', icon: Building2, label: 'Partner Clubs' },
-    { path: '/admin/finance', icon: DollarSign, label: 'Finance & Payouts' },
     { path: '/admin/ads', icon: DollarSign, label: 'Ad Manager' },
     { path: '/admin/tasks', icon: Gift, label: 'Missions' },
-    { path: '/admin/creators', icon: Briefcase, label: 'Creators' },
-    { path: '/admin/studio', icon: Video, label: 'Studio Manager' },
-    { path: '/admin/email-system', icon: Mail, label: 'Email System' },
-    { path: '/admin/settings', icon: Settings, label: 'Settings' },
-    { path: '/admin/transactions', icon: DollarSign, label: 'Transactions' },
-    { path: '/admin/cache', icon: Zap, label: 'Performance Cache' },
-    { path: '/admin/features', icon: Sliders, label: 'Feature Toggles' },
+    { 
+      path: '/admin/creators', 
+      icon: Briefcase, 
+      label: 'Creators',
+      children: [
+        { path: '/admin/creators', label: 'Creator Profiles', icon: Briefcase },
+        { path: '/admin/studio', label: 'Studio Manager', icon: Video },
+      ]
+    },
+    { 
+      path: '/admin/settings', 
+      icon: Settings, 
+      label: 'Settings',
+      children: [
+        { path: '/admin/settings', label: 'General Settings', icon: Settings },
+        { path: '/admin/features', label: 'Feature Toggles', icon: Sliders },
+        { path: '/admin/cache', label: 'Performance Cache', icon: Zap },
+        { path: '/admin/email-system', label: 'Email System', icon: Mail },
+      ]
+    },
   ];
+
+  // Auto-expand parent menu when active route is a child or the parent itself
+  useEffect(() => {
+    navItems.forEach(item => {
+      if (item.children) {
+        const isChildActive = item.children.some(c => location.pathname === c.path);
+        const isParentActive = location.pathname === item.path;
+        if (isChildActive || isParentActive) {
+          setExpandedMenus(prev => ({ ...prev, [item.label]: true }));
+        }
+      }
+    });
+  }, [location.pathname]);
+
+  const toggleMenu = (label: string) => {
+    setExpandedMenus(prev => ({ ...prev, [label]: !prev[label] }));
+  };
 
   const handleLogout = () => {
     setLogoutModalOpen(true);
@@ -200,30 +276,136 @@ export function AdminDashboard() {
 
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
+            const hasChildren = Boolean(item.children && item.children.length > 0);
+            const isExactActive = location.pathname === item.path;
+            const isChildActive = Boolean(item.children?.some(c => location.pathname === c.path));
+            const isGroupActive = isExactActive || isChildActive;
+            const isExpanded = Boolean(expandedMenus[item.label]);
+            const isHovered = hoveredMenu === item.label && !isTouchDevice;
+            const isOpen = isExpanded || isHovered;
             const Icon = item.icon;
 
-            return (
-              <Link
-                key={item.label}
-                to={item.path}
-                className={`group flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all relative ${isActive
-                    ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-900 dark:text-white font-semibold shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/40 hover:text-slate-900 dark:hover:text-white'
+            if (!hasChildren) {
+              return (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  className={`group flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium transition-all relative ${
+                    isExactActive
+                      ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-900 dark:text-white font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/40 hover:text-slate-900 dark:hover:text-white'
                   }`}
-              >
-                {isActive && (
-                  <span
-                    className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-yellow-500"
-                    style={{ backgroundColor: 'var(--primary-500, var(--color-yellow-500))' }}
+                >
+                  {isExactActive && (
+                    <span
+                      className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-yellow-500"
+                      style={{ backgroundColor: 'var(--primary-500, var(--color-yellow-500))' }}
+                    />
+                  )}
+                  <Icon
+                    className={`w-5 h-5 shrink-0 transition-colors ${
+                      isExactActive ? 'text-yellow-500' : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200'
+                    }`}
+                    style={isExactActive ? { color: 'var(--primary-500, var(--color-yellow-500))' } : undefined}
                   />
-                )}
-                <Icon
-                  className={`w-5 h-5 shrink-0 transition-colors ${isActive ? 'text-yellow-500' : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200'}`}
-                  style={isActive ? { color: 'var(--primary-500, var(--color-yellow-500))' } : undefined}
-                />
-                <span className="truncate">{item.label}</span>
-              </Link>
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              );
+            }
+
+            return (
+              <div 
+                key={item.label}
+                className="space-y-0.5"
+                onMouseEnter={() => {
+                  if (!isTouchDevice) setHoveredMenu(item.label);
+                }}
+                onMouseLeave={() => {
+                  if (!isTouchDevice) setHoveredMenu(null);
+                }}
+              >
+                <div
+                  className={`group flex items-center justify-between px-3 py-2.5 rounded-xl font-medium transition-all relative ${
+                    isGroupActive
+                      ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-900 dark:text-white font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/40 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {isGroupActive && (
+                    <span
+                      className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-yellow-500"
+                      style={{ backgroundColor: 'var(--primary-500, var(--color-yellow-500))' }}
+                    />
+                  )}
+                  <Link
+                    to={item.path}
+                    onClick={() => {
+                      setExpandedMenus(prev => ({ ...prev, [item.label]: true }));
+                    }}
+                    className="flex items-center gap-3 flex-1 min-w-0"
+                  >
+                    <Icon
+                      className={`w-5 h-5 shrink-0 transition-colors ${
+                        isGroupActive ? 'text-yellow-500' : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200'
+                      }`}
+                      style={isGroupActive ? { color: 'var(--primary-500, var(--color-yellow-500))' } : undefined}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleMenu(item.label);
+                    }}
+                    aria-expanded={isOpen}
+                    aria-label={`Toggle ${item.label} submenu`}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-600/50 transition-colors shrink-0"
+                  >
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform duration-200 ${
+                        isOpen ? 'rotate-180 text-slate-700 dark:text-slate-200' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Submenu Accordion */}
+                <AnimatePresence initial={false}>
+                  {isOpen && item.children && (
+                    <motion.div
+                      key={`sub-${item.label}`}
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.18, ease: 'easeInOut' }}
+                      className="overflow-hidden pl-5 pr-1 py-1 space-y-1 ml-4 border-l-2 border-slate-200/70 dark:border-slate-700/60"
+                    >
+                      {item.children.map((child) => {
+                        const isSubActive = location.pathname === child.path;
+                        const SubIcon = child.icon;
+
+                        return (
+                          <Link
+                            key={child.path}
+                            to={child.path}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                              isSubActive
+                                ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 font-bold border-l-2 border-yellow-500 -ml-[2px]'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-slate-700/40'
+                            }`}
+                          >
+                            {SubIcon && <SubIcon className="w-3.5 h-3.5 shrink-0 opacity-80" />}
+                            <span className="truncate">{child.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             );
           })}
         </nav>

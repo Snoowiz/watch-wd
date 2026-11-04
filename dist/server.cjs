@@ -8663,6 +8663,19 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       res.status(500).json({ error: e.message });
     }
   });
+  app.get("/api/competitions/active", async (req, res) => {
+    try {
+      const rows = await query(`
+        SELECT id, name, slug, logo, season, description, sport
+        FROM competitions
+        WHERE is_active = 1
+        ORDER BY name ASC
+      `);
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/api/competitions/:slug", async (req, res) => {
     try {
       const { slug } = req.params;
@@ -8677,19 +8690,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       } else {
         res.status(404).json({ error: "Competition not found" });
       }
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-  app.get("/api/competitions/active", async (req, res) => {
-    try {
-      const rows = await query(`
-        SELECT id, name, slug, logo, season, description
-        FROM competitions
-        WHERE is_active = 1
-        ORDER BY name ASC
-      `);
-      res.json(rows);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -8758,6 +8758,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       res.status(500).json({ error: e.message });
     }
   });
+  app.get("/api/clubs/active", async (req, res) => {
+    try {
+      const snap = await db.collection("clubs").where("is_active", "==", 1).get();
+      const clubs = snap.docs.map((doc) => {
+        const data = doc.data();
+        return { id: doc.id, name: data.name, slug: data.slug, logo: data.logo, stripe_account_id: data.stripe_account_id };
+      });
+      res.json(clubs);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.get("/api/clubs/:slug", async (req, res) => {
     try {
       const { slug } = req.params;
@@ -8774,18 +8786,6 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       } else {
         res.status(404).json({ error: "Club not found" });
       }
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-  app.get("/api/clubs/active", async (req, res) => {
-    try {
-      const snap = await db.collection("clubs").where("is_active", "==", 1).get();
-      const clubs = snap.docs.map((doc) => {
-        const data = doc.data();
-        return { id: doc.id, name: data.name, slug: data.slug, logo: data.logo };
-      });
-      res.json(clubs);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

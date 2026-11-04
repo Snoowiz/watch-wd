@@ -236,19 +236,55 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
       })
       .catch(console.error);
 
-    fetch('/api/clubs/active')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setClubs(data);
-      })
-      .catch(console.error);
+    const token = localStorage.getItem('token');
 
-    fetch('/api/competitions/active')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setCompetitions(data);
-      })
-      .catch(console.error);
+    // Fetch clubs: load full partner club data with fallback to active clubs
+    const loadClubs = async () => {
+      try {
+        if (token) {
+          const res = await fetch('/api/admin/clubs', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              setClubs(data);
+              return;
+            }
+          }
+        }
+        const activeRes = await fetch('/api/clubs/active');
+        if (activeRes.ok) {
+          const activeData = await activeRes.json();
+          if (Array.isArray(activeData)) setClubs(activeData);
+        }
+      } catch (err) {
+        console.error('Failed to load clubs:', err);
+      }
+    };
+    loadClubs();
+
+    // Fetch competitions: load full competition list with fallback to active
+    const loadCompetitions = async () => {
+      try {
+        const res = await fetch('/api/competitions');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setCompetitions(data);
+            return;
+          }
+        }
+        const activeRes = await fetch('/api/competitions/active');
+        if (activeRes.ok) {
+          const activeData = await activeRes.json();
+          if (Array.isArray(activeData)) setCompetitions(activeData);
+        }
+      } catch (err) {
+        console.error('Failed to load competitions:', err);
+      }
+    };
+    loadCompetitions();
   }, []);
 
 
