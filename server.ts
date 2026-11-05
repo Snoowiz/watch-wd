@@ -6373,10 +6373,63 @@ async function startServer() {
   });
 
 
-  // === SPORTS MANAGEMENT API ===
+  // === SPORTS MANAGEMENT API & SEED ENGINE ===
+  async function ensureAndSeedSportsTable() {
+    try {
+      await execute(`
+        CREATE TABLE IF NOT EXISTS \`sports\` (
+          \`id\` VARCHAR(50) PRIMARY KEY,
+          \`name\` VARCHAR(100) NOT NULL,
+          \`slug\` VARCHAR(100) NOT NULL UNIQUE,
+          \`description\` TEXT DEFAULT NULL,
+          \`icon\` VARCHAR(50) DEFAULT 'Trophy',
+          \`is_active\` TINYINT(1) DEFAULT 1,
+          \`participant_type\` ENUM('teams', 'players_or_pairs', 'combatants') DEFAULT 'teams',
+          \`slot1_label\` VARCHAR(100) DEFAULT 'Home team',
+          \`slot1_placeholder\` VARCHAR(255) DEFAULT '',
+          \`slot2_label\` VARCHAR(100) DEFAULT 'Away team',
+          \`slot2_placeholder\` VARCHAR(255) DEFAULT '',
+          \`competition_label\` VARCHAR(100) DEFAULT 'Competition',
+          \`time_label\` VARCHAR(100) DEFAULT 'Start time',
+          \`requires_club\` TINYINT(1) DEFAULT 0,
+          \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      const countRows: any = await query("SELECT COUNT(*) as count FROM sports").catch(() => null);
+      if (!countRows || Number(countRows[0]?.count) === 0) {
+        const defaultSports = [
+          ['football', 'Football', 'football', 'Club and competition matches with home and away teams', 'Trophy', 1, 'teams', 'Home team', 'e.g. Manchester Red', 'Away team', 'e.g. London Blue', 'Competition', 'Kick-off time', 1],
+          ['tennis', 'Tennis', 'tennis', 'Singles or doubles tournament matches with players or pairs', 'Trophy', 1, 'players_or_pairs', 'Player or pair 1', 'e.g. C. Alcaraz or Salisbury / Ram', 'Player or pair 2', 'e.g. J. Sinner or Koolhof / Mektic', 'Tournament', 'Start time', 0],
+          ['basketball', 'Basketball', 'basketball', 'Team basketball fixtures, league games, and tournament championships', 'Trophy', 1, 'teams', 'Home team', 'e.g. Boston Green', 'Away team', 'e.g. Los Angeles Gold', 'Competition', 'Tip-off time', 0],
+          ['boxing', 'Boxing & MMA', 'boxing', 'Combat sports, championship title bouts, and fight cards', 'Trophy', 1, 'combatants', 'Fighter 1', 'e.g. Tyson Fury', 'Fighter 2', 'e.g. Oleksandr Usyk', 'Card / Event', 'Ring-walk time', 0]
+        ];
+
+        for (const sp of defaultSports) {
+          await execute(`
+            INSERT INTO sports (
+              id, name, slug, description, icon, is_active,
+              participant_type, slot1_label, slot1_placeholder,
+              slot2_label, slot2_placeholder, competition_label,
+              time_label, requires_club
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)
+          `, sp);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to ensure and seed sports table:", err);
+    }
+  }
+
   app.get("/api/sports", async (_req, res) => {
     try {
-      const rows: any = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC");
+      let rows: any = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC").catch(() => null);
+      if (!rows || rows.length === 0) {
+        await ensureAndSeedSportsTable();
+        rows = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC").catch(() => []);
+      }
       res.json(rows || []);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -6385,7 +6438,11 @@ async function startServer() {
 
   app.get("/api/admin/sports", authenticate, requireRole(["admin"]), async (_req, res) => {
     try {
-      const rows: any = await query("SELECT * FROM sports ORDER BY name ASC");
+      let rows: any = await query("SELECT * FROM sports ORDER BY name ASC").catch(() => null);
+      if (!rows || rows.length === 0) {
+        await ensureAndSeedSportsTable();
+        rows = await query("SELECT * FROM sports ORDER BY name ASC").catch(() => []);
+      }
       res.json(rows || []);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -10738,6 +10795,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         console.error("Failed to ensure matches club_id column exists:", err);
       }
     });
+
+    // Ensure sports table exists and seed default sports
+    ensureAndSeedSportsTable().catch(err => console.error("Startup sports table error:", err));
 
     // Ensure competitions table exists
     execute(`

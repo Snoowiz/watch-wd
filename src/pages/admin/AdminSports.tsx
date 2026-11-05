@@ -3,7 +3,7 @@ import {
   Trophy, Plus, Search, Edit3, Trash2, CheckCircle2, XCircle, 
   Loader2, Save, X, Users, User, Shield, Clock, HelpCircle, AlertCircle
 } from 'lucide-react';
-import { useSportStore, Sport, useMatchStore } from '../../store';
+import { useSportStore, Sport, useMatchStore, DEFAULT_PLATFORM_SPORTS } from '../../store';
 import { useUIStore } from '../../store/uiStore';
 
 export function AdminSports() {
@@ -190,17 +190,22 @@ export function AdminSports() {
     return counts;
   }, [matches]);
 
+  const effectiveSports = useMemo(() => {
+    if (sports && sports.length > 0) return sports;
+    return DEFAULT_PLATFORM_SPORTS;
+  }, [sports]);
+
   const filteredSports = useMemo(() => {
-    return sports.filter(s => {
+    return effectiveSports.filter(s => {
       if (filterActive === 'active' && !(s.is_active === 1 || s.is_active === true)) return false;
       if (filterActive === 'inactive' && (s.is_active === 1 || s.is_active === true)) return false;
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       return (s.name || '').toLowerCase().includes(q) || (s.slug || '').toLowerCase().includes(q);
     });
-  }, [sports, searchQuery, filterActive]);
+  }, [effectiveSports, searchQuery, filterActive]);
 
-  const activeCount = sports.filter(s => s.is_active === 1 || s.is_active === true).length;
+  const activeCount = effectiveSports.filter(s => s.is_active === 1 || s.is_active === true).length;
   const totalEventsLinked = Object.values(sportEventCounts).reduce((a, b) => a + b, 0);
 
   return (
@@ -235,7 +240,7 @@ export function AdminSports() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Sports</p>
-              <h3 className="text-3xl font-black text-slate-900 dark:text-white mt-1">{sports.length}</h3>
+              <h3 className="text-3xl font-black text-slate-900 dark:text-white mt-1">{effectiveSports.length}</h3>
             </div>
             <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
               <Trophy className="w-6 h-6" />
@@ -291,7 +296,7 @@ export function AdminSports() {
                 : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            All ({sports.length})
+            All ({effectiveSports.length})
           </button>
           <button
             onClick={() => setFilterActive('active')}
@@ -311,7 +316,7 @@ export function AdminSports() {
                 : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            Inactive ({sports.length - activeCount})
+            Inactive ({effectiveSports.length - activeCount})
           </button>
         </div>
       </div>
