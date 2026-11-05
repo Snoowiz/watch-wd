@@ -264,7 +264,7 @@ export function SearchPage() {
                           </span>
                           {item.access_type === 'plan' || (!item.access_type && item.access === 'paid' && Number(item.price || 0) === 0) ? (
                             <span className="text-[10px] uppercase font-extrabold tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded">
-                              Plan
+                              Subscribe
                             </span>
                           ) : (item.is_ppv === 1 || item.access_type === 'ppv' || (item.access === 'paid' && Number(item.price || 0) > 0)) ? (
                             <span className="text-[10px] uppercase font-extrabold tracking-wider text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/50 px-2 py-0.5 rounded">

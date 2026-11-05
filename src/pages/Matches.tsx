@@ -184,17 +184,9 @@ export function Matches() {
 
   const getAccessBadgeInfo = (m: any) => {
     if (m.access_type === 'plan' || (!m.access_type && m.access === 'paid' && Number(m.price || 0) === 0)) {
-      const assignedPlan = plans.find(p => String(p.id) === String(m.required_plan_id));
-      if (assignedPlan) {
-        return {
-          label: `Included with ${assignedPlan.name}`,
-          shortLabel: 'Included with plan',
-          className: 'bg-indigo-600/90 text-white',
-        };
-      }
       return {
-        label: 'Subscription required',
-        shortLabel: 'Subscription required',
+        label: 'Subscribe',
+        shortLabel: 'Subscribe',
         className: 'bg-indigo-600/90 text-white',
       };
     }

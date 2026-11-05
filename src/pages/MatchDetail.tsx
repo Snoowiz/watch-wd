@@ -1471,7 +1471,7 @@ export function MatchDetail() {
                         </div>
                         {m.access_type === 'plan' ? (
                           <div className="mt-1 text-[10px] font-black text-indigo-500 uppercase">
-                            Subscription
+                            Subscribe
                           </div>
                         ) : m.access === 'paid' ? (
                           <div className="mt-1 text-[10px] font-black text-yellow-500 uppercase">
