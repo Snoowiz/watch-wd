@@ -877,11 +877,30 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       id="select-match-competition"
                     >
                       <option value="">{`No ${(activeSportConfig.participants.competitionLabel || 'competition').toLowerCase()} assigned`}</option>
-                      {competitions.map(comp => (
-                        <option key={comp.id} value={comp.id}>
-                          {comp.name} {comp.season ? `(${comp.season})` : ''}
-                        </option>
-                      ))}
+                      {/* Matching Sport Competitions */}
+                      {competitions.filter(c => (c.sport || 'football').toLowerCase() === (initialSport || 'football').toLowerCase()).length > 0 && (
+                        <optgroup label={`${activeSportConfig.name} Competitions`}>
+                          {competitions
+                            .filter(c => (c.sport || 'football').toLowerCase() === (initialSport || 'football').toLowerCase())
+                            .map(comp => (
+                              <option key={comp.id} value={comp.id}>
+                                {comp.name} {comp.season ? `(${comp.season})` : ''}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                      {/* Other Sports Competitions */}
+                      {competitions.filter(c => (c.sport || 'football').toLowerCase() !== (initialSport || 'football').toLowerCase()).length > 0 && (
+                        <optgroup label="Other Sports Competitions">
+                          {competitions
+                            .filter(c => (c.sport || 'football').toLowerCase() !== (initialSport || 'football').toLowerCase())
+                            .map(comp => (
+                              <option key={comp.id} value={comp.id}>
+                                {comp.name} {comp.season ? `(${comp.season})` : ''} • [{(comp.sport || 'football').toUpperCase()}]
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
                     </select>
                     <p className="text-[11px] text-slate-500 mt-1.5">
                       {initialSport === 'tennis' ? 'Choose a tournament only if it is configured for tennis. Tournament records are not yet sport-scoped.' : 'Assigning a competition links this match to tournament schedules.'}

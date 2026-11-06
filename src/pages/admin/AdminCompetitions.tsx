@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Trophy, Plus, Search, Edit3, Trash2, CheckCircle2, XCircle, 
-  Loader2, Image as ImageIcon, Video, Calendar, Shield, Save, X
+  Loader2, Image as ImageIcon, Video, Calendar, Shield, Save, X, Sparkles
 } from 'lucide-react';
-import { useCompetitionStore, Competition } from '../../store';
+import { useCompetitionStore, useSportStore, Competition, DEFAULT_PLATFORM_SPORTS } from '../../store';
 import { useUIStore } from '../../store/uiStore';
 import { MediaPickerModal } from '../../components/MediaPickerModal';
 
@@ -17,9 +17,13 @@ export function AdminCompetitions() {
     deleteCompetition 
   } = useCompetitionStore();
   
+  const { sports = [], fetchSports } = useSportStore();
+  const effectiveSports = sports.length > 0 ? sports : DEFAULT_PLATFORM_SPORTS;
+
   const { addToast, updateToast, showConfirm } = useUIStore();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSportFilter, setSelectedSportFilter] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingComp, setEditingComp] = useState<Competition | null>(null);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
@@ -31,11 +35,13 @@ export function AdminCompetitions() {
   const [description, setDescription] = useState('');
   const [logo, setLogo] = useState('');
   const [season, setSeason] = useState('');
+  const [sport, setSport] = useState('football');
   const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
     fetchCompetitions();
-  }, [fetchCompetitions]);
+    fetchSports();
+  }, [fetchCompetitions, fetchSports]);
 
   const openCreateModal = () => {
     setEditingComp(null);
@@ -44,6 +50,7 @@ export function AdminCompetitions() {
     setDescription('');
     setLogo('');
     setSeason('');
+    setSport('football');
     setIsActive(true);
     setIsModalOpen(true);
   };
@@ -55,6 +62,7 @@ export function AdminCompetitions() {
     setDescription(comp.description || '');
     setLogo(comp.logo || '');
     setSeason(comp.season || '');
+    setSport((comp.sport || 'football').toLowerCase());
     setIsActive(comp.is_active === 1 || comp.is_active === true);
     setIsModalOpen(true);
   };
@@ -83,6 +91,7 @@ export function AdminCompetitions() {
         description: description.trim() || null,
         logo: logo.trim() || null,
         season: season.trim() || null,
+        sport: (sport || 'football').toLowerCase(),
         is_active: isActive ? 1 : 0
       };
 
@@ -136,12 +145,47 @@ export function AdminCompetitions() {
     });
   };
 
+  const getSportBadge = (sportKey?: string | null) => {
+    const s = (sportKey || 'football').toLowerCase();
+    if (s === 'tennis') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          Tennis
+        </span>
+      );
+    }
+    if (s === 'basketball') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+          Basketball
+        </span>
+      );
+    }
+    if (s === 'boxing') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+          Boxing & MMA
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+        Football
+      </span>
+    );
+  };
+
   const filteredCompetitions = competitions.filter(c => {
+    if (selectedSportFilter !== 'all') {
+      const compSport = (c.sport || 'football').toLowerCase();
+      if (compSport !== selectedSportFilter.toLowerCase()) return false;
+    }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (c.name || '').toLowerCase().includes(q) || 
            (c.slug || '').toLowerCase().includes(q) ||
-           (c.season || '').toLowerCase().includes(q);
+           (c.season || '').toLowerCase().includes(q) ||
+           (c.sport || '').toLowerCase().includes(q);
   });
 
   const activeCount = competitions.filter(c => c.is_active === 1 || c.is_active === true).length;
@@ -159,7 +203,7 @@ export function AdminCompetitions() {
             <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Competitions</h1>
           </div>
           <p className="text-slate-500 dark:text-slate-400 mt-2">
-            Create and organize leagues, cups, and tournaments independently of match categories.
+            Create and organize leagues, cups, and tournaments across football, tennis, basketball, and boxing disciplines.
           </p>
         </div>
 
@@ -213,21 +257,54 @@ export function AdminCompetitions() {
       </div>
 
       {/* Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search competitions or season..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all"
-            id="input-search-competitions"
-          />
+      <div className="flex flex-col gap-4 bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search competitions or season..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500 transition-all"
+              id="input-search-competitions"
+            />
+          </div>
+
+          <div className="text-xs font-bold text-slate-400">
+            Showing {filteredCompetitions.length} of {competitions.length} competitions
+          </div>
         </div>
 
-        <div className="text-xs font-bold text-slate-400">
-          Showing {filteredCompetitions.length} of {competitions.length} competitions
+        {/* Sport Discipline Filter Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pt-1">
+          <button
+            onClick={() => setSelectedSportFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+              selectedSportFilter === 'all'
+                ? 'bg-yellow-500 text-slate-950 shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            All Sports ({competitions.length})
+          </button>
+          {effectiveSports.map((sp) => {
+            const count = competitions.filter(c => (c.sport || 'football').toLowerCase() === (sp.slug || sp.id).toLowerCase()).length;
+            return (
+              <button
+                key={sp.id}
+                onClick={() => setSelectedSportFilter(sp.slug || sp.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  selectedSportFilter === (sp.slug || sp.id)
+                    ? 'bg-yellow-500 text-slate-950 shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }`}
+              >
+                {sp.name} ({count})
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -260,6 +337,7 @@ export function AdminCompetitions() {
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   <th className="py-4 px-6">Competition</th>
+                  <th className="py-4 px-6">Sport</th>
                   <th className="py-4 px-6">Slug</th>
                   <th className="py-4 px-6">Season</th>
                   <th className="py-4 px-6">Matches</th>
@@ -288,6 +366,10 @@ export function AdminCompetitions() {
                             )}
                           </div>
                         </div>
+                      </td>
+
+                      <td className="py-4 px-6">
+                        {getSportBadge(comp.sport)}
                       </td>
 
                       <td className="py-4 px-6 font-mono text-xs text-slate-500 dark:text-slate-400">
@@ -361,10 +443,10 @@ export function AdminCompetitions() {
         )}
       </div>
 
-      {/* Create / Edit Competition Modal */}
+      {/* Create / Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl max-w-lg w-full overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-lg w-full border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-700">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-yellow-500/10 text-yellow-500 flex items-center justify-center">
@@ -375,7 +457,7 @@ export function AdminCompetitions() {
                     {editingComp ? 'Edit Competition' : 'New Competition'}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {editingComp ? 'Update competition details and status.' : 'Add a tournament, cup, or league for matches.'}
+                    {editingComp ? 'Update competition details, sport discipline, and status.' : 'Add a tournament, cup, or league for events.'}
                   </p>
                 </div>
               </div>
@@ -400,6 +482,27 @@ export function AdminCompetitions() {
                   onChange={(e) => handleNameChange(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
                 />
+              </div>
+
+              {/* Sport Selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                  Sport Discipline <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={sport}
+                  onChange={(e) => setSport(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                >
+                  {effectiveSports.map((sp) => (
+                    <option key={sp.id} value={sp.slug || sp.id}>
+                      {sp.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Assign this competition to a sport discipline so it properly populates event creation forms and discovery filters.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

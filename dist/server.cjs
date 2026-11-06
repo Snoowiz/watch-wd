@@ -8703,29 +8703,113 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       res.status(500).json({ error: e.message });
     }
   });
+  async function ensureAndSeedCompetitionsTable() {
+    try {
+      await execute(`
+        CREATE TABLE IF NOT EXISTS \`competitions\` (
+          \`id\` VARCHAR(100) PRIMARY KEY,
+          \`name\` VARCHAR(255) NOT NULL,
+          \`slug\` VARCHAR(255) NOT NULL UNIQUE,
+          \`description\` TEXT DEFAULT NULL,
+          \`logo\` TEXT DEFAULT NULL,
+          \`season\` VARCHAR(100) DEFAULT NULL,
+          \`is_active\` TINYINT(1) DEFAULT 1,
+          \`sport\` VARCHAR(50) DEFAULT 'football',
+          \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX \`idx_competition_slug\` (\`slug\`),
+          INDEX \`idx_competition_active\` (\`is_active\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      await execute(`
+        ALTER TABLE \`competitions\` ADD COLUMN \`sport\` VARCHAR(50) DEFAULT 'football'
+      `).catch(() => {
+      });
+      await execute(`
+        UPDATE \`competitions\` SET \`sport\` = 'football' WHERE \`sport\` IS NULL OR \`sport\` = ''
+      `).catch(() => {
+      });
+      await execute(`
+        UPDATE \`competitions\` SET \`is_active\` = 1 WHERE \`is_active\` IS NULL
+      `).catch(() => {
+      });
+      const countRows = await query("SELECT COUNT(*) as count FROM competitions").catch(() => null);
+      if (!countRows || Number(countRows[0]?.count) === 0) {
+        const defaultCompetitions = [
+          ["comp-sunday-premier-league", "Sunday Premier League", "sunday-premier-league", "Premier amateur league fixtures and championship tournament.", null, "2026/2027", 1, "football"],
+          ["comp-division-one-cup", "Division One Cup", "division-one-cup", "Annual knockout cup competition for senior division teams.", null, "2026", 1, "football"],
+          ["comp-fenton-cup", "Fenton Cup", "fenton-cup", "Historic grassroots cup tournament with prestigious finals.", null, "2026", 1, "football"],
+          ["comp-trophyland-cup", "TrophyLand Cup", "trophyland-cup", "League cup competition featuring grassroots squads.", null, "2026", 1, "football"],
+          ["comp-grand-slam-tennis", "Championship Tennis Open", "championship-tennis-open", "Men and women singles and doubles tournament bracket.", null, "2026", 1, "tennis"],
+          ["comp-city-hoops-league", "National Basketball Championship", "national-basketball-championship", "Pro and amateur basketball tournament fixtures.", null, "2026", 1, "basketball"],
+          ["comp-fight-night-championship", "Championship Boxing Series", "championship-boxing-series", "Title card bouts and world championship boxing events.", null, "2026", 1, "boxing"]
+        ];
+        for (const c of defaultCompetitions) {
+          await execute(`
+            INSERT INTO competitions (id, name, slug, description, logo, season, is_active, sport)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)
+          `, c).catch(() => {
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to ensure and seed competitions table:", err);
+    }
+  }
   app.get("/api/competitions", async (req, res) => {
     try {
-      const rows = await query(`
-        SELECT c.*, COUNT(m.id) as match_count
+      let rows = await query(`
+        SELECT c.*, COALESCE(c.sport, 'football') as sport, COUNT(m.id) as match_count
         FROM competitions c
         LEFT JOIN matches m ON m.competition_id = c.id
         GROUP BY c.id
         ORDER BY c.name ASC
-      `);
-      res.json(rows);
+      `).catch(() => null);
+      if (!rows || rows.length === 0) {
+        await ensureAndSeedCompetitionsTable();
+        rows = await query(`
+          SELECT c.*, COALESCE(c.sport, 'football') as sport, COUNT(m.id) as match_count
+          FROM competitions c
+          LEFT JOIN matches m ON m.competition_id = c.id
+          GROUP BY c.id
+          ORDER BY c.name ASC
+        `).catch(() => []);
+      }
+      res.json(rows || []);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
   });
   app.get("/api/competitions/active", async (req, res) => {
     try {
-      const rows = await query(`
-        SELECT id, name, slug, logo, season, description, sport
-        FROM competitions
-        WHERE is_active = 1
-        ORDER BY name ASC
-      `);
-      res.json(rows);
+      let rows;
+      try {
+        rows = await query(`
+          SELECT id, name, slug, logo, season, description, COALESCE(sport, 'football') as sport, is_active
+          FROM competitions
+          WHERE is_active = 1 OR is_active IS NULL
+          ORDER BY name ASC
+        `);
+      } catch (err) {
+        const rawRows = await query(`
+          SELECT id, name, slug, logo, season, description, is_active
+          FROM competitions
+          WHERE is_active = 1 OR is_active IS NULL
+          ORDER BY name ASC
+        `).catch(() => []);
+        rows = (rawRows || []).map((r) => ({ ...r, sport: "football" }));
+      }
+      if (!rows || rows.length === 0) {
+        await ensureAndSeedCompetitionsTable();
+        rows = await query(`
+          SELECT id, name, slug, logo, season, description, COALESCE(sport, 'football') as sport, is_active
+          FROM competitions
+          WHERE is_active = 1 OR is_active IS NULL
+          ORDER BY name ASC
+        `).catch(() => []);
+      }
+      res.json(rows || []);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -8733,12 +8817,23 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   app.get("/api/competitions/:slug", async (req, res) => {
     try {
       const { slug } = req.params;
-      const rows = await query(`
-        SELECT id, name, slug, logo, season, description, sport, is_active
-        FROM competitions
-        WHERE (slug = ? OR id = ?) AND is_active = 1
-        LIMIT 1
-      `, [slug, slug]);
+      let rows;
+      try {
+        rows = await query(`
+          SELECT id, name, slug, logo, season, description, COALESCE(sport, 'football') as sport, is_active
+          FROM competitions
+          WHERE (slug = ? OR id = ?) AND (is_active = 1 OR is_active IS NULL)
+          LIMIT 1
+        `, [slug, slug]);
+      } catch (err) {
+        const rawRows = await query(`
+          SELECT id, name, slug, logo, season, description, is_active
+          FROM competitions
+          WHERE (slug = ? OR id = ?) AND (is_active = 1 OR is_active IS NULL)
+          LIMIT 1
+        `, [slug, slug]);
+        rows = (rawRows || []).map((r) => ({ ...r, sport: "football" }));
+      }
       if (rows && rows.length > 0) {
         res.json(rows[0]);
       } else {
@@ -8760,6 +8855,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         description: req.body.description || null,
         logo: req.body.logo || null,
         season: req.body.season || null,
+        sport: (req.body.sport || "football").toLowerCase(),
         isActive: req.body.isActive !== void 0 ? req.body.isActive ? 1 : 0 : 1,
         createdAt: (/* @__PURE__ */ new Date()).toISOString()
       };
@@ -8782,7 +8878,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (req.body.description !== void 0) updateData.description = req.body.description;
       if (req.body.logo !== void 0) updateData.logo = req.body.logo;
       if (req.body.season !== void 0) updateData.season = req.body.season;
-      if (req.body.sport !== void 0) updateData.sport = req.body.sport;
+      if (req.body.sport !== void 0) updateData.sport = (req.body.sport || "football").toLowerCase();
       if (req.body.isActive !== void 0) updateData.isActive = req.body.isActive ? 1 : 0;
       await db.collection("competitions").doc(id).update(updateData);
       cacheEngine.invalidateCollection("competitions");
@@ -11898,6 +11994,7 @@ ${output}`;
       }
     });
     ensureAndSeedSportsTable().catch((err) => console.error("Startup sports table error:", err));
+    ensureAndSeedCompetitionsTable().catch((err) => console.error("Startup competitions table error:", err));
     execute(`
       CREATE TABLE IF NOT EXISTS \`competitions\` (
         \`id\` VARCHAR(100) PRIMARY KEY,

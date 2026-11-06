@@ -2844,9 +2844,75 @@ interface CompetitionState {
   deleteCompetition: (id: string) => Promise<boolean>;
 }
 
+export const DEFAULT_PLATFORM_COMPETITIONS: Competition[] = [
+  {
+    id: 'comp-sunday-premier-league',
+    name: 'Sunday Premier League',
+    slug: 'sunday-premier-league',
+    description: 'Premier amateur league fixtures and championship tournament.',
+    season: '2026/2027',
+    sport: 'football',
+    is_active: 1
+  },
+  {
+    id: 'comp-division-one-cup',
+    name: 'Division One Cup',
+    slug: 'division-one-cup',
+    description: 'Annual knockout cup competition for senior division teams.',
+    season: '2026',
+    sport: 'football',
+    is_active: 1
+  },
+  {
+    id: 'comp-fenton-cup',
+    name: 'Fenton Cup',
+    slug: 'fenton-cup',
+    description: 'Historic grassroots cup tournament with prestigious finals.',
+    season: '2026',
+    sport: 'football',
+    is_active: 1
+  },
+  {
+    id: 'comp-trophyland-cup',
+    name: 'TrophyLand Cup',
+    slug: 'trophyland-cup',
+    description: 'League cup competition featuring grassroots squads.',
+    season: '2026',
+    sport: 'football',
+    is_active: 1
+  },
+  {
+    id: 'comp-grand-slam-tennis',
+    name: 'Championship Tennis Open',
+    slug: 'championship-tennis-open',
+    description: 'Men and women singles and doubles tournament bracket.',
+    season: '2026',
+    sport: 'tennis',
+    is_active: 1
+  },
+  {
+    id: 'comp-city-hoops-league',
+    name: 'National Basketball Championship',
+    slug: 'national-basketball-championship',
+    description: 'Pro and amateur basketball tournament fixtures.',
+    season: '2026',
+    sport: 'basketball',
+    is_active: 1
+  },
+  {
+    id: 'comp-fight-night-championship',
+    name: 'Championship Boxing Series',
+    slug: 'championship-boxing-series',
+    description: 'Title card bouts and world championship boxing events.',
+    season: '2026',
+    sport: 'boxing',
+    is_active: 1
+  }
+];
+
 export const useCompetitionStore = create<CompetitionState>((set, get) => ({
-  competitions: [],
-  activeCompetitions: [],
+  competitions: DEFAULT_PLATFORM_COMPETITIONS,
+  activeCompetitions: DEFAULT_PLATFORM_COMPETITIONS,
   isLoading: false,
   fetchCompetitions: async () => {
     try {
@@ -2854,12 +2920,19 @@ export const useCompetitionStore = create<CompetitionState>((set, get) => ({
       const res = await fetch('/api/competitions');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           set({ competitions: data, isLoading: false });
+          return;
         }
       }
+      set((state) => ({
+        competitions: state.competitions && state.competitions.length > 0 ? state.competitions : DEFAULT_PLATFORM_COMPETITIONS
+      }));
     } catch (e) {
       console.error('Failed to fetch competitions', e);
+      set((state) => ({
+        competitions: state.competitions && state.competitions.length > 0 ? state.competitions : DEFAULT_PLATFORM_COMPETITIONS
+      }));
     } finally {
       set({ isLoading: false });
     }
@@ -2869,12 +2942,19 @@ export const useCompetitionStore = create<CompetitionState>((set, get) => ({
       const res = await fetch('/api/competitions/active');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           set({ activeCompetitions: data });
+          return;
         }
       }
+      set((state) => ({
+        activeCompetitions: state.activeCompetitions && state.activeCompetitions.length > 0 ? state.activeCompetitions : DEFAULT_PLATFORM_COMPETITIONS
+      }));
     } catch (e) {
       console.error('Failed to fetch active competitions', e);
+      set((state) => ({
+        activeCompetitions: state.activeCompetitions && state.activeCompetitions.length > 0 ? state.activeCompetitions : DEFAULT_PLATFORM_COMPETITIONS
+      }));
     }
   },
   addCompetition: async (comp) => {

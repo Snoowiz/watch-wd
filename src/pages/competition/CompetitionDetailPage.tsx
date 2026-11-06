@@ -161,7 +161,13 @@ export function CompetitionDetailPage() {
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-yellow-400 bg-yellow-400/15 border border-yellow-400/20 px-2.5 py-0.5 rounded-full">
                 <Trophy className="w-3.5 h-3.5" />
-                {isTennis ? 'Tennis Tournament' : 'Official Competition'}
+                {(() => {
+                const s = (competition?.sport || 'football').toLowerCase();
+                if (s === 'tennis') return 'Tennis Tournament';
+                if (s === 'basketball') return 'Basketball League';
+                if (s === 'boxing') return 'Boxing & MMA Series';
+                return 'Football Competition';
+              })()}
               </span>
               {competition.season && (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-white/10 px-2.5 py-0.5 rounded-full">
