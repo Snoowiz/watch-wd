@@ -48,6 +48,7 @@ export function MatchDetail() {
   const [error, setError] = useState('');
 
   const [streamData, setStreamData] = useState<any>(null);
+  const [streamSigningError, setStreamSigningError] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutData, setCheckoutData] = useState<any>(null);
@@ -418,40 +419,84 @@ export function MatchDetail() {
   }, [effectiveHasAccess, Boolean(streamData), user?.id, match?.id, sendTrackingEvent]);
 
   useEffect(() => {
-    if (match && effectiveHasAccess) {
-      const token = localStorage.getItem('token');
-      fetch(`/api/matches/${match.id}/stream`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
+    let cancelled = false;
+    let refreshTimer: number | null = null;
+
+    const loadAuthorizedStream = async () => {
+      if (!match || !effectiveHasAccess) {
+        if (!cancelled) {
+          setStreamData(null);
+          setStreamSigningError(false);
         }
-      })
-        .then(async res => {
-          if (res.status === 401 || res.status === 403) {
-            const data = await res.json().catch(() => null);
-            if (data?.isExpired) {
-              setIsAccessExpired(true);
-            }
-            if (data?.authRequired) {
-              setShowAccountGateModal(true);
-            }
-            return null;
+        return;
+      }
+
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/matches/${match.id}/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
           }
-          return res.ok ? res.json() : null;
-        })
-        .then(data => {
-          if (data?.stream) {
-            setStreamData(data.stream);
-            if (data.accessDetails) {
-              setAccessDetails(data.accessDetails);
-            }
+        });
+
+        if (cancelled) return;
+
+        if (res.status === 401 || res.status === 403) {
+          const data = await res.json().catch(() => null);
+          if (data?.isExpired) {
+            setIsAccessExpired(true);
           }
-        })
-        .catch(err => console.error("Error fetching stream data:", err));
-    } else {
-      setStreamData(null);
-    }
+          if (data?.authRequired) {
+            setShowAccountGateModal(true);
+          }
+          return;
+        }
+
+        if (res.status === 503) {
+          const errData = await res.json().catch(() => null);
+          if (errData?.signingError) {
+            setStreamSigningError(true);
+            setStreamData(null);
+          }
+          return;
+        }
+
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null);
+        if (cancelled || !data?.stream) return;
+
+        setStreamSigningError(false);
+        setStreamData(data.stream);
+        if (data.accessDetails) {
+          setAccessDetails(data.accessDetails);
+        }
+
+        // Proactively renew signed playback tokens 5 minutes before expiration during long events
+        if (data.stream.playback_token_expires_at) {
+          const expMs = new Date(data.stream.playback_token_expires_at).getTime();
+          const remainingMs = expMs - Date.now();
+          if (Number.isFinite(remainingMs) && remainingMs > 0) {
+            const delayMs = Math.max(30_000, remainingMs > 360_000 ? remainingMs - 300_000 : Math.floor(remainingMs * 0.75));
+            refreshTimer = window.setTimeout(() => {
+              if (!cancelled) loadAuthorizedStream();
+            }, delayMs);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching stream data:", err);
+      }
+    };
+
+    loadAuthorizedStream();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
+    };
   }, [match?.id, effectiveHasAccess]);
 
   // Match-level event access duration window (applies to Free, Plan/Subscription, and PPV matches)
@@ -526,11 +571,19 @@ export function MatchDetail() {
   };
 
   const rawStreamContent = useMemo(() => {
+    if (streamSigningError) return '';
+    const provider = String(streamData?.stream_provider || match?.stream_provider || '').toLowerCase();
+    const muxPbId =
+      provider !== 'youtube' && provider !== 'custom'
+        ? (streamData?.mux_playback_id || streamData?.mux_asset_playback_id || null)
+        : null;
+
     return (
       streamData?.embed_code ||
       streamData?.video_url ||
       streamData?.playback_id ||
       streamData?.playbackId ||
+      muxPbId ||
       streamData?.description ||
       match?.playback_id ||
       match?.playbackId ||
@@ -538,14 +591,19 @@ export function MatchDetail() {
       ''
     );
   }, [
+    streamData?.stream_provider,
     streamData?.embed_code,
     streamData?.video_url,
     streamData?.playback_id,
     streamData?.playbackId,
+    streamData?.mux_playback_id,
+    streamData?.mux_asset_playback_id,
     streamData?.description,
+    match?.stream_provider,
     match?.playback_id,
     match?.playbackId,
     match?.description,
+    streamSigningError,
   ]);
 
   useEffect(() => {
@@ -942,17 +1000,37 @@ export function MatchDetail() {
             </div>
           )}
           {effectiveHasAccess ? (
-            <MatchStreamPlayer
-              rawStreamContent={rawStreamContent}
-              title={match.title}
-              thumbnail={match.thumbnail}
-              matchDate={formatDateSafe(match.date, 'MMM d, h:mm a')}
-              isLive={dynamicStatus === 'live' || match.status === 'live'}
-              isMobile={isMobile}
-              status={dynamicStatus}
-              isEnded={dynamicStatus === 'completed' || dynamicStatus === 'ended'}
-              isUnavailable={isRevoked}
-            />
+            (() => {
+              const activeMuxStatus = streamData?.mux_stream_status ?? match?.mux_stream_status ?? null;
+              const activeProvider = streamData?.stream_provider ?? match?.stream_provider ?? null;
+              const isVodAssetReady = Boolean(
+                ['completed', 'full_match', 'highlights'].includes(String(dynamicStatus || '').toLowerCase()) &&
+                String(activeMuxStatus || '').toLowerCase() !== 'active' &&
+                streamData?.mux_asset_playback_id
+              );
+              const playerIsLive = isVodAssetReady
+                ? false
+                : (String(activeMuxStatus || '').toLowerCase() === 'active' || dynamicStatus === 'live' || match.status === 'live');
+              return (
+                <MatchStreamPlayer
+                  rawStreamContent={rawStreamContent}
+                  title={match.title}
+                  thumbnail={match.thumbnail}
+                  matchDate={formatDateSafe(match.date, 'MMM d, h:mm a')}
+                  isLive={playerIsLive}
+                  isMobile={isMobile}
+                  status={dynamicStatus}
+                  isEnded={dynamicStatus === 'completed' || dynamicStatus === 'ended'}
+                  isUnavailable={isRevoked || streamSigningError}
+                  muxStreamStatus={activeMuxStatus}
+                  streamProvider={activeProvider}
+                  playbackToken={streamData?.playback_token || null}
+                  thumbnailToken={streamData?.thumbnail_token || null}
+                  storyboardToken={streamData?.storyboard_token || null}
+                  watermarkConfig={streamData?.watermark_config || null}
+                />
+              );
+            })()
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4 text-center overflow-hidden">
               {/* Preserved uploaded match poster */}

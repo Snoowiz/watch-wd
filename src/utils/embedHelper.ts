@@ -26,11 +26,27 @@ export function loadMuxPlayerIfNeeded(content: string) {
 /**
  * Normalizes and formats video stream content / embed code (YouTube, Mux, Vimeo, HLS, MP4, raw iframes).
  */
-export function formatStreamHtml(raw: string, options?: { autoplay?: boolean; isLive?: boolean }): string {
+export function formatStreamHtml(
+  raw: string,
+  options?: {
+    autoplay?: boolean;
+    isLive?: boolean;
+    playbackToken?: string | null;
+    thumbnailToken?: string | null;
+    storyboardToken?: string | null;
+  }
+): string {
   if (!raw) return '';
   let content = raw.trim();
   const autoplay = options?.autoplay ?? false;
   const isLive = options?.isLive;
+  const safeJwtToken = (t?: string | null) => {
+    if (!t || typeof t !== 'string') return '';
+    return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t.trim()) ? t.trim() : '';
+  };
+  const playbackToken = safeJwtToken(options?.playbackToken);
+  const thumbnailToken = safeJwtToken(options?.thumbnailToken);
+  const storyboardToken = safeJwtToken(options?.storyboardToken);
 
   // 1. YouTube URL detection
   const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
@@ -132,6 +148,22 @@ export function formatStreamHtml(raw: string, options?: { autoplay?: boolean; is
     }
   }
 
+  // Inject signed Mux tokens safely if provided (even when <mux-player> was synthesized above)
+  if (content.includes('<mux-player') && (playbackToken || thumbnailToken || storyboardToken)) {
+    content = content
+      .replace(/\splayback-token="[^"]*"/gi, '')
+      .replace(/\sthumbnail-token="[^"]*"/gi, '')
+      .replace(/\sstoryboard-token="[^"]*"/gi, '');
+    const tokenAttrs = [
+      playbackToken ? `playback-token="${playbackToken}"` : '',
+      thumbnailToken ? `thumbnail-token="${thumbnailToken}"` : '',
+      storyboardToken ? `storyboard-token="${storyboardToken}"` : '',
+    ].filter(Boolean).join(' ');
+    if (tokenAttrs) {
+      content = content.replace(/<mux-player\s/i, `<mux-player ${tokenAttrs} `);
+    }
+  }
+
   // Pre-load the script if Mux is referenced
   loadMuxPlayerIfNeeded(content);
   const sanitize = (html: string, config: any): string => {
@@ -174,6 +206,10 @@ export function formatStreamHtml(raw: string, options?: { autoplay?: boolean; is
       'title',
       'loading',
       'playback-id',
+      'playback-token',
+      'thumbnail-token',
+      'storyboard-token',
+      'drm-token',
       'stream-type',
       'metadata-video-title',
       'metadata-viewer-user-id',

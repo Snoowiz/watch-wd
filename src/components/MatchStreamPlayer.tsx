@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { PlayCircle, Loader2, RefreshCw, AlertCircle, Sparkles } from 'lucide-react';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
+import type { MuxWatermarkConfig } from '../store';
+import { WatermarkOverlay, parseWatermarkConfig } from './WatermarkOverlay';
 
 export interface MatchStreamPlayerProps {
   rawStreamContent: string;
@@ -12,6 +14,12 @@ export interface MatchStreamPlayerProps {
   status?: string;
   isEnded?: boolean;
   isUnavailable?: boolean;
+  muxStreamStatus?: string | null;
+  streamProvider?: string | null;
+  playbackToken?: string | null;
+  thumbnailToken?: string | null;
+  storyboardToken?: string | null;
+  watermarkConfig?: MuxWatermarkConfig | string | null;
 }
 
 export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
@@ -24,25 +32,86 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
   status,
   isEnded = false,
   isUnavailable = false,
+  muxStreamStatus = null,
+  streamProvider = null,
+  playbackToken = null,
+  thumbnailToken = null,
+  storyboardToken = null,
+  watermarkConfig = null,
 }: MatchStreamPlayerProps) {
   const [mobileVideoStarted, setMobileVideoStarted] = useState(false);
   const [isAssetProcessing, setIsAssetProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const retryTimerRef = useRef<any>(null);
+  const initialTokensRef = useRef<{
+    content: string;
+    playbackToken: string | null;
+    thumbnailToken: string | null;
+    storyboardToken: string | null;
+  }>({
+    content: '',
+    playbackToken: null,
+    thumbnailToken: null,
+    storyboardToken: null,
+  });
+
+  // Update initial token snapshot only when stream source changes or first token arrives
+  if (
+    initialTokensRef.current.content !== rawStreamContent ||
+    (!initialTokensRef.current.playbackToken && playbackToken)
+  ) {
+    initialTokensRef.current = {
+      content: rawStreamContent,
+      playbackToken,
+      thumbnailToken,
+      storyboardToken,
+    };
+  }
 
   // Pre-load Mux custom element script when content references Mux
   useEffect(() => {
     loadMuxPlayerIfNeeded(rawStreamContent);
   }, [rawStreamContent]);
 
+  // Push refreshed JWT playback tokens directly onto mounted <mux-player> without remounting playback DOM
+  useEffect(() => {
+    initialTokensRef.current = {
+      content: rawStreamContent,
+      playbackToken,
+      thumbnailToken,
+      storyboardToken,
+    };
+    const container = containerRef.current;
+    if (!container) return;
+    const muxEl = container.querySelector('mux-player') as any;
+    if (!muxEl) return;
+    if (playbackToken) {
+      muxEl.setAttribute('playback-token', playbackToken);
+      try { muxEl.playbackToken = playbackToken; } catch (_) {}
+    }
+    if (thumbnailToken) {
+      muxEl.setAttribute('thumbnail-token', thumbnailToken);
+      try { muxEl.thumbnailToken = thumbnailToken; } catch (_) {}
+    }
+    if (storyboardToken) {
+      muxEl.setAttribute('storyboard-token', storyboardToken);
+      try { muxEl.storyboardToken = storyboardToken; } catch (_) {}
+    }
+  }, [rawStreamContent, playbackToken, thumbnailToken, storyboardToken]);
+
+  const parsedWatermark = useMemo(() => parseWatermarkConfig(watermarkConfig), [watermarkConfig]);
+
   // Memoize sanitized HTML so string identity remains stable across parent renders
   const sanitizedStreamHtml = useMemo(() => {
     return formatStreamHtml(rawStreamContent, {
       autoplay: mobileVideoStarted,
       isLive,
+      playbackToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.playbackToken : playbackToken,
+      thumbnailToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.thumbnailToken : thumbnailToken,
+      storyboardToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.storyboardToken : storyboardToken,
     });
-  }, [rawStreamContent, mobileVideoStarted, isLive]);
+  }, [rawStreamContent, mobileVideoStarted, isLive, Boolean(playbackToken)]);
 
   // Generate a stable key for player DOM persistence
   const playerStableKey = useMemo(() => {
@@ -213,6 +282,11 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
         />
       )}
 
+      {/* Optional Non-Destructive Player Watermark Overlay (never doubles when Mux burn-in is active) */}
+      {!isAssetProcessing && (!isMobile || mobileVideoStarted) && (
+        <WatermarkOverlay config={parsedWatermark} />
+      )}
+
       {/* 3. Stable Processing Placeholder (Shown while Mux is actively transcoding newly uploaded assets) */}
       {isAssetProcessing && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md p-6 text-center animate-fade-in">
@@ -227,10 +301,22 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
             <Loader2 className="w-8 h-8 animate-spin" />
           </div>
           <h3 className="text-lg sm:text-xl font-bold text-white mb-2 tracking-tight">
-            Broadcast Stream Encoding in Progress
+            {muxStreamStatus === 'disabled'
+              ? 'Broadcast Stream Disabled'
+              : muxStreamStatus === 'error'
+              ? 'Stream Processing Error'
+              : ['created', 'idle', 'disconnected'].includes(String(muxStreamStatus || '').toLowerCase()) || isLive
+              ? 'Waiting for Live Broadcast'
+              : 'Broadcast Stream Encoding in Progress'}
           </h3>
           <p className="text-xs sm:text-sm text-slate-300 max-w-md mb-6 leading-relaxed">
-            Your match video has been uploaded and is currently being processed by Mux for high-definition, adaptive streaming. Playback will begin automatically once processing finishes.
+            {muxStreamStatus === 'disabled'
+              ? 'This live stream has been disabled by an administrator.'
+              : muxStreamStatus === 'error'
+              ? 'There was an error processing this video stream. Please check back shortly.'
+              : ['created', 'idle', 'disconnected'].includes(String(muxStreamStatus || '').toLowerCase()) || isLive
+              ? 'The Mux live broadcast channel is ready and waiting for the broadcaster encoder to go live. Playback will begin automatically once the stream starts.'
+              : 'Your match video has been uploaded and is currently being processed by Mux for high-definition, adaptive streaming. Playback will begin automatically once processing finishes.'}
           </p>
           <div className="flex items-center gap-3">
             <button

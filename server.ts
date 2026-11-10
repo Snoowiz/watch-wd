@@ -73,6 +73,10 @@ import {
   savePaymentGatewaySettings,
   getAdminPaymentSettings,
   getPublicPaymentSettings,
+  getMuxPlatformSettings,
+  saveMuxPlatformSettings,
+  getAdminMuxSettings,
+  normalizeWatermarkConfig,
   getSecureDocument,
   saveSecureDocument,
   isMaskedSecret,
@@ -80,6 +84,35 @@ import {
 } from "./db/persistentConfig.js";
 import { verifyFirebaseIdToken, getFirebaseAdmin } from "./db/firebaseAdmin.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
+import {
+  getMuxConfig,
+  createMuxLiveStream,
+  getMuxLiveStream,
+  deleteMuxLiveStream,
+  updateMuxLiveStreamWatermark,
+  addMuxLiveStreamPlaybackId,
+  deleteMuxLiveStreamPlaybackId,
+  addMuxAssetPlaybackId,
+  deleteMuxAssetPlaybackId,
+  createMuxSigningKey,
+  testMuxApiConnection,
+  buildWatermarkOverlayInput,
+  validateMuxWatermarkUrl,
+  normalizePlaybackPolicy,
+  signMuxPlaybackTokens,
+  verifyMuxWebhookSignature,
+  parseMuxWebhookEvent,
+  resolveMatchStreamResponse,
+  normalizeMuxStreamStatus,
+  extractMuxPlaybackId,
+  encryptStreamKey,
+  decryptStreamKey,
+} from "./muxService.js";
+import {
+  registerClubStreamingRoutes,
+  sanitizeChannelForClient,
+  verifyStepUpReauthToken,
+} from "./clubStreamingService.js";
 import {
   getClientIp,
   parseBrowserInfo,
@@ -102,6 +135,7 @@ dotenv.config();
 function sanitizeMatchForPublic(match: any) {
   if (!match) return match;
   const sanitized = { ...match };
+  const hasMuxStream = Boolean(match.mux_live_stream_id || match.muxLiveStreamId);
   delete sanitized.video_url;
   delete sanitized.videoUrl;
   delete sanitized.embed_code;
@@ -112,11 +146,48 @@ function sanitizeMatchForPublic(match: any) {
   delete sanitized.playbackId;
   delete sanitized.stream_url;
   delete sanitized.streamUrl;
+  delete sanitized.mux_stream_key;
+  delete sanitized.muxStreamKey;
+  delete sanitized.mux_live_stream_id;
+  delete sanitized.muxLiveStreamId;
+  delete sanitized.mux_asset_id;
+  delete sanitized.muxAssetId;
+  delete sanitized.mux_playback_id;
+  delete sanitized.muxPlaybackId;
+  delete sanitized.mux_asset_playback_id;
+  delete sanitized.muxAssetPlaybackId;
+  delete sanitized.mux_watermark_config;
+  delete sanitized.muxWatermarkConfig;
+  if (hasMuxStream) {
+    sanitized.has_mux_stream = true;
+  }
   if (sanitized.access === 'paid' || sanitized.access_type === 'ppv' || sanitized.access_type === 'plan') {
     delete sanitized.description;
-  } else if (typeof sanitized.description === 'string' && (sanitized.description.includes('<iframe') || sanitized.description.includes('<video'))) {
+  } else if (
+    typeof sanitized.description === 'string' &&
+    (sanitized.description.includes('<iframe') ||
+      sanitized.description.includes('<video') ||
+      sanitized.description.includes('<mux-'))
+  ) {
     delete sanitized.description;
   }
+  return sanitized;
+}
+
+function sanitizeMatchForStaffList(match: any) {
+  if (!match) return match;
+  const sanitized = { ...match };
+  const hasKey = Boolean(
+    match.mux_stream_key ||
+    match.muxStreamKey ||
+    match.mux_live_stream_id ||
+    match.muxLiveStreamId
+  );
+  delete sanitized.mux_stream_key;
+  delete sanitized.muxStreamKey;
+  delete sanitized.stream_key;
+  delete sanitized.streamKey;
+  sanitized.has_mux_stream_key = hasKey;
   return sanitized;
 }
 
@@ -241,7 +312,25 @@ export async function ensureIncrementalColumns() {
     "ALTER TABLE `plans` ADD COLUMN `club_share_percent` DECIMAL(5,2) DEFAULT 80.00",
     "ALTER TABLE `club_earnings` ADD COLUMN `plan_id` VARCHAR(100) DEFAULT NULL",
     "ALTER TABLE `matches` ADD COLUMN `stream_provider` VARCHAR(50) DEFAULT 'youtube'",
-    "ALTER TABLE `matches` ADD COLUMN `club_id` VARCHAR(100) DEFAULT NULL"
+    "ALTER TABLE `matches` ADD COLUMN `club_id` VARCHAR(100) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_live_stream_id` VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_playback_id` VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_stream_key` VARCHAR(255) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_stream_status` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_asset_id` VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_asset_playback_id` VARCHAR(150) DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_error_message` TEXT DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `mux_playback_policy` VARCHAR(20) DEFAULT 'public'",
+    "ALTER TABLE `matches` ADD COLUMN `mux_watermark_config` TEXT DEFAULT NULL",
+    "ALTER TABLE `matches` ADD INDEX `idx_matches_mux_live_stream` (`mux_live_stream_id`)",
+    "CREATE TABLE IF NOT EXISTS `mux_settings` (`key_name` VARCHAR(100) PRIMARY KEY, `value` JSON NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "CREATE TABLE IF NOT EXISTS `mux_watermarks` (`id` VARCHAR(64) PRIMARY KEY, `mime_type` VARCHAR(64) NOT NULL, `image_base64` LONGTEXT NOT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "ALTER TABLE `clubs` ADD COLUMN `mux_streaming_approved` TINYINT(1) DEFAULT 0",
+    "CREATE TABLE IF NOT EXISTS `club_streaming_channels` (`id` VARCHAR(100) PRIMARY KEY, `club_id` VARCHAR(100) NOT NULL UNIQUE, `mux_live_stream_id` VARCHAR(150) UNIQUE DEFAULT NULL, `mux_playback_id` VARCHAR(150) DEFAULT NULL, `mux_playback_policy` VARCHAR(20) DEFAULT 'public', `stream_key_encrypted` TEXT DEFAULT NULL, `stream_key_last4` VARCHAR(16) DEFAULT NULL, `rtmp_ingest_url` VARCHAR(500) DEFAULT 'rtmps://global-live.mux.com:443/app', `channel_status` VARCHAR(50) DEFAULT 'idle', `is_approved` TINYINT(1) DEFAULT 1, `is_suspended` TINYINT(1) DEFAULT 0, `is_test_mode` TINYINT(1) DEFAULT 0, `active_broadcast_session_id` VARCHAR(100) DEFAULT NULL, `active_match_id` VARCHAR(100) DEFAULT NULL, `max_session_minutes` INT DEFAULT 240, `key_rotated_at` DATETIME DEFAULT NULL, `last_connected_at` DATETIME DEFAULT NULL, `created_by` VARCHAR(100) DEFAULT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_csc_live_stream` (`mux_live_stream_id`), INDEX `idx_csc_active_match` (`active_match_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "CREATE TABLE IF NOT EXISTS `broadcast_sessions` (`id` VARCHAR(100) PRIMARY KEY, `channel_id` VARCHAR(100) NOT NULL, `club_id` VARCHAR(100) NOT NULL, `match_id` VARCHAR(100) NOT NULL, `sport` VARCHAR(100) DEFAULT 'football', `competition_id` VARCHAR(100) DEFAULT NULL, `mux_live_stream_id` VARCHAR(150) NOT NULL, `mux_asset_id` VARCHAR(150) DEFAULT NULL, `mux_asset_playback_id` VARCHAR(150) DEFAULT NULL, `mux_playback_policy` VARCHAR(20) DEFAULT 'public', `status` VARCHAR(50) DEFAULT 'assigned', `mux_stream_status` VARCHAR(50) DEFAULT 'idle', `mux_error_message` TEXT DEFAULT NULL, `assigned_by` VARCHAR(100) DEFAULT NULL, `assigned_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `started_at` DATETIME DEFAULT NULL, `disconnected_at` DATETIME DEFAULT NULL, `ended_at` DATETIME DEFAULT NULL, `duration_seconds` INT DEFAULT 0, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_bs_channel` (`channel_id`), INDEX `idx_bs_club` (`club_id`), INDEX `idx_bs_match` (`match_id`), INDEX `idx_bs_live_stream` (`mux_live_stream_id`), INDEX `idx_bs_asset` (`mux_asset_id`), INDEX `idx_bs_status` (`status`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "CREATE TABLE IF NOT EXISTS `mux_webhook_events` (`event_id` VARCHAR(150) PRIMARY KEY, `event_type` VARCHAR(100) NOT NULL, `mux_object_id` VARCHAR(150) DEFAULT NULL, `payload_created_at` VARCHAR(64) DEFAULT NULL, `processed_status` VARCHAR(50) DEFAULT 'processed', `processed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "CREATE TABLE IF NOT EXISTS `mux_channel_audit_logs` (`id` VARCHAR(100) PRIMARY KEY, `channel_id` VARCHAR(100) DEFAULT NULL, `club_id` VARCHAR(100) NOT NULL, `actor_user_id` VARCHAR(100) DEFAULT NULL, `actor_role` VARCHAR(50) DEFAULT NULL, `action` VARCHAR(80) NOT NULL, `details` JSON DEFAULT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX `idx_mcal_club` (`club_id`), INDEX `idx_mcal_channel` (`channel_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+    "INSERT IGNORE INTO `features` (`id`, `key_name`, `label`, `enabled`) VALUES ('5', 'partner_mux_streaming', 'Partner Club Live Streaming (Mux)', 1)"
   ];
 
   for (const sql of migrations) {
@@ -254,6 +343,9 @@ export async function ensureIncrementalColumns() {
 
   // Clear table column cache so MySQLAdapter immediately introspects new columns
   clearTableColumnsCache();
+
+  // Warm persistent Mux settings mirror/DB cache cleanly on startup
+  await getMuxPlatformSettings().catch(() => {});
 
   // Seed default onboarding requirements if empty
   try {
@@ -1447,11 +1539,11 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // Dedicated Admin Matches Endpoint (unfiltered, full catalog with revoke info)
+  // Dedicated Admin Matches Endpoint (unfiltered, full catalog with revoke info; stream keys omitted)
   app.get("/api/admin/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
       const snap = await db.collection("matches").orderBy("start_time", "desc").get();
-      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      res.json(snap.docs.map(d => sanitizeMatchForStaffList({ id: d.id, ...d.data() })));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -2050,15 +2142,34 @@ async function startServer() {
         return res.status(403).json({ error: "Access denied. Purchase or valid subscription required.", hasAccess: false });
       }
 
+      await getMuxPlatformSettings().catch(() => null);
+
+      const accessExpiresRaw = matchingPurchase
+        ? (matchingPurchase.access_expires_at || matchingPurchase.accessExpiresAt || null)
+        : null;
+      let tokenTtlSeconds = 7200;
+      if (accessExpiresRaw) {
+        const remainingSec = Math.floor((new Date(accessExpiresRaw).getTime() - Date.now()) / 1000);
+        if (Number.isFinite(remainingSec) && remainingSec > 0) {
+          tokenTtlSeconds = Math.max(300, Math.min(7200, remainingSec));
+        }
+      }
+
+      const resolvedStream = resolveMatchStreamResponse(match, {
+        expirationSeconds: tokenTtlSeconds,
+      });
+
+      if (resolvedStream.signing_error) {
+        return res.status(503).json({
+          error: resolvedStream.signing_error,
+          hasAccess: true,
+          signingError: true,
+        });
+      }
+
       return res.json({
         hasAccess: true,
-        stream: {
-          video_url: match.video_url || match.videoUrl || null,
-          embed_code: match.embed_code || match.embedCode || null,
-          stream_key: match.stream_key || match.streamKey || null,
-          playback_id: match.playback_id || match.playbackId || null,
-          description: match.description || null
-        },
+        stream: resolvedStream,
         accessDetails: matchingPurchase ? {
           access_starts_at: matchingPurchase.access_starts_at || matchingPurchase.accessStartsAt,
           access_expires_at: matchingPurchase.access_expires_at || matchingPurchase.accessExpiresAt,
@@ -2246,12 +2357,50 @@ async function startServer() {
     }
   });
 
-  app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
-    try {
-      const matchData = { ...req.body };
-      delete matchData.id;
-      
-      // Resolve valid match date (guaranteed never empty or 'Invalid Date', defaults to now)
+  const PROTECTED_MATCH_WRITE_FIELDS = [
+    'stream_key', 'streamKey', 'mux_stream_key', 'muxStreamKey',
+    'has_mux_stream_key', 'hasMuxStreamKey', 'has_mux_stream',
+    'mux_live_stream_id', 'muxLiveStreamId', 'mux_playback_id', 'muxPlaybackId',
+    'mux_stream_status', 'muxStreamStatus', 'mux_asset_id', 'muxAssetId',
+    'mux_asset_playback_id', 'muxAssetPlaybackId', 'mux_error_message', 'muxErrorMessage'
+  ];
+
+  const MATCH_FIELD_MAPPINGS: Record<string, string> = {
+    accessType: 'access_type',
+    ppvPrice: 'ppv_price',
+    requiredPlanId: 'required_plan_id',
+    clubId: 'club_id',
+    competitionId: 'competition_id',
+    homeTeam: 'home_team',
+    awayTeam: 'away_team',
+    playerPair1: 'player_pair_1',
+    playerPair2: 'player_pair_2',
+    publishStatus: 'publish_status',
+    liveCommenting: 'live_commenting',
+    commentAlignment: 'comment_alignment',
+    adSettings: 'ad_settings',
+    eventAccessEnabled: 'event_access_enabled',
+    eventAccessDuration: 'event_access_duration',
+    eventAccessDurationLabel: 'event_access_duration_label',
+    streamProvider: 'stream_provider',
+    muxPlaybackPolicy: 'mux_playback_policy',
+    muxWatermarkConfig: 'mux_watermark_config',
+  };
+
+  function sanitizeAndNormalizeMatchWrite(rawBody: any, isCreate: boolean): Record<string, any> {
+    const matchData: Record<string, any> = { ...(rawBody || {}) };
+    delete matchData.id;
+    for (const k of PROTECTED_MATCH_WRITE_FIELDS) {
+      delete matchData[k];
+    }
+
+    const hasDateInput =
+      matchData.date !== undefined ||
+      matchData.startTime !== undefined ||
+      matchData.start_time !== undefined ||
+      matchData.scheduledDate !== undefined;
+
+    if (isCreate || hasDateInput) {
       let resolvedDate = matchData.date || matchData.start_time || matchData.startTime || matchData.scheduledDate;
       if (!resolvedDate || resolvedDate === 'Invalid Date' || isNaN(new Date(resolvedDate).getTime())) {
         resolvedDate = new Date().toISOString();
@@ -2260,42 +2409,40 @@ async function startServer() {
       }
       matchData.date = resolvedDate;
       matchData.start_time = resolvedDate.slice(0, 19).replace('T', ' ');
-      delete matchData.startTime;
-      delete matchData.scheduledDate;
-      
-      // Map other common camelCase to snake_case
-      const fieldMappings: Record<string, string> = {
-        accessType: 'access_type',
-        ppvPrice: 'ppv_price',
-        requiredPlanId: 'required_plan_id',
-        clubId: 'club_id',
-        competitionId: 'competition_id',
-        homeTeam: 'home_team',
-        awayTeam: 'away_team',
-        playerPair1: 'player_pair_1',
-        playerPair2: 'player_pair_2',
-        publishStatus: 'publish_status',
-        liveCommenting: 'live_commenting',
-        commentAlignment: 'comment_alignment',
-        adSettings: 'ad_settings',
-        eventAccessEnabled: 'event_access_enabled',
-        eventAccessDuration: 'event_access_duration',
-        eventAccessDurationLabel: 'event_access_duration_label',
-        streamProvider: 'stream_provider'
-      };
-      
-      for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
-        if (matchData[camelKey] !== undefined) {
-          matchData[snakeKey] = matchData[camelKey];
-          delete matchData[camelKey];
-        }
+    }
+    delete matchData.startTime;
+    delete matchData.scheduledDate;
+
+    for (const [camelKey, snakeKey] of Object.entries(MATCH_FIELD_MAPPINGS)) {
+      if (matchData[camelKey] !== undefined) {
+        matchData[snakeKey] = matchData[camelKey];
+        delete matchData[camelKey];
       }
-      
-      // Handle duration - ensure it's a number
-      if (matchData.duration !== undefined) {
-        matchData.duration = Number(matchData.duration) || 120;
+    }
+
+    if (matchData.duration !== undefined) {
+      matchData.duration = Number(matchData.duration) || 120;
+    }
+
+    if (matchData.mux_playback_policy !== undefined) {
+      matchData.mux_playback_policy = normalizePlaybackPolicy(matchData.mux_playback_policy);
+    }
+
+    if (matchData.mux_watermark_config !== undefined) {
+      if (matchData.mux_watermark_config === null || matchData.mux_watermark_config === '') {
+        matchData.mux_watermark_config = null;
+      } else {
+        matchData.mux_watermark_config = JSON.stringify(normalizeWatermarkConfig(matchData.mux_watermark_config));
       }
-      
+    }
+
+    return matchData;
+  }
+
+  app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const matchData = sanitizeAndNormalizeMatchWrite(req.body, true);
+
       const docRef = await db.collection("matches").add({ ...matchData, operator_id: req.user.id, created_at: new Date().toISOString() });
       
       // Invalidate cache immediately on update
@@ -2321,55 +2468,7 @@ async function startServer() {
 
   app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
-      const matchData = { ...req.body };
-      delete matchData.id;
-      
-      // Resolve valid match date if date/startTime/scheduledDate is provided
-      if (matchData.date !== undefined || matchData.startTime !== undefined || matchData.start_time !== undefined || matchData.scheduledDate !== undefined) {
-        let resolvedDate = matchData.date || matchData.start_time || matchData.startTime || matchData.scheduledDate;
-        if (!resolvedDate || resolvedDate === 'Invalid Date' || isNaN(new Date(resolvedDate).getTime())) {
-          resolvedDate = new Date().toISOString();
-        } else {
-          resolvedDate = new Date(resolvedDate).toISOString();
-        }
-        matchData.date = resolvedDate;
-        matchData.start_time = resolvedDate.slice(0, 19).replace('T', ' ');
-      }
-      delete matchData.startTime;
-      delete matchData.scheduledDate;
-      
-      // Map other common camelCase to snake_case
-      const fieldMappings: Record<string, string> = {
-        accessType: 'access_type',
-        ppvPrice: 'ppv_price',
-        requiredPlanId: 'required_plan_id',
-        clubId: 'club_id',
-        competitionId: 'competition_id',
-        homeTeam: 'home_team',
-        awayTeam: 'away_team',
-        playerPair1: 'player_pair_1',
-        playerPair2: 'player_pair_2',
-        publishStatus: 'publish_status',
-        liveCommenting: 'live_commenting',
-        commentAlignment: 'comment_alignment',
-        adSettings: 'ad_settings',
-        eventAccessEnabled: 'event_access_enabled',
-        eventAccessDuration: 'event_access_duration',
-        eventAccessDurationLabel: 'event_access_duration_label',
-        streamProvider: 'stream_provider'
-      };
-      
-      for (const [camelKey, snakeKey] of Object.entries(fieldMappings)) {
-        if (matchData[camelKey] !== undefined) {
-          matchData[snakeKey] = matchData[camelKey];
-          delete matchData[camelKey];
-        }
-      }
-      
-      // Handle duration - ensure it's a number
-      if (matchData.duration !== undefined) {
-        matchData.duration = Number(matchData.duration) || 120;
-      }
+      const matchData = sanitizeAndNormalizeMatchWrite(req.body, false);
 
       await db.collection("matches").doc(req.params.id).update(matchData);
 
@@ -2408,15 +2507,687 @@ async function startServer() {
   });
 
   // DELETE MATCH: Preserves all financial records (club_earnings, payouts, transactions, purchases)
+  // Also safely cleans up any linked Mux Live Stream and non-financial bookmarks so no orphaned references remain.
   app.delete("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
-      // NOTE: This operation intentionally deletes ONLY the matches catalog row.
+      const matchId = req.params.id;
+      const existingDoc = await db.collection("matches").doc(matchId).get();
+      const existingMatch = existingDoc.exists ? existingDoc.data() : null;
+      const muxStreamId = existingMatch?.mux_live_stream_id || existingMatch?.muxLiveStreamId || null;
+
+      if (muxStreamId) {
+        // Protect club-owned reusable channels! Only delete a Mux Live Stream if it was provisioned exclusively for this Event.
+        const ownedByClubChannel = await query<any>(
+          "SELECT `id` FROM `club_streaming_channels` WHERE `mux_live_stream_id` = ? LIMIT 1",
+          [String(muxStreamId)]
+        ).catch(() => []);
+
+        if (ownedByClubChannel && ownedByClubChannel.length > 0) {
+          await execute(
+            "UPDATE `broadcast_sessions` SET `status` = 'cancelled', `ended_at` = COALESCE(`ended_at`, NOW()) WHERE `match_id` = ? AND `status` IN ('assigned', 'live', 'disconnected', 'ending')",
+            [String(matchId)]
+          ).catch(() => {});
+          await execute(
+            "UPDATE `club_streaming_channels` SET `active_broadcast_session_id` = NULL, `active_match_id` = NULL WHERE `active_match_id` = ?",
+            [String(matchId)]
+          ).catch(() => {});
+        } else if (getMuxConfig().isConfigured) {
+          try {
+            await deleteMuxLiveStream(String(muxStreamId));
+          } catch (muxErr: any) {
+            // Do not block WatchWDS match deletion if the stream was already deleted in Mux or unreachable
+            console.warn(`[Mux] Could not delete live stream ${muxStreamId} during event deletion:`, muxErr?.message);
+          }
+        }
+      }
+
+      // Remove non-financial saved_matches bookmarks for this match
+      await execute("DELETE FROM `saved_matches` WHERE `match_id` = ?", [String(matchId)]).catch(() => {});
+
+      // NOTE: This operation intentionally deletes ONLY the matches catalog row and non-financial bookmarks.
       // All historical financial records (club_earnings, club_balances, payouts, transactions, purchases)
       // are preserved in their respective tables to guarantee accounting integrity and auditability.
-      await db.collection("matches").doc(req.params.id).delete();
+      await db.collection("matches").doc(matchId).delete();
       cacheEngine.invalidateCollection("matches");
       res.json({ success: true, message: "Match removed. Historical financial records preserved." });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // === PARTNER CLUB REUSABLE MUX CHANNELS & SESSIONS ===
+  const { processClubChannelWebhookEvent } = registerClubStreamingRoutes({
+    app,
+    db,
+    query,
+    execute,
+    cacheEngine,
+    authenticate,
+    requireRole,
+    JWT_SECRET,
+    getRequestBaseUrl,
+  });
+
+  // === MUX LIVE STREAM MANAGEMENT ROUTES ===
+  const canManageOrBroadcastMatch = (user: any, match: any): boolean => {
+    if (!user || !match) return false;
+    const role = String(user.role || '').toLowerCase();
+    if (role === 'admin' || role === 'operator') return true;
+    if (role === 'partner') {
+      const userClubId = user.club_id ? String(user.club_id).trim() : '';
+      const matchClubId = match.club_id || match.clubId ? String(match.club_id || match.clubId).trim() : '';
+      return Boolean(userClubId && matchClubId && userClubId === matchClubId);
+    }
+    return false;
+  };
+
+  const WATERMARK_DIR = path.join(process.cwd(), 'data', 'mux_watermarks');
+
+  const resolveWatermarkPublicUrl = (req: any, rawUrl?: string | null) => {
+    const trimmed = String(rawUrl || '').trim();
+    if (!trimmed) {
+      return { publicUrl: '', validation: { valid: false, error: 'Watermark image URL is empty.' } };
+    }
+    const base = (process.env.APP_URL || getRequestBaseUrl(req) || '').replace(/\/+$/, '');
+    const publicUrl = trimmed.startsWith('/') && base ? `${base}${trimmed}` : trimmed;
+    return { publicUrl, validation: validateMuxWatermarkUrl(publicUrl) };
+  };
+
+  app.post("/api/admin/mux/watermark-upload", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const dataUrl = String(req.body?.dataUrl || '').trim();
+      const matchDataUri = dataUrl.match(/^data:(image\/(?:png|jpeg|jpg));base64,([A-Za-z0-9+/=\s]+)$/i);
+      if (!matchDataUri) {
+        return res.status(400).json({
+          error: "Only PNG or JPG/JPEG image uploads are supported for Mux watermarks (SVG/WebP are not supported by Mux burn-in).",
+        });
+      }
+
+      const rawMime = matchDataUri[1].toLowerCase();
+      const mimeType = rawMime === 'image/jpg' ? 'image/jpeg' : rawMime;
+      const cleanBase64 = matchDataUri[2].replace(/\s+/g, '');
+      const buf = Buffer.from(cleanBase64, 'base64');
+
+      if (buf.length === 0 || buf.length > 2.5 * 1024 * 1024) {
+        return res.status(400).json({ error: "Watermark image must be under 2.5MB." });
+      }
+
+      const isPngSig = buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+      const isJpgSig = buf.length >= 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+      if ((mimeType === 'image/png' && !isPngSig) || (mimeType === 'image/jpeg' && !isJpgSig)) {
+        return res.status(400).json({ error: "Uploaded image file signature does not match valid PNG or JPEG format." });
+      }
+
+      const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+      const id = 'wm_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
+
+      try {
+        await execute(
+          "INSERT INTO `mux_watermarks` (`id`, `mime_type`, `image_base64`) VALUES (?, ?, ?)",
+          [id, mimeType, cleanBase64]
+        );
+      } catch (dbErr: any) {
+        console.warn("[Mux] mux_watermarks DB insert fallback to disk:", dbErr?.message);
+      }
+
+      try {
+        if (!fs.existsSync(WATERMARK_DIR)) fs.mkdirSync(WATERMARK_DIR, { recursive: true });
+        fs.writeFileSync(path.join(WATERMARK_DIR, `${id}.${ext}`), buf);
+      } catch (fsErr: any) {
+        console.warn("[Mux] Watermark disk mirror warning:", fsErr?.message);
+      }
+
+      const relPath = `/api/mux/watermarks/${id}.${ext}`;
+      const { publicUrl, validation } = resolveWatermarkPublicUrl(req, relPath);
+      return res.status(201).json({
+        success: true,
+        id,
+        path: relPath,
+        url: publicUrl,
+        mimeType,
+        isLocalhost: Boolean(validation.isLocalhost),
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/mux/watermarks/:filename", async (req, res) => {
+    try {
+      const m = String(req.params.filename || '').match(/^(wm_[a-zA-Z0-9_-]+)\.(png|jpe?g)$/i);
+      if (!m) {
+        return res.status(404).send("Not found");
+      }
+      const id = m[1];
+      const ext = m[2].toLowerCase() === 'png' ? 'png' : 'jpg';
+
+      let mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+      let buf: Buffer | null = null;
+
+      try {
+        const rows = await query<any>(
+          "SELECT `mime_type`, `image_base64` FROM `mux_watermarks` WHERE `id` = ? LIMIT 1",
+          [id]
+        );
+        if (rows && rows[0]?.image_base64) {
+          mimeType = rows[0].mime_type || mimeType;
+          buf = Buffer.from(rows[0].image_base64, 'base64');
+        }
+      } catch (_) {}
+
+      if (!buf) {
+        const diskPath = path.join(WATERMARK_DIR, `${id}.${ext}`);
+        if (fs.existsSync(diskPath)) {
+          buf = fs.readFileSync(diskPath);
+        }
+      }
+
+      if (!buf) {
+        return res.status(404).send("Watermark not found");
+      }
+
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      return res.send(buf);
+    } catch (e: any) {
+      return res.status(500).send(e.message);
+    }
+  });
+
+  app.get("/api/admin/mux/settings", authenticate, requireRole(["admin", "operator"]), async (_req, res) => {
+    try {
+      const adminSettings = await getAdminMuxSettings();
+      res.setHeader("Cache-Control", "no-store, private");
+      return res.json(adminSettings);
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/admin/mux/settings", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      await saveMuxPlatformSettings(req.body || {});
+      const refreshed = await getAdminMuxSettings();
+      res.setHeader("Cache-Control", "no-store, private");
+      return res.json(refreshed);
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/mux/test", authenticate, requireRole(["admin", "operator"]), async (_req, res) => {
+    try {
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+      if (!cfg.isConfigured) {
+        return res.status(400).json({ error: "Mux API Token ID and Secret are not configured." });
+      }
+      const result = await testMuxApiConnection();
+      return res.json({
+        success: true,
+        ...result,
+        signingConfigured: cfg.isSigningConfigured,
+        webhookConfigured: cfg.isWebhookConfigured,
+      });
+    } catch (e: any) {
+      return res.status(502).json({ error: e?.message || "Mux connection test failed" });
+    }
+  });
+
+  app.post("/api/admin/mux/signing-key", authenticate, requireRole(["admin", "operator"]), async (_req, res) => {
+    try {
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+      if (!cfg.isConfigured) {
+        return res.status(400).json({
+          error: "Configure Mux API Token ID and Token Secret first before generating a Signing Key.",
+        });
+      }
+
+      const generated = await createMuxSigningKey();
+      await saveMuxPlatformSettings({
+        signingKeyId: generated.id,
+        signingPrivateKey: generated.privateKey,
+      });
+
+      const refreshed = await getAdminMuxSettings();
+      res.setHeader("Cache-Control", "no-store, private");
+      return res.status(201).json({
+        success: true,
+        signingKeyId: generated.id,
+        settings: refreshed,
+      });
+    } catch (e: any) {
+      return res.status(502).json({ error: e?.message || "Failed to generate Mux Signing Key" });
+    }
+  });
+
+  app.get("/api/admin/mux/status", authenticate, requireRole(["admin", "operator"]), async (_req, res) => {
+    await getMuxPlatformSettings().catch(() => null);
+    const cfg = getMuxConfig();
+    res.setHeader("Cache-Control", "no-store, private");
+    res.json({
+      configured: cfg.isConfigured,
+      webhookConfigured: cfg.isWebhookConfigured,
+      signingConfigured: cfg.isSigningConfigured,
+      rtmpIngestUrl: cfg.rtmpIngestUrl,
+      defaultPlaybackPolicy: cfg.defaultPlaybackPolicy,
+      requireSignedForPaidEvents: cfg.requireSignedForPaidEvents,
+      defaultWatermark: cfg.defaultWatermark,
+    });
+  });
+
+  app.post("/api/matches/:id/mux/live-stream", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const matchId = req.params.id;
+      const matchDoc = await db.collection("matches").doc(matchId).get();
+      if (!matchDoc.exists) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      const match = matchDoc.data();
+      const existingStreamId = match?.mux_live_stream_id || match?.muxLiveStreamId;
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+
+      if (existingStreamId) {
+        return res.status(409).json({
+          error: "A Mux Live Stream is already provisioned for this Event.",
+          alreadyExists: true,
+          mux_live_stream_id: existingStreamId,
+          mux_playback_id: match?.mux_playback_id || match?.muxPlaybackId || null,
+          mux_stream_status: match?.mux_stream_status || match?.muxStreamStatus || 'idle',
+          mux_playback_policy: normalizePlaybackPolicy(match?.mux_playback_policy || match?.muxPlaybackPolicy),
+          rtmp_ingest_url: cfg.rtmpIngestUrl,
+          has_mux_stream_key: Boolean(match?.mux_stream_key || match?.muxStreamKey || existingStreamId),
+        });
+      }
+
+      if (!cfg.isConfigured) {
+        return res.status(400).json({
+          error: "Mux server credentials (MUX_TOKEN_ID / MUX_TOKEN_SECRET) are not configured.",
+        });
+      }
+
+      const isPaidEvent = match?.access === 'paid' || match?.access_type === 'ppv' || match?.access_type === 'plan';
+      const requestedPolicyRaw = req.body?.playbackPolicy ?? match?.mux_playback_policy ?? match?.muxPlaybackPolicy;
+      const playbackPolicy = requestedPolicyRaw !== undefined && requestedPolicyRaw !== null && requestedPolicyRaw !== ''
+        ? normalizePlaybackPolicy(requestedPolicyRaw)
+        : (cfg.requireSignedForPaidEvents && isPaidEvent ? 'signed' : cfg.defaultPlaybackPolicy);
+
+      if (playbackPolicy === 'signed' && !cfg.isSigningConfigured) {
+        return res.status(400).json({
+          error: "Signed Playback requires Mux Signing Keys (MUX_SIGNING_KEY_ID / MUX_SIGNING_PRIVATE_KEY). Configure signing keys in Admin Settings > Mux Streaming first.",
+        });
+      }
+
+      const incomingWm = req.body?.watermarkConfig !== undefined
+        ? req.body.watermarkConfig
+        : (match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null);
+      const normalizedWm = incomingWm ? normalizeWatermarkConfig(incomingWm) : null;
+
+      let overlayConfig: { url: string; overlay_settings: any } | null = null;
+      if (normalizedWm && normalizedWm.enabled && normalizedWm.mode === 'mux_burn_in') {
+        const { publicUrl, validation } = resolveWatermarkPublicUrl(req, normalizedWm.url);
+        if (!validation.valid) {
+          return res.status(400).json({ error: validation.error || "Invalid watermark image URL for Mux burn-in." });
+        }
+        if (validation.isLocalhost) {
+          return res.status(400).json({
+            error: "Mux cloud servers cannot fetch localhost watermark URLs for burn-in. Use a public HTTPS image URL/APP_URL or switch watermark mode to Player Overlay.",
+          });
+        }
+        normalizedWm.url = publicUrl;
+        overlayConfig = buildWatermarkOverlayInput(normalizedWm, publicUrl);
+      }
+
+      const created = await createMuxLiveStream({
+        matchId: String(matchId),
+        playbackPolicy,
+        overlayConfig,
+      });
+
+      await db.collection("matches").doc(matchId).update({
+        stream_provider: "mux",
+        mux_live_stream_id: created.liveStreamId,
+        mux_playback_id: created.playbackId,
+        mux_stream_key: encryptStreamKey(created.streamKey),
+        mux_stream_status: created.status,
+        mux_playback_policy: created.playbackPolicy,
+        mux_watermark_config: normalizedWm ? JSON.stringify(normalizedWm) : null,
+        mux_error_message: null,
+      });
+
+      cacheEngine.invalidateCollection("matches");
+
+      return res.status(201).json({
+        success: true,
+        matchId: String(matchId),
+        mux_live_stream_id: created.liveStreamId,
+        mux_playback_id: created.playbackId,
+        mux_stream_status: created.status,
+        mux_playback_policy: created.playbackPolicy,
+        mux_watermark_config: normalizedWm,
+        rtmp_ingest_url: cfg.rtmpIngestUrl,
+        has_mux_stream_key: Boolean(created.streamKey),
+      });
+    } catch (e: any) {
+      console.error("[Mux] Failed to create live stream:", e?.message);
+      return res.status(502).json({ error: e?.message || "Failed to create Mux Live Stream" });
+    }
+  });
+
+  app.patch("/api/matches/:id/mux/watermark", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const matchId = req.params.id;
+      const matchDoc = await db.collection("matches").doc(matchId).get();
+      if (!matchDoc.exists) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      const match = matchDoc.data();
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+
+      const wm = normalizeWatermarkConfig(req.body?.watermarkConfig ?? req.body);
+      const liveStreamId = match?.mux_live_stream_id || match?.muxLiveStreamId || null;
+      const currentPolicy = normalizePlaybackPolicy(match?.mux_playback_policy || match?.muxPlaybackPolicy);
+
+      let overlayConfig: { url: string; overlay_settings: any } | null = null;
+      if (wm.enabled && wm.mode === 'mux_burn_in') {
+        const { publicUrl, validation } = resolveWatermarkPublicUrl(req, wm.url);
+        if (!validation.valid) {
+          return res.status(400).json({ error: validation.error || "Invalid watermark image URL for Mux burn-in." });
+        }
+        if (validation.isLocalhost && liveStreamId) {
+          return res.status(400).json({
+            error: "Mux cloud servers cannot fetch localhost watermark URLs for burn-in. Use a public HTTPS image URL/APP_URL or switch watermark mode to Player Overlay.",
+          });
+        }
+        wm.url = publicUrl;
+        overlayConfig = buildWatermarkOverlayInput(wm, publicUrl);
+      }
+
+      let muxUpdated = false;
+      if (liveStreamId && cfg.isConfigured) {
+        await updateMuxLiveStreamWatermark(String(liveStreamId), {
+          playbackPolicy: currentPolicy,
+          overlayConfig: wm.enabled && wm.mode === 'mux_burn_in' ? overlayConfig : null,
+        });
+        muxUpdated = true;
+      }
+
+      await db.collection("matches").doc(matchId).update({
+        mux_watermark_config: JSON.stringify(wm),
+      });
+      cacheEngine.invalidateCollection("matches");
+
+      return res.json({
+        success: true,
+        matchId: String(matchId),
+        mux_watermark_config: wm,
+        muxUpdated,
+        note: muxUpdated && wm.enabled && wm.mode === 'mux_burn_in'
+          ? "Updated Mux new_asset_settings for future recorded broadcasts/assets."
+          : undefined,
+      });
+    } catch (e: any) {
+      return res.status(502).json({ error: e?.message || "Failed to update watermark configuration" });
+    }
+  });
+
+  app.post("/api/matches/:id/mux/playback-policy", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+    try {
+      const matchId = req.params.id;
+      const targetPolicy = normalizePlaybackPolicy(req.body?.playbackPolicy);
+      const matchDoc = await db.collection("matches").doc(matchId).get();
+      if (!matchDoc.exists) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      const match = matchDoc.data();
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+
+      if (targetPolicy === 'signed' && !cfg.isSigningConfigured) {
+        return res.status(400).json({
+          error: "Mux Signing Keys (MUX_SIGNING_KEY_ID / MUX_SIGNING_PRIVATE_KEY) must be configured before enabling Signed Playback.",
+        });
+      }
+
+      const liveStreamId = match?.mux_live_stream_id || match?.muxLiveStreamId || null;
+      const assetId = match?.mux_asset_id || match?.muxAssetId || null;
+      let nextLivePbId = match?.mux_playback_id || match?.muxPlaybackId || null;
+      let nextAssetPbId = match?.mux_asset_playback_id || match?.muxAssetPlaybackId || null;
+
+      if (liveStreamId && cfg.isConfigured) {
+        const remote = await getMuxLiveStream(String(liveStreamId));
+        const existingList = Array.isArray(remote.playback_ids) ? remote.playback_ids : [];
+        let matchingPb = existingList.find((p) => p?.policy === targetPolicy)?.id || null;
+        if (!matchingPb) {
+          const createdPb = await addMuxLiveStreamPlaybackId(String(liveStreamId), targetPolicy);
+          matchingPb = createdPb.id;
+        }
+        nextLivePbId = matchingPb;
+        for (const oldPb of existingList) {
+          if (oldPb?.id && oldPb.policy !== targetPolicy) {
+            await deleteMuxLiveStreamPlaybackId(String(liveStreamId), oldPb.id).catch(() => {});
+          }
+        }
+      }
+
+      if (assetId && cfg.isConfigured) {
+        try {
+          const createdAssetPb = await addMuxAssetPlaybackId(String(assetId), targetPolicy);
+          const prevAssetPb = nextAssetPbId;
+          nextAssetPbId = createdAssetPb.id;
+          if (prevAssetPb && prevAssetPb !== nextAssetPbId) {
+            await deleteMuxAssetPlaybackId(String(assetId), prevAssetPb).catch(() => {});
+          }
+        } catch (assetErr: any) {
+          console.warn("[Mux] Could not add asset playback ID while switching policy:", assetErr?.message);
+        }
+      }
+
+      await db.collection("matches").doc(matchId).update({
+        mux_playback_policy: targetPolicy,
+        ...(nextLivePbId ? { mux_playback_id: nextLivePbId } : {}),
+        ...(nextAssetPbId ? { mux_asset_playback_id: nextAssetPbId } : {}),
+      });
+      cacheEngine.invalidateCollection("matches");
+
+      return res.json({
+        success: true,
+        matchId: String(matchId),
+        mux_playback_policy: targetPolicy,
+        mux_playback_id: nextLivePbId,
+        mux_asset_playback_id: nextAssetPbId,
+      });
+    } catch (e: any) {
+      return res.status(502).json({ error: e?.message || "Failed to update Mux playback policy" });
+    }
+  });
+
+  app.get("/api/matches/:id/mux/status", authenticate, async (req: any, res) => {
+    try {
+      const matchId = req.params.id;
+      const matchDoc = await db.collection("matches").doc(matchId).get();
+      if (!matchDoc.exists) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      const match = matchDoc.data();
+      if (!canManageOrBroadcastMatch(req.user, match)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+      const liveStreamId = match?.mux_live_stream_id || match?.muxLiveStreamId || null;
+      const playbackPolicy = normalizePlaybackPolicy(match?.mux_playback_policy || match?.muxPlaybackPolicy);
+      let status = match?.mux_stream_status || match?.muxStreamStatus || null;
+      let playbackId = match?.mux_playback_id || match?.muxPlaybackId || null;
+      let assetId = match?.mux_asset_id || match?.muxAssetId || null;
+      const assetPlaybackId = match?.mux_asset_playback_id || match?.muxAssetPlaybackId || null;
+      let errorMessage = match?.mux_error_message || match?.muxErrorMessage || null;
+
+      // Sync latest state directly from Mux when configured and requested (?sync=1 or default)
+      if (liveStreamId && cfg.isConfigured && req.query.sync !== '0') {
+        try {
+          const remote = await getMuxLiveStream(String(liveStreamId));
+          const normalized = normalizeMuxStreamStatus(remote.status);
+          const remotePbId = extractMuxPlaybackId(remote.playback_ids, playbackPolicy) || playbackId;
+          const remoteAssetId = remote.active_asset_id || assetId;
+          const updates: Record<string, any> = {};
+          if (normalized && normalized !== status) {
+            updates.mux_stream_status = normalized;
+            status = normalized;
+          }
+          if (remotePbId && remotePbId !== playbackId) {
+            updates.mux_playback_id = remotePbId;
+            playbackId = remotePbId;
+          }
+          if (remoteAssetId && remoteAssetId !== assetId) {
+            updates.mux_asset_id = remoteAssetId;
+            assetId = remoteAssetId;
+          }
+          if (remote.stream_key && !match?.mux_stream_key && !match?.muxStreamKey) {
+            const isClubOwned = await query<any>(
+              "SELECT `id` FROM `club_streaming_channels` WHERE `mux_live_stream_id` = ? LIMIT 1",
+              [String(liveStreamId)]
+            ).catch(() => []);
+            if (!isClubOwned || isClubOwned.length === 0) {
+              updates.mux_stream_key = encryptStreamKey(remote.stream_key);
+            }
+          }
+          if (Object.keys(updates).length > 0) {
+            await db.collection("matches").doc(matchId).update(updates);
+            cacheEngine.invalidateCollection("matches");
+          }
+        } catch (syncErr: any) {
+          console.warn(`[Mux] Status sync failed for stream ${liveStreamId}:`, syncErr?.message);
+        }
+      }
+
+      const rawWm = match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null;
+      const watermarkConfig = rawWm ? normalizeWatermarkConfig(rawWm) : null;
+
+      let previewPlaybackToken: string | null = null;
+      const userRole = String(req.user?.role || '').toLowerCase();
+      if (
+        req.query.previewToken === '1' &&
+        (userRole === 'admin' || userRole === 'operator') &&
+        playbackPolicy === 'signed' &&
+        cfg.isSigningConfigured
+      ) {
+        const previewTargetPb = (status !== 'active' && ['completed', 'full_match', 'highlights'].includes(String(match?.status || '').toLowerCase()) && assetPlaybackId)
+          ? assetPlaybackId
+          : (playbackId || assetPlaybackId);
+        if (previewTargetPb) {
+          try {
+            previewPlaybackToken = signMuxPlaybackTokens(previewTargetPb, { expirationSeconds: 900 }).playback_token;
+          } catch (_) {}
+        }
+      }
+
+      res.setHeader("Cache-Control", "no-store, private");
+      return res.json({
+        matchId: String(matchId),
+        mux_live_stream_id: liveStreamId,
+        mux_playback_id: playbackId,
+        mux_asset_id: assetId,
+        mux_asset_playback_id: assetPlaybackId,
+        mux_stream_status: status,
+        mux_playback_policy: playbackPolicy,
+        mux_watermark_config: watermarkConfig,
+        mux_error_message: errorMessage,
+        rtmp_ingest_url: cfg.rtmpIngestUrl,
+        signing_configured: cfg.isSigningConfigured,
+        has_mux_stream_key: Boolean(match?.mux_stream_key || match?.muxStreamKey || liveStreamId),
+        ...(previewPlaybackToken ? { preview_playback_token: previewPlaybackToken } : {}),
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Strictly restricted broadcast credentials endpoint (Admin, Operator, or Re-authenticated Owning Partner Club ONLY)
+  app.get("/api/matches/:id/mux/credentials", authenticate, async (req: any, res) => {
+    try {
+      const matchId = req.params.id;
+      const matchDoc = await db.collection("matches").doc(matchId).get();
+      if (!matchDoc.exists) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+      const match = matchDoc.data();
+      if (!canManageOrBroadcastMatch(req.user, match)) {
+        return res.status(403).json({ error: "Forbidden: Only authorized admins or owning club broadcasters may access stream credentials." });
+      }
+
+      const role = String(req.user?.role || '').toLowerCase();
+      if (role === 'partner') {
+        const reauth = verifyStepUpReauthToken(req.headers['x-reauth-token'], req.user, JWT_SECRET, req.user.club_id);
+        if (!reauth.valid) {
+          return res.status(401).json({ error: reauth.error, reauthRequired: true });
+        }
+        const clubRows = await query<any>(
+          "SELECT `is_active`, `mux_streaming_approved` FROM `clubs` WHERE `id` = ? LIMIT 1",
+          [String(req.user.club_id)]
+        ).catch(() => []);
+        if (!clubRows[0] || !Boolean(Number(clubRows[0].is_active ?? 1)) || !Boolean(Number(clubRows[0].mux_streaming_approved ?? 0))) {
+          return res.status(403).json({ error: "Streaming permission is not approved or disabled for this club." });
+        }
+      }
+
+      const liveStreamId = match?.mux_live_stream_id || match?.muxLiveStreamId || null;
+      if (!liveStreamId) {
+        return res.status(404).json({ error: "No Mux Live Stream is provisioned for this Event." });
+      }
+
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+      let status = match?.mux_stream_status || match?.muxStreamStatus || 'idle';
+      let streamKey: string | null = null;
+
+      // Prefer encrypted reusable club channel key if liveStreamId belongs to club_streaming_channels
+      const channelRows = await query<any>(
+        "SELECT * FROM `club_streaming_channels` WHERE `mux_live_stream_id` = ? LIMIT 1",
+        [String(liveStreamId)]
+      ).catch(() => []);
+      if (channelRows && channelRows[0]) {
+        if (Boolean(Number(channelRows[0].is_suspended ?? 0)) || !Boolean(Number(channelRows[0].is_approved ?? 1))) {
+          return res.status(403).json({ error: "This club streaming channel is currently suspended." });
+        }
+        streamKey = decryptStreamKey(channelRows[0].stream_key_encrypted || '') || null;
+        status = channelRows[0].channel_status || status;
+      }
+
+      if (!streamKey) {
+        const storedMatchKey = match?.mux_stream_key || match?.muxStreamKey || null;
+        streamKey = storedMatchKey ? decryptStreamKey(String(storedMatchKey)) : null;
+      }
+
+      if (!streamKey && cfg.isConfigured) {
+        const remote = await getMuxLiveStream(String(liveStreamId));
+        streamKey = remote.stream_key || null;
+        status = normalizeMuxStreamStatus(remote.status || status);
+        if (streamKey) {
+          await db.collection("matches").doc(matchId).update({
+            mux_stream_key: encryptStreamKey(streamKey),
+            mux_stream_status: status,
+          });
+        }
+      }
+
+      if (!streamKey) {
+        return res.status(404).json({ error: "Stream key is not currently available." });
+      }
+
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      return res.json({
+        matchId: String(matchId),
+        mux_live_stream_id: liveStreamId,
+        rtmp_ingest_url: cfg.rtmpIngestUrl,
+        mux_stream_key: streamKey,
+        mux_stream_status: status,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
   });
 
   // Admin: Update Event Access Duration for a Match (Task 2)
@@ -7352,7 +8123,20 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   app.get("/api/admin/clubs", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const snap = await db.collection("clubs").get();
-      const clubs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const channelRows = await query<any>("SELECT * FROM `club_streaming_channels`").catch(() => []);
+      const channelMap = new Map<string, any>();
+      for (const ch of channelRows || []) {
+        channelMap.set(String(ch.club_id), sanitizeChannelForClient(ch));
+      }
+      const clubs = snap.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          ...d,
+          muxStreamingApproved: Boolean(Number(d.mux_streaming_approved ?? d.muxStreamingApproved ?? 0)),
+          muxChannel: channelMap.get(String(doc.id)) || null,
+        };
+      });
       res.json(clubs);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -8563,7 +9347,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         matchEarningsMap[mid].purchasesCount += 1;
       }
 
-      const matches = rawMatches.map(m => ({
+      const matches = rawMatches.map(m => sanitizeMatchForStaffList({
         ...m,
         stats: matchEarningsMap[String(m.id)] || { totalRevenue: 0, totalNet: 0, purchasesCount: 0 }
       })).sort((a, b) => new Date(b.date || b.start_time || 0).getTime() - new Date(a.date || a.start_time || 0).getTime());
@@ -9774,6 +10558,92 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     } catch (e: any) {
       console.error("Stripe webhook error:", e);
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // === MUX WEBHOOK RECEIVER (Live Stream & Asset State Tracking) ===
+  app.post("/api/webhooks/mux", async (req: any, res) => {
+    try {
+      await getMuxPlatformSettings().catch(() => null);
+      const cfg = getMuxConfig();
+      if (!cfg.isWebhookConfigured) {
+        return res.status(503).json({ error: "Mux webhook signing secret is not configured" });
+      }
+
+      const rawBody = req.rawBody ?? (typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}));
+      const verification = verifyMuxWebhookSignature(rawBody, req.headers["mux-signature"], cfg.webhookSecret);
+      if (!verification.valid) {
+        console.warn("[Mux Webhook] Signature verification rejected:", verification.error);
+        return res.status(401).json({ error: verification.error || "Invalid Mux webhook signature" });
+      }
+
+      // First try reusable Partner Club Channel + Broadcast Session idempotent reconciler
+      const clubResult = await processClubChannelWebhookEvent(req.body);
+      if (clubResult.duplicate) {
+        return res.json({ received: true, processed: false, duplicate: true, eventType: req.body?.type || '' });
+      }
+      if (clubResult.handled) {
+        return res.json({
+          received: true,
+          processed: true,
+          mode: "club_channel",
+          eventType: req.body?.type || '',
+          channelId: clubResult.channelId || null,
+          sessionId: clubResult.sessionId || null,
+          matchId: clubResult.matchId || null,
+          status: clubResult.status || null,
+        });
+      }
+
+      const initialParsed = parseMuxWebhookEvent(req.body);
+      if (!initialParsed.handled) {
+        return res.json({ received: true, processed: false, eventType: initialParsed.eventType });
+      }
+
+      let targetDoc: any = null;
+      if (initialParsed.liveStreamId) {
+        const snap = await db.collection("matches").where("mux_live_stream_id", "==", initialParsed.liveStreamId).limit(1).get();
+        if (snap.docs && snap.docs.length > 0) targetDoc = snap.docs[0];
+      }
+      if (!targetDoc && initialParsed.assetId) {
+        const snap = await db.collection("matches").where("mux_asset_id", "==", initialParsed.assetId).limit(1).get();
+        if (snap.docs && snap.docs.length > 0) targetDoc = snap.docs[0];
+      }
+      if (!targetDoc && initialParsed.passthroughMatchId) {
+        const doc = await db.collection("matches").doc(initialParsed.passthroughMatchId).get();
+        if (doc.exists) targetDoc = doc;
+      }
+
+      if (!targetDoc) {
+        return res.json({
+          received: true,
+          processed: false,
+          eventType: initialParsed.eventType,
+          reason: "match_not_found",
+        });
+      }
+
+      const targetMatch = targetDoc.data();
+      const targetPolicy = normalizePlaybackPolicy(targetMatch?.mux_playback_policy || targetMatch?.muxPlaybackPolicy);
+      const parsed = parseMuxWebhookEvent(req.body, targetPolicy);
+
+      if (Object.keys(parsed.updates).length === 0) {
+        return res.json({ received: true, processed: false, eventType: parsed.eventType });
+      }
+
+      await db.collection("matches").doc(targetDoc.id).update(parsed.updates);
+      cacheEngine.invalidateCollection("matches");
+
+      return res.json({
+        received: true,
+        processed: true,
+        eventType: parsed.eventType,
+        matchId: targetDoc.id,
+        status: parsed.updates.mux_stream_status || null,
+      });
+    } catch (e: any) {
+      console.error("[Mux Webhook Error]:", e);
+      return res.status(500).json({ error: e.message });
     }
   });
 

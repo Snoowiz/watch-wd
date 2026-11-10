@@ -376,6 +376,7 @@ export const useFeatureStore = create<FeatureState>()(
         { id: 2, name: 'Live Betting', slug: 'live_betting', description: 'Allow users to place bets during live matches.', is_active: 1 },
         { id: 3, name: 'Referral Program', slug: 'referral_program', description: 'Reward users for inviting friends to the platform.', is_active: 0 },
         { id: 4, name: 'Dark Mode', slug: 'dark_mode', description: 'Allow users to switch between light and dark themes.', is_active: 1 },
+        { id: 5, name: 'Partner Club Live Streaming', slug: 'partner_mux_streaming', description: 'Enable reusable Mux live streaming channels and self-service credentials for approved partner clubs.', is_active: 1 },
       ],
       setFeatures: (features) => set({ features }),
       isFeatureActive: (slug) => {
@@ -384,11 +385,26 @@ export const useFeatureStore = create<FeatureState>()(
         const feature = features.find(f => f.slug === slug);
         return feature ? feature.is_active === 1 : false;
       },
-      toggleFeature: (slug) => set((state) => ({
-        features: state.features.map(f => 
-          f.slug === slug ? { ...f, is_active: f.is_active === 1 ? 0 : 1 } : f
-        )
-      }))
+      toggleFeature: (slug) => {
+        const current = get().features.find(f => f.slug === slug);
+        const nextActive = current && current.is_active === 1 ? 0 : 1;
+        set((state) => ({
+          features: state.features.map(f =>
+            f.slug === slug ? { ...f, is_active: nextActive } : f
+          )
+        }));
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (token) {
+          fetch(`/api/admin/features/${encodeURIComponent(slug)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ enabled: nextActive === 1 }),
+          }).catch(() => {});
+        }
+      }
     }),
     {
       name: 'feature-storage',
@@ -1209,6 +1225,18 @@ export const useAdStore = create<AdState>()(
   )
 );
 
+export interface MuxWatermarkConfig {
+  enabled: boolean;
+  mode: 'mux_burn_in' | 'player_overlay';
+  url: string;
+  vertical_align: 'top' | 'middle' | 'bottom';
+  vertical_margin: string;
+  horizontal_align: 'left' | 'center' | 'right';
+  horizontal_margin: string;
+  width: string;
+  opacity: string;
+}
+
 export interface Match {
   id: number;
   title: string;
@@ -1261,6 +1289,18 @@ export interface Match {
   start_time?: string | null;
   publish_status?: 'pending' | 'approved' | 'rejected' | 'published' | 'draft' | 'scheduled' | 'deleted' | null;
   stream_provider?: 'youtube' | 'mux' | 'custom' | null;
+  mux_live_stream_id?: string | null;
+  mux_playback_id?: string | null;
+  mux_stream_status?: string | null;
+  mux_asset_id?: string | null;
+  mux_asset_playback_id?: string | null;
+  mux_error_message?: string | null;
+  mux_playback_policy?: 'public' | 'signed' | null;
+  muxPlaybackPolicy?: 'public' | 'signed' | null;
+  mux_watermark_config?: MuxWatermarkConfig | string | null;
+  muxWatermarkConfig?: MuxWatermarkConfig | string | null;
+  has_mux_stream_key?: boolean;
+  has_mux_stream?: boolean;
   sport?: 'football' | 'tennis' | 'basketball' | string | null;
   home_team?: string | null;
   away_team?: string | null;
@@ -1289,12 +1329,12 @@ export interface Plan {
 interface MatchState {
   matches: Match[];
   isLoading: boolean;
-  addMatch: (match: Match) => Promise<void>;
+  addMatch: (match: Match) => Promise<Match | void>;
   adminMatches: Match[];
   fetchAdminMatches: () => Promise<void>;
   setMatches: (matches: Match[]) => void;
-  updateMatch: (id: number, updates: Partial<Match>) => Promise<void>;
-  deleteMatch: (id: number) => Promise<void>;
+  updateMatch: (id: number | string, updates: Partial<Match>) => Promise<void>;
+  deleteMatch: (id: number | string) => Promise<void>;
   revokeMatch: (id: number | string, durationDays: number, reason?: string) => Promise<boolean>;
   restoreMatch: (id: number | string) => Promise<boolean>;
   fetchMatches: () => Promise<void>;
@@ -1445,6 +1485,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
           matches: [newMatch, ...state.matches],
           adminMatches: [newMatch, ...state.adminMatches]
         }));
+        return newMatch;
       }
     } catch (err) {
       console.error('Failed to add match', err);

@@ -5,9 +5,10 @@ import {
   DollarSign, Link as LinkIcon, Mail, Loader2, Percent, Shield,
   ExternalLink, AlertCircle, Image as ImageIcon, Key, Lock, Copy, Check, RefreshCw,
   Search, Eye, Clock, FileText, Sparkles, Filter, CheckCircle2, ChevronRight,
-  Phone, Globe, Trophy, MapPin, Users, UserCheck, ShieldCheck, Sliders
+  Phone, Globe, Trophy, MapPin, Users, UserCheck, ShieldCheck, Sliders, Radio
 } from 'lucide-react';
 import { MediaPickerModal } from '../../components/MediaPickerModal';
+import { AdminClubStreamingModal } from '../../components/AdminClubStreamingModal';
 
 interface Club {
   id: string;
@@ -22,6 +23,17 @@ interface Club {
   stripe_account_id?: string | null;
   stripe_onboarding_complete?: boolean | number;
   contact_email?: string | null;
+  muxStreamingApproved?: boolean;
+  mux_streaming_approved?: boolean | number;
+  muxChannel?: {
+    hasChannel: boolean;
+    liveStatus?: string;
+    isSuspended?: boolean;
+    isTestMode?: boolean;
+    muxPlaybackId?: string;
+    maskedStreamKey?: string;
+    maxSessionMinutes?: number;
+  } | null;
 }
 
 interface RevenuePolicy {
@@ -104,6 +116,7 @@ export function AdminClubs() {
 
   // Partner credentials management state
   const [credentialsClub, setCredentialsClub] = useState<Club | null>(null);
+  const [streamingClub, setStreamingClub] = useState<Club | null>(null);
   const [credentialsStatus, setCredentialsStatus] = useState<{ hasAccount: boolean; email: string; user: any } | null>(null);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [credentialsPassword, setCredentialsPassword] = useState('');
@@ -1048,6 +1061,38 @@ export function AdminClubs() {
                       <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 whitespace-nowrap">
                         Platform {platformFee}% / Club {clubShare}%
                       </span>
+                      {(() => {
+                        const streamingApproved = !!(club.muxStreamingApproved ?? club.mux_streaming_approved);
+                        const ch = club.muxChannel;
+                        if (ch?.hasChannel) {
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                ch.isSuspended
+                                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                                  : ch.liveStatus === 'active'
+                                  ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30'
+                                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                              }`}
+                            >
+                              <Radio className="w-2.5 h-2.5" />
+                              {ch.isSuspended ? 'Channel Suspended' : ch.liveStatus === 'active' ? 'Live Now' : 'Mux Channel Ready'}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              streamingApproved
+                                ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20'
+                                : 'bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            <Radio className="w-2.5 h-2.5" />
+                            {streamingApproved ? 'Streaming Approved' : 'Streaming Locked'}
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     {/* Club Balance & Payout Status */}
@@ -1083,6 +1128,15 @@ export function AdminClubs() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setStreamingClub(club)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 transition-colors"
+                      title="Manage Club Reusable Mux Streaming Channel"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>Live Channel</span>
+                    </button>
                     <button
                       onClick={() => openEditForm(club)}
                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
@@ -1373,6 +1427,15 @@ export function AdminClubs() {
         onSelect={(url) => setFormLogo(url)}
         title="Select Partner Club Logo"
       />
+
+      {/* Club Reusable Mux Channel Governance Modal */}
+      {streamingClub && (
+        <AdminClubStreamingModal
+          club={streamingClub}
+          onClose={() => setStreamingClub(null)}
+          onUpdated={fetchClubs}
+        />
+      )}
 
       {/* Partner Club Credentials Modal */}
       {credentialsClub && (

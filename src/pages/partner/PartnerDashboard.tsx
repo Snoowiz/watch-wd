@@ -4,10 +4,11 @@ import {
   Building2, DollarSign, Calendar, TrendingUp, CreditCard, 
   Play, ExternalLink, ShieldCheck, AlertCircle, Clock, 
   ArrowUpRight, CheckCircle2, ChevronRight, RefreshCw, Loader2,
-  Tv, Eye
+  Tv, Eye, KeyRound, Copy, EyeOff, Radio, X
 } from 'lucide-react';
 import { useAuthStore } from '../../store';
 import { formatMatchStatus } from '../../utils/statusHelper';
+import { PartnerLiveStreamingTab } from '../../components/PartnerLiveStreamingTab';
 
 interface ClubInfo {
   id: string;
@@ -39,6 +40,11 @@ interface MatchItem {
   price?: number;
   ppv_price?: number;
   video_url?: string;
+  stream_provider?: string;
+  mux_live_stream_id?: string | null;
+  mux_playback_id?: string | null;
+  mux_stream_status?: string | null;
+  has_mux_stream_key?: boolean;
   stats?: {
     totalRevenue: number;
     totalNet: number;
@@ -90,11 +96,25 @@ export function PartnerDashboard() {
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'earnings' | 'payouts' | 'policy'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'streaming' | 'matches' | 'earnings' | 'payouts' | 'policy'>('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const [club, setClub] = useState<ClubInfo | null>(null);
+  const [credentialModalMatch, setCredentialModalMatch] = useState<MatchItem | null>(null);
+  const [muxCreds, setMuxCreds] = useState<{ rtmp_ingest_url: string; mux_stream_key: string; mux_stream_status: string; mux_live_stream_id: string } | null>(null);
+  const [muxCredsError, setMuxCredsError] = useState<string | null>(null);
+  const [loadingCreds, setLoadingCreds] = useState(false);
+  const [revealKey, setRevealKey] = useState(false);
+
+  const openPartnerCredentialsModal = async (_m: MatchItem) => {
+    setCredentialModalMatch(null);
+    setMuxCreds(null);
+    setMuxCredsError(null);
+    setRevealKey(false);
+    setLoadingCreds(false);
+    setActiveTab('streaming');
+  };
   const [balance, setBalance] = useState<BalanceInfo>({ available_balance: 0, pending_balance: 0, total_earned: 0, total_paid_out: 0 });
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [earnings, setEarnings] = useState<EarningItem[]>([]);
@@ -292,7 +312,8 @@ export function PartnerDashboard() {
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 mb-6 overflow-x-auto">
         {[
           { id: 'overview', label: 'Overview', icon: TrendingUp },
-          { id: 'matches', label: `Assigned Matches (${matches.length})`, icon: Tv },
+          { id: 'streaming', label: 'Live Streaming', icon: Radio },
+          { id: 'matches', label: `Assigned Events (${matches.length})`, icon: Tv },
           { id: 'earnings', label: `Earnings (${earnings.length})`, icon: DollarSign },
           { id: 'payouts', label: `Payouts (${payouts.length})`, icon: CreditCard },
           { id: 'policy', label: 'Revenue Share Policy', icon: ShieldCheck }
@@ -356,7 +377,7 @@ export function PartnerDashboard() {
 
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2 text-xs font-bold uppercase tracking-wider">
-                <span>Assigned Matches</span>
+                <span>Assigned Events</span>
                 <Tv className="w-4 h-4 text-violet-500" />
               </div>
               <div className="text-3xl font-black text-slate-900 dark:text-white">
@@ -366,20 +387,29 @@ export function PartnerDashboard() {
             </div>
           </div>
 
-          {/* Quick Match Performance & Recent Activity */}
+          {/* Quick Event Performance & Recent Activity */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Top Matches Preview */}
+            {/* Top Events Preview */}
             <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Tv className="w-4 h-4 text-amber-500" /> Matches & Broadcast Performance
+                  <Tv className="w-4 h-4 text-amber-500" /> Events &amp; Broadcast Performance
                 </h3>
-                <button
-                  onClick={() => setActiveTab('matches')}
-                  className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
-                >
-                  View all ({matches.length}) <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('streaming')}
+                    className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                  >
+                    <Radio className="w-3.5 h-3.5" /> Live Console
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('matches')}
+                    className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
+                  >
+                    View all ({matches.length}) <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               {matches.length === 0 ? (
@@ -413,7 +443,7 @@ export function PartnerDashboard() {
                       </div>
 
                       <Link
-                        to={`/match/${m.id}`}
+                        to={`/matches/${m.id}`}
                         className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold text-xs flex items-center gap-1 shrink-0"
                       >
                         <Play className="w-3 h-3 fill-current" /> Stream
@@ -477,26 +507,41 @@ export function PartnerDashboard() {
         </div>
       )}
 
-      {/* TAB 2: MATCHES */}
+      {/* TAB 2: LIVE STREAMING CONSOLE */}
+      {activeTab === 'streaming' && (
+        <PartnerLiveStreamingTab
+          clubId={club?.id}
+          onStatusChanged={fetchDashboardData}
+        />
+      )}
+
+      {/* TAB 3: ASSIGNED EVENTS */}
       {activeTab === 'matches' && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Assigned Matches</h2>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Assigned Events</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                You have official partner broadcast access to watch and monitor these matches.
+                You have official partner broadcast access to watch, manage, and stream these events across all sports.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('streaming')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm"
+            >
+              <Radio className="w-3.5 h-3.5" /> Open Live Streaming Console
+            </button>
           </div>
 
           {matches.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">No matches found for your club.</div>
+            <div className="text-center py-12 text-slate-400">No events found for your club.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="py-3 px-4">Match</th>
+                    <th className="py-3 px-4">Event</th>
                     <th className="py-3 px-4">Date / Time</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Access Type</th>
@@ -541,12 +586,21 @@ export function PartnerDashboard() {
                         £{(m.stats?.totalNet || 0).toFixed(2)}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <Link
-                          to={`/match/${m.id}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold transition-all shadow-sm"
-                        >
-                          <Play className="w-3 h-3 fill-current" /> Watch
-                        </Link>
+                        <div className="inline-flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openPartnerCredentialsModal(m)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 font-bold transition-all"
+                          >
+                            <Radio className="w-3 h-3" /> Go Live
+                          </button>
+                          <Link
+                            to={`/matches/${m.id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold transition-all shadow-sm"
+                          >
+                            <Play className="w-3 h-3 fill-current" /> Watch
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -688,6 +742,98 @@ export function PartnerDashboard() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Partner Broadcast Credentials Modal */}
+      {credentialModalMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Radio className="w-5 h-5 text-amber-500" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Matchday Broadcast Credentials</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCredentialModalMatch(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              {getMatchTitle(credentialModalMatch)}
+            </p>
+
+            {loadingCreds ? (
+              <div className="py-6 flex items-center justify-center gap-2 text-xs text-slate-400">
+                <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                <span>Loading secure credentials...</span>
+              </div>
+            ) : muxCredsError ? (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-500">
+                {muxCredsError}
+              </div>
+            ) : muxCreds ? (
+              <div className="space-y-3 text-xs">
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="block text-[10px] font-bold uppercase text-slate-400 mb-0.5">RTMP Server URL</span>
+                    <code className="font-mono text-slate-800 dark:text-slate-200 break-all">{muxCreds.rtmp_ingest_url}</code>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(muxCreds.rtmp_ingest_url)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                    title="Copy RTMP URL"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-[10px] font-bold uppercase text-slate-400 mb-0.5">Stream Key (Secret)</span>
+                    <code className="font-mono text-slate-900 dark:text-white break-all">
+                      {revealKey ? muxCreds.mux_stream_key : '••••••••••••••••••••••••'}
+                    </code>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setRevealKey(!revealKey)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold"
+                    >
+                      {revealKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{revealKey ? 'Hide' : 'Reveal'}</span>
+                    </button>
+                    {revealKey && (
+                      <button
+                        type="button"
+                        onClick={() => navigator.clipboard.writeText(muxCreds.mux_stream_key)}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                        title="Copy Stream Key"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setCredentialModalMatch(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

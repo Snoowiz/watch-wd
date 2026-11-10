@@ -103,6 +103,7 @@ export function AdminDashboard() {
     { id: 'match-access-duration', type: 'match', title: 'PPV Event Access & Duration', subtitle: 'Time-limited access rules & financial record protection', icon: Clock, path: '/admin/events' },
     { id: 'match-revocation-takedown', type: 'match', title: 'Temporary Event Revoke & Takedown', subtitle: 'Compliance takedowns, retention period & auto-deletion', icon: Shield, path: '/admin/events' },
     { id: 'settings-site-colors', type: 'settings', title: 'Site Color Configuration', subtitle: 'Brand accents, theme palettes & button text color', icon: Palette, path: '/admin/settings' },
+    { id: 'settings-mux', type: 'settings', title: 'Mux Streaming & Security', subtitle: 'API keys, Signed Playback JWTs & Watermark Overlays', icon: Video, path: '/admin/settings?tab=mux' },
     { id: 'cache-management', type: 'system', title: 'Performance & Multi-Layer Cache', subtitle: 'Purge cache, telemetry, Hit/Miss ratios & warming', icon: Zap, path: '/admin/cache' },
     { id: 'free-audience-gate', type: 'analytics', title: 'Free Match Audience Gate & Analytics', subtitle: 'Unique viewers, watch time, viewing journeys & gate conversion', icon: Eye, path: '#free-audience-analytics' },
     { id: 'partner-applications', type: 'partner', title: 'Partner Club Applications', subtitle: 'Review, approve, and manage pending partner club applications', icon: Building2, path: '/admin/clubs?tab=applications' },
@@ -204,6 +205,7 @@ export function AdminDashboard() {
       label: 'Settings',
       children: [
         { path: '/admin/settings', label: 'General Settings', icon: Settings },
+        { path: '/admin/settings?tab=mux', label: 'Mux Streaming', icon: Video },
         { path: '/admin/features', label: 'Feature Toggles', icon: Sliders },
         { path: '/admin/cache', label: 'Performance Cache', icon: Zap },
         { path: '/admin/email-system', label: 'Email System', icon: Mail },
@@ -627,9 +629,39 @@ function AdminOverview() {
     totalCount: 0,
     statusCounts: { new: 0 }
   });
+  const [muxStatusSummary, setMuxStatusSummary] = useState<{
+    configured: boolean;
+    signingConfigured: boolean;
+    defaultWatermarkEnabled: boolean;
+  } | null>(null);
+  const [clubChannelSummary, setClubChannelSummary] = useState<{
+    globalStreamingEnabled: boolean;
+    provisionedChannels: number;
+    approvedClubs: number;
+    liveNowCount: number;
+  } | null>(null);
 
   useEffect(() => {
     fetchAdminMatches();
+
+    const fetchMuxStatus = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await fetch('/api/admin/mux/status', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setMuxStatusSummary({
+            configured: Boolean(data.configured),
+            signingConfigured: Boolean(data.signingConfigured),
+            defaultWatermarkEnabled: Boolean(data.defaultWatermark?.enabled),
+          });
+        }
+      } catch (_) {}
+    };
+    fetchMuxStatus();
 
     const fetchOverviewStats = async () => {
       try {
@@ -734,12 +766,35 @@ function AdminOverview() {
       }
     };
 
+    const fetchClubStreamingChannels = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await fetch('/api/admin/mux/channels', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const clubList = Array.isArray(data?.clubs) ? data.clubs : [];
+          setClubChannelSummary({
+            globalStreamingEnabled: data?.globalStreamingEnabled !== false,
+            provisionedChannels: clubList.filter((c: any) => c.channel?.hasChannel).length,
+            approvedClubs: clubList.filter((c: any) => Boolean(c.muxStreamingApproved)).length,
+            liveNowCount: clubList.filter((c: any) => c.channel?.liveStatus === 'active').length,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch club Mux channels summary:', err);
+      }
+    };
+
     fetchOverviewStats();
     fetchUsers();
     fetchTxns();
     fetchFreeViewing();
     fetchPartnerApps();
     fetchFeedbackStats();
+    fetchClubStreamingChannels();
   }, [fetchAdminMatches, setUsers]);
 
   const getCurrencySymbol = (curr: string) => {
@@ -1052,6 +1107,50 @@ function AdminOverview() {
                   <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
                     <span className="font-mono text-slate-400 uppercase tracking-wider">Free Audience Gate</span>
                     <span className="font-bold text-yellow-600 dark:text-yellow-400">{freeViewingData.summary.uniqueViewers} Unique Viewers ({freeViewingData.summary.conversionRate}% Conv)</span>
+                  </div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${muxStatusSummary?.configured ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse' : 'bg-slate-400'}`}></div>
+                  <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
+                    <span className="font-mono text-slate-400 uppercase tracking-wider">Mux Broadcast Engine</span>
+                    <Link
+                      to="/admin/settings?tab=mux"
+                      className={`font-bold hover:underline ${muxStatusSummary?.configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
+                    >
+                      {muxStatusSummary?.configured
+                        ? (muxStatusSummary.signingConfigured ? 'Live + Signed JWT Ready' : 'Live Active (Public Mode)')
+                        : 'Configure API Keys'}
+                    </Link>
+                  </div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${
+                    clubChannelSummary?.liveNowCount
+                      ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] animate-pulse'
+                      : clubChannelSummary?.globalStreamingEnabled !== false
+                      ? 'bg-sky-500'
+                      : 'bg-slate-400'
+                  }`}></div>
+                  <div className="min-w-0 flex-1 flex justify-between items-center gap-2 text-xs">
+                    <span className="font-mono text-slate-400 uppercase tracking-wider">Club Reusable Channels</span>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <Link
+                        to="/admin/clubs"
+                        className="font-bold text-sky-600 dark:text-sky-400 hover:underline"
+                      >
+                        {clubChannelSummary
+                          ? `${clubChannelSummary.provisionedChannels} Active Channels · ${clubChannelSummary.liveNowCount} Live`
+                          : 'Manage Channels'}
+                      </Link>
+                      {clubChannelSummary && !clubChannelSummary.globalStreamingEnabled && (
+                        <Link
+                          to="/admin/features"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:underline"
+                        >
+                          Paused in Toggles
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

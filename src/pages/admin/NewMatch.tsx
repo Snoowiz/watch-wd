@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore, useMediaStore, useSportStore } from '../../store';
+import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore, useMediaStore, useSportStore, MuxWatermarkConfig } from '../../store';
+import { WatermarkOverlay, DEFAULT_WATERMARK_CONFIG, parseWatermarkConfig } from '../../components/WatermarkOverlay';
+import { MuxWatermarkEditor } from '../../components/MuxWatermarkEditor';
 import { getSportConfig, SPORTS_REGISTRY } from '../../config/sports';
 import { useUIStore } from '../../store/uiStore';
 import { 
@@ -8,7 +10,7 @@ import {
   Calendar, Tag, ChevronRight, Eye, Code, Layout, Type, Plus, 
   MessageSquare, Clock, Loader2, Play, Video, Info, CheckCircle, 
   ExternalLink, Sparkles, Layers, FileText, Check, Shield, HelpCircle,
-  Trophy, Building2
+  Trophy, Building2, Radio, Copy, RefreshCw, EyeOff, KeyRound, AlertTriangle
 } from 'lucide-react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
@@ -29,7 +31,7 @@ type TabId = 'details' | 'video' | 'pricing' | 'promotion' | 'review';
 export function NewMatch({ initialSport, initialSportCategoryId }: { initialSport?: string; initialSportCategoryId?: number } = {}) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { matches = [], addMatch, updateMatch } = useMatchStore();
+  const { matches = [], adminMatches = [], addMatch, updateMatch, fetchAdminMatches } = useMatchStore();
   const { categories = [] } = useCategoryStore();
   const { currency, currencySymbol = '£', siteColorSettings } = useSettingsStore();
   
@@ -55,8 +57,18 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
     borderColor: `${primaryColor}40` 
   };
 
-  const isEditing = !!id;
-  const existingMatch = isEditing ? matches.find(m => String(m.id) === String(id)) : null;
+  const [createdEventId, setCreatedEventId] = useState<string | null>(null);
+  const activeEventId = id ? String(id) : createdEventId;
+  const isEditing = !!id || !!createdEventId;
+  const existingMatch = activeEventId
+    ? (adminMatches.find(m => String(m.id) === String(activeEventId)) || matches.find(m => String(m.id) === String(activeEventId)) || null)
+    : null;
+
+  useEffect(() => {
+    if (id) {
+      fetchAdminMatches();
+    }
+  }, [id, fetchAdminMatches]);
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<TabId>('details');
@@ -147,9 +159,35 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
   const [clubId, setClubId] = useState<string | null>(existingMatch?.club_id || (existingMatch as any)?.clubId || null);
   const [competitionId, setCompetitionId] = useState<string | null>(existingMatch?.competition_id || (existingMatch as any)?.competitionId || null);
   const [streamProvider, setStreamProvider] = useState<'youtube' | 'mux' | 'custom'>(
-    existingMatch?.stream_provider || 
-    (existingMatch?.description?.toLowerCase().includes('mux') ? 'mux' : 'youtube')
+    existingMatch?.stream_provider ||
+    (existingMatch?.mux_live_stream_id || existingMatch?.mux_playback_id || existingMatch?.description?.toLowerCase().includes('mux')
+      ? 'mux'
+      : 'youtube')
   );
+  const [muxServerConfigured, setMuxServerConfigured] = useState<boolean | null>(null);
+  const [muxRtmpUrl, setMuxRtmpUrl] = useState<string>('rtmps://global-live.mux.com:443/app');
+  const [muxLiveStreamId, setMuxLiveStreamId] = useState<string | null>(existingMatch?.mux_live_stream_id || null);
+  const [muxPlaybackId, setMuxPlaybackId] = useState<string | null>(existingMatch?.mux_playback_id || null);
+  const [muxAssetPlaybackId, setMuxAssetPlaybackId] = useState<string | null>(existingMatch?.mux_asset_playback_id || null);
+  const [muxStreamStatus, setMuxStreamStatus] = useState<string | null>(existingMatch?.mux_stream_status || null);
+  const [muxErrorMessage, setMuxErrorMessage] = useState<string | null>(existingMatch?.mux_error_message || null);
+  const [muxStreamKey, setMuxStreamKey] = useState<string | null>(null);
+  const [showMuxStreamKey, setShowMuxStreamKey] = useState<boolean>(false);
+  const [isCreatingMuxStream, setIsCreatingMuxStream] = useState<boolean>(false);
+  const [isRefreshingMuxStatus, setIsRefreshingMuxStatus] = useState<boolean>(false);
+  const [isLoadingMuxCredentials, setIsLoadingMuxCredentials] = useState<boolean>(false);
+  const [muxSigningConfigured, setMuxSigningConfigured] = useState<boolean>(false);
+  const [muxPlaybackPolicy, setMuxPlaybackPolicy] = useState<'public' | 'signed'>(
+    existingMatch?.mux_playback_policy === 'signed' || (existingMatch as any)?.muxPlaybackPolicy === 'signed'
+      ? 'signed'
+      : 'public'
+  );
+  const [muxWatermarkConfig, setMuxWatermarkConfig] = useState<MuxWatermarkConfig>(
+    parseWatermarkConfig(existingMatch?.mux_watermark_config || (existingMatch as any)?.muxWatermarkConfig)
+  );
+  const [muxPreviewToken, setMuxPreviewToken] = useState<string | null>(null);
+  const [isUpdatingWatermark, setIsUpdatingWatermark] = useState<boolean>(false);
+  const [isUpdatingPolicy, setIsUpdatingPolicy] = useState<boolean>(false);
   const [plans, setPlans] = useState<any[]>([]);
   const [clubs, setClubs] = useState<any[]>([]);
   const [competitions, setCompetitions] = useState<any[]>([]);
@@ -238,6 +276,31 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
     const token = localStorage.getItem('token');
 
+    if (token) {
+      fetch('/api/admin/mux/status', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (d) {
+            setMuxServerConfigured(Boolean(d.configured));
+            setMuxSigningConfigured(Boolean(d.signingConfigured));
+            if (d.rtmpIngestUrl) setMuxRtmpUrl(d.rtmpIngestUrl);
+            if (!isEditing && !existingMatch) {
+              if (d.defaultPlaybackPolicy === 'signed' && d.signingConfigured) {
+                setMuxPlaybackPolicy('signed');
+              } else if (d.requireSignedForPaidEvents && d.signingConfigured && accessType !== 'free') {
+                setMuxPlaybackPolicy('signed');
+              }
+              if (d.defaultWatermark && d.defaultWatermark.enabled) {
+                setMuxWatermarkConfig(parseWatermarkConfig(d.defaultWatermark));
+              }
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
     // Fetch clubs: load full partner club data with fallback to active clubs
     const loadClubs = async () => {
       try {
@@ -313,6 +376,9 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
   // Sync form state when existingMatch loads
   useEffect(() => {
     if (existingMatch) {
+      if (existingMatch.sport) {
+        setCurrentSport(String(existingMatch.sport));
+      }
       setTitle(existingMatch.title || '');
       setSlug(existingMatch.slug || '');
       setContent(existingMatch.content || '');
@@ -325,9 +391,38 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
       setClubId(existingMatch.club_id || (existingMatch as any).clubId || null);
       setCompetitionId(existingMatch.competition_id || (existingMatch as any).competitionId || null);
       setStreamProvider(
-        existingMatch.stream_provider || 
-        (existingMatch.description?.toLowerCase().includes('mux') ? 'mux' : 'youtube')
+        existingMatch.stream_provider ||
+        (existingMatch.mux_live_stream_id || existingMatch.mux_playback_id || existingMatch.description?.toLowerCase().includes('mux')
+          ? 'mux'
+          : 'youtube')
       );
+      if (existingMatch.home_team || (existingMatch as any).homeTeam) {
+        setHomeTeam(existingMatch.home_team || (existingMatch as any).homeTeam || '');
+      }
+      if (existingMatch.away_team || (existingMatch as any).awayTeam) {
+        setAwayTeam(existingMatch.away_team || (existingMatch as any).awayTeam || '');
+      }
+      if (existingMatch.player_pair_1 || (existingMatch as any).playerPair1) {
+        setPlayerPair1(existingMatch.player_pair_1 || (existingMatch as any).playerPair1 || '');
+      }
+      if (existingMatch.player_pair_2 || (existingMatch as any).playerPair2) {
+        setPlayerPair2(existingMatch.player_pair_2 || (existingMatch as any).playerPair2 || '');
+      }
+      setMuxLiveStreamId(existingMatch.mux_live_stream_id || null);
+      setMuxPlaybackId(existingMatch.mux_playback_id || null);
+      setMuxAssetPlaybackId(existingMatch.mux_asset_playback_id || null);
+      setMuxStreamStatus(existingMatch.mux_stream_status || null);
+      setMuxErrorMessage(existingMatch.mux_error_message || null);
+      setMuxPlaybackPolicy(
+        existingMatch.mux_playback_policy === 'signed' || (existingMatch as any).muxPlaybackPolicy === 'signed'
+          ? 'signed'
+          : 'public'
+      );
+      if (existingMatch.mux_watermark_config || (existingMatch as any).muxWatermarkConfig) {
+        setMuxWatermarkConfig(
+          parseWatermarkConfig(existingMatch.mux_watermark_config || (existingMatch as any).muxWatermarkConfig)
+        );
+      }
       setAdSettingsEnabled(existingMatch.adSettings?.enabled ?? true);
       setAdFrequencyOverride(existingMatch.adSettings?.frequencyOverride || '');
       setAdCampaignIds(existingMatch.adSettings?.campaignIds || []);
@@ -348,8 +443,28 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
   }, [existingMatch]);
 
   useEffect(() => {
-    loadMuxPlayerIfNeeded(description);
-  }, [description]);
+    loadMuxPlayerIfNeeded(description || muxPlaybackId || muxAssetPlaybackId || '');
+  }, [description, muxPlaybackId, muxAssetPlaybackId]);
+
+  useEffect(() => {
+    if (!activeEventId || streamProvider !== 'mux' || muxPlaybackPolicy !== 'signed') {
+      setMuxPreviewToken(null);
+      return;
+    }
+    if (!muxPlaybackId && !muxAssetPlaybackId) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    fetch(`/api/matches/${encodeURIComponent(activeEventId)}/mux/status?sync=0&previewToken=1`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (d?.preview_playback_token) {
+          setMuxPreviewToken(d.preview_playback_token);
+        }
+      })
+      .catch(() => {});
+  }, [activeEventId, streamProvider, muxPlaybackPolicy, muxPlaybackId, muxAssetPlaybackId]);
 
   const getCalculatedStatus = (): 'upcoming' | 'live' | 'full_match' => {
     let targetDateStr = customDate;
@@ -375,49 +490,106 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
   const currentEffectiveStatus = isManualOverride ? status : getCalculatedStatus();
 
-  const handleSave = async (targetPublishStatus?: 'published' | 'draft' | 'scheduled') => {
-    const effectiveStatus = targetPublishStatus || (publishMode === 'scheduled' ? 'scheduled' : 'published');
-    // Sport-specific participant validation
-    if (currentSport === 'football') {
-      if (!homeTeam.trim() && !title.trim()) {
-        addToast('Please enter the Home team name.', 'error');
-        setActiveTab('details');
-        return;
+  const isPairSport = activeSportConfig.participants.type === 'players_or_pairs';
+  const participantSlot1Label = activeSportConfig.participants.slot1Label || (isPairSport ? 'Player or pair 1' : 'Home team');
+  const participantSlot2Label = activeSportConfig.participants.slot2Label || (isPairSport ? 'Player or pair 2' : 'Away team');
+
+  const resolveEventParticipantPayload = (requireBothForDraft = false): {
+    errorMessage?: string;
+    resolvedTitle: string;
+    fields: {
+      home_team: string | null;
+      away_team: string | null;
+      player_pair_1: string | null;
+      player_pair_2: string | null;
+      homeTeam: string | null;
+      awayTeam: string | null;
+      playerPair1: string | null;
+      playerPair2: string | null;
+    };
+  } => {
+    const slot1 = (isPairSport ? playerPair1 : homeTeam).trim();
+    const slot2 = (isPairSport ? playerPair2 : awayTeam).trim();
+    const manualTitle = title.trim();
+
+    if (requireBothForDraft) {
+      if (!manualTitle && (!slot1 || !slot2)) {
+        return {
+          errorMessage: `Please enter ${participantSlot1Label} & ${participantSlot2Label} (or an Event title) in Details before creating a live stream.`,
+          resolvedTitle: '',
+          fields: {
+            home_team: null,
+            away_team: null,
+            player_pair_1: null,
+            player_pair_2: null,
+            homeTeam: null,
+            awayTeam: null,
+            playerPair1: null,
+            playerPair2: null,
+          },
+        };
       }
-      if (!awayTeam.trim() && !title.trim()) {
-        addToast('Please enter the Away team name.', 'error');
-        setActiveTab('details');
-        return;
+    } else if (!manualTitle) {
+      if (!slot1) {
+        return {
+          errorMessage: `Please enter ${participantSlot1Label} (or an Event title).`,
+          resolvedTitle: '',
+          fields: {
+            home_team: null,
+            away_team: null,
+            player_pair_1: null,
+            player_pair_2: null,
+            homeTeam: null,
+            awayTeam: null,
+            playerPair1: null,
+            playerPair2: null,
+          },
+        };
       }
-    } else if (currentSport === 'tennis') {
-      if (!playerPair1.trim() && !title.trim()) {
-        addToast('Please enter Player or pair 1.', 'error');
-        setActiveTab('details');
-        return;
-      }
-      if (!playerPair2.trim() && !title.trim()) {
-        addToast('Please enter Player or pair 2.', 'error');
-        setActiveTab('details');
-        return;
-      }
-    } else {
-      if (!title.trim()) {
-        addToast('Please enter an event title.', 'error');
-        setActiveTab('details');
-        return;
+      if (!slot2) {
+        return {
+          errorMessage: `Please enter ${participantSlot2Label} (or an Event title).`,
+          resolvedTitle: '',
+          fields: {
+            home_team: null,
+            away_team: null,
+            player_pair_1: null,
+            player_pair_2: null,
+            homeTeam: null,
+            awayTeam: null,
+            playerPair1: null,
+            playerPair2: null,
+          },
+        };
       }
     }
 
-    let finalTitle = title.trim();
-    if (!finalTitle) {
-      if (currentSport === 'football') {
-        finalTitle = `${homeTeam.trim()} vs ${awayTeam.trim()}`;
-      } else if (currentSport === 'tennis') {
-        finalTitle = `${playerPair1.trim()} vs ${playerPair2.trim()}`;
-      } else {
-        finalTitle = 'Untitled Event';
-      }
+    const resolvedTitle = manualTitle || (slot1 && slot2 ? `${slot1} vs ${slot2}` : slot1 || slot2 || 'Untitled Event');
+    return {
+      resolvedTitle,
+      fields: {
+        home_team: !isPairSport ? (slot1 || null) : null,
+        away_team: !isPairSport ? (slot2 || null) : null,
+        player_pair_1: isPairSport ? (slot1 || null) : null,
+        player_pair_2: isPairSport ? (slot2 || null) : null,
+        homeTeam: !isPairSport ? (slot1 || null) : null,
+        awayTeam: !isPairSport ? (slot2 || null) : null,
+        playerPair1: isPairSport ? (slot1 || null) : null,
+        playerPair2: isPairSport ? (slot2 || null) : null,
+      },
+    };
+  };
+
+  const handleSave = async (targetPublishStatus?: 'published' | 'draft' | 'scheduled') => {
+    const effectiveStatus = targetPublishStatus || (publishMode === 'scheduled' ? 'scheduled' : 'published');
+    const participantResolution = resolveEventParticipantPayload(false);
+    if (participantResolution.errorMessage) {
+      addToast(participantResolution.errorMessage, 'error');
+      setActiveTab('details');
+      return;
     }
+
+    const finalTitle = participantResolution.resolvedTitle;
 
     let finalSlug = slug.trim();
     if (!finalSlug) {
@@ -476,22 +648,17 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
         title: finalTitle,
         slug: finalSlug,
         sport: currentSport,
-        home_team: currentSport === 'football' ? homeTeam.trim() : null,
-        away_team: currentSport === 'football' ? awayTeam.trim() : null,
-        player_pair_1: currentSport === 'tennis' ? playerPair1.trim() : null,
-        player_pair_2: currentSport === 'tennis' ? playerPair2.trim() : null,
-        homeTeam: currentSport === 'football' ? homeTeam.trim() : null,
-        awayTeam: currentSport === 'football' ? awayTeam.trim() : null,
-        playerPair1: currentSport === 'tennis' ? playerPair1.trim() : null,
-        playerPair2: currentSport === 'tennis' ? playerPair2.trim() : null,
+        ...participantResolution.fields,
         date: finalDate,
         price: accessType === 'ppv' ? ppvPrice : 0,
         access_type: accessType,
         ppv_price: ppvPrice,
         required_plan_id: requiredPlanId,
-        club_id: currentSport === 'football' ? clubId : null,
+        club_id: clubId || null,
         competition_id: competitionId,
         stream_provider: streamProvider,
+        mux_playback_policy: muxPlaybackPolicy,
+        mux_watermark_config: muxWatermarkConfig,
         embedPrice: ppvPrice * 10,
         status: computedStatus as any,
         publish_status: effectiveStatus,
@@ -529,14 +696,19 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
         });
       }
 
-      if (isEditing) {
-        await updateMatch(String(id) as any, matchData);
+      if (activeEventId) {
+        await updateMatch(activeEventId, matchData);
         await useMatchStore.getState().fetchMatches();
+        await fetchAdminMatches();
         const successMsg = effectiveStatus === 'draft' ? 'Event saved as draft!' : 'Match updated successfully!';
         updateToast(toastId, { message: successMsg, type: 'success' });
       } else {
-        await addMatch(matchData);
+        const saved = await addMatch(matchData);
+        if (saved && typeof saved === 'object' && 'id' in saved && saved.id) {
+          setCreatedEventId(String(saved.id));
+        }
         await useMatchStore.getState().fetchMatches();
+        await fetchAdminMatches();
         const successMsg = effectiveStatus === 'draft'
           ? 'Event saved as draft!'
           : effectiveStatus === 'scheduled'
@@ -552,6 +724,269 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const persistDraftEventForMux = async (): Promise<string | null> => {
+    if (activeEventId) return activeEventId;
+
+    const draftParticipants = resolveEventParticipantPayload(true);
+    if (draftParticipants.errorMessage) {
+      addToast(draftParticipants.errorMessage, 'error');
+      setActiveTab('details');
+      return null;
+    }
+
+    const derivedTitle = draftParticipants.resolvedTitle;
+
+    const finalSlug = (slug.trim() || derivedTitle)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+
+    let finalDate = resolveValidIsoDate(customDate);
+    if (!finalDate) finalDate = new Date().toISOString();
+
+    let finalThumbnail = thumbnail;
+    if (thumbnail && thumbnail.startsWith('data:image/')) {
+      finalThumbnail = await compressImage(thumbnail);
+    }
+
+    const draftPayload: Match = {
+      id: String(Date.now()) as any,
+      title: derivedTitle,
+      slug: finalSlug,
+      sport: currentSport,
+      ...draftParticipants.fields,
+      date: finalDate,
+      price: accessType === 'ppv' ? ppvPrice : 0,
+      access_type: accessType,
+      ppv_price: ppvPrice,
+      required_plan_id: requiredPlanId,
+      club_id: clubId || null,
+      competition_id: competitionId,
+      stream_provider: 'mux',
+      mux_playback_policy: muxPlaybackPolicy,
+      mux_watermark_config: muxWatermarkConfig,
+      embedPrice: ppvPrice * 10,
+      status: (isManualOverride ? status : getCalculatedStatus()) as any,
+      publish_status: 'draft',
+      publishStatus: 'draft',
+      duration: Number(duration) || 120,
+      time_zone: timeZone,
+      status_mode: statusMode,
+      hide_live_controls: hideLiveControls,
+      thumbnail: finalThumbnail || 'https://picsum.photos/seed/default/800/450',
+      content,
+      description,
+      categories: selectedCategories,
+      access: accessType === 'free' ? 'free' : 'paid',
+      seo,
+      liveCommenting,
+      commentAlignment,
+    };
+
+    const created = await addMatch(draftPayload);
+    if (created && typeof created === 'object' && 'id' in created && created.id) {
+      const newId = String(created.id);
+      setCreatedEventId(newId);
+      if (!title.trim()) setTitle(derivedTitle);
+      if (!slug.trim()) setSlug(finalSlug);
+      return newId;
+    }
+    return null;
+  };
+
+  const handleCreateMuxLiveStream = async () => {
+    setIsCreatingMuxStream(true);
+    const toastId = addToast('Provisioning Mux Live Stream...', 'loading');
+    try {
+      const targetEventId = await persistDraftEventForMux();
+      if (!targetEventId) {
+        updateToast(toastId, { message: 'Event details required first.', type: 'error' });
+        return;
+      }
+
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/matches/${encodeURIComponent(targetEventId)}/mux/live-stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          playbackPolicy: muxPlaybackPolicy,
+          watermarkConfig: muxWatermarkConfig,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 409) {
+        updateToast(toastId, { message: data?.error || 'Failed to create Mux Live Stream.', type: 'error' });
+        return;
+      }
+
+      setStreamProvider('mux');
+      setMuxLiveStreamId(data.mux_live_stream_id || null);
+      setMuxPlaybackId(data.mux_playback_id || null);
+      setMuxStreamStatus(data.mux_stream_status || 'idle');
+      if (data.mux_playback_policy) setMuxPlaybackPolicy(data.mux_playback_policy);
+      if (data.mux_watermark_config) setMuxWatermarkConfig(parseWatermarkConfig(data.mux_watermark_config));
+      setMuxErrorMessage(null);
+      if (data.rtmp_ingest_url) setMuxRtmpUrl(data.rtmp_ingest_url);
+      await fetchAdminMatches();
+      updateToast(toastId, { message: 'Mux Live Stream created & linked to Event!', type: 'success' });
+    } catch (err: any) {
+      console.error('Create Mux Live Stream error:', err);
+      updateToast(toastId, { message: err?.message || 'Failed to create Mux Live Stream.', type: 'error' });
+    } finally {
+      setIsCreatingMuxStream(false);
+    }
+  };
+
+  const handleSaveEventWatermark = async () => {
+    if (!activeEventId) {
+      addToast('Watermark settings will be applied when the Event is saved or stream is created.', 'info');
+      return;
+    }
+    setIsUpdatingWatermark(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/matches/${encodeURIComponent(activeEventId)}/mux/watermark`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ watermarkConfig: muxWatermarkConfig }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        addToast(data?.error || 'Failed to update watermark configuration.', 'error');
+        return;
+      }
+      if (data?.mux_watermark_config) {
+        setMuxWatermarkConfig(parseWatermarkConfig(data.mux_watermark_config));
+      }
+      await fetchAdminMatches();
+      addToast(data?.note || 'Event watermark updated.', 'success');
+    } catch {
+      addToast('Network error updating watermark.', 'error');
+    } finally {
+      setIsUpdatingWatermark(false);
+    }
+  };
+
+  const handleSwitchMuxPlaybackPolicy = async (nextPolicy: 'public' | 'signed') => {
+    if (nextPolicy === 'signed' && !muxSigningConfigured) {
+      addToast('Configure Mux Signing Keys in Admin Settings > Mux Streaming before enabling Signed Playback.', 'error');
+      return;
+    }
+    if (!muxLiveStreamId || !activeEventId) {
+      setMuxPlaybackPolicy(nextPolicy);
+      return;
+    }
+    setIsUpdatingPolicy(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/matches/${encodeURIComponent(activeEventId)}/mux/playback-policy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ playbackPolicy: nextPolicy }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        addToast(data?.error || 'Could not update playback policy.', 'error');
+        return;
+      }
+      setMuxPlaybackPolicy(nextPolicy);
+      if (data?.mux_playback_id) setMuxPlaybackId(data.mux_playback_id);
+      if (data?.mux_asset_playback_id) setMuxAssetPlaybackId(data.mux_asset_playback_id);
+      await fetchAdminMatches();
+      addToast(`Playback security updated to ${nextPolicy === 'signed' ? 'Signed (JWT)' : 'Public'}.`, 'success');
+    } catch {
+      addToast('Failed to switch playback policy.', 'error');
+    } finally {
+      setIsUpdatingPolicy(false);
+    }
+  };
+
+  const handleRefreshMuxStatus = async () => {
+    if (!activeEventId) return;
+    setIsRefreshingMuxStatus(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/matches/${encodeURIComponent(activeEventId)}/mux/status?previewToken=1`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data) {
+        setMuxLiveStreamId(data.mux_live_stream_id || null);
+        setMuxPlaybackId(data.mux_playback_id || null);
+        setMuxAssetPlaybackId(data.mux_asset_playback_id || null);
+        setMuxStreamStatus(data.mux_stream_status || null);
+        if (data.mux_playback_policy) setMuxPlaybackPolicy(data.mux_playback_policy);
+        if (data.preview_playback_token) setMuxPreviewToken(data.preview_playback_token);
+        setMuxErrorMessage(data.mux_error_message || null);
+        if (data.rtmp_ingest_url) setMuxRtmpUrl(data.rtmp_ingest_url);
+        addToast('Mux stream status synced.', 'success');
+      } else {
+        addToast(data?.error || 'Could not sync Mux status.', 'error');
+      }
+    } catch {
+      addToast('Could not sync Mux status.', 'error');
+    } finally {
+      setIsRefreshingMuxStatus(false);
+    }
+  };
+
+  const handleToggleRevealStreamKey = async () => {
+    if (showMuxStreamKey) {
+      setShowMuxStreamKey(false);
+      return;
+    }
+    if (muxStreamKey) {
+      setShowMuxStreamKey(true);
+      return;
+    }
+    if (!activeEventId) return;
+    setIsLoadingMuxCredentials(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/matches/${encodeURIComponent(activeEventId)}/mux/credentials`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.mux_stream_key) {
+        setMuxStreamKey(data.mux_stream_key);
+        if (data.rtmp_ingest_url) setMuxRtmpUrl(data.rtmp_ingest_url);
+        setShowMuxStreamKey(true);
+      } else {
+        addToast(data?.error || 'Unable to retrieve stream credentials.', 'error');
+      }
+    } catch {
+      addToast('Unable to retrieve stream credentials.', 'error');
+    } finally {
+      setIsLoadingMuxCredentials(false);
+    }
+  };
+
+  const handleCopyMuxField = (val: string, label: string) => {
+    if (!val) return;
+    navigator.clipboard.writeText(val);
+    addToast(`${label} copied to clipboard!`, 'success');
+  };
+
+  const formatMuxStatusPill = (st: string | null) => {
+    const s = String(st || '').toLowerCase();
+    if (s === 'active') return { text: 'Live / Broadcasting', cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' };
+    if (s === 'connected' || s === 'recording') return { text: s === 'recording' ? 'Recording' : 'Connected', cls: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' };
+    if (s === 'idle' || s === 'created') return { text: 'Ready (Idle)', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30' };
+    if (s === 'disconnected') return { text: 'Disconnected', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30' };
+    if (s === 'disabled') return { text: 'Disabled', cls: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30' };
+    if (s === 'error') return { text: 'Error', cls: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30' };
+    return { text: 'Not Created', cls: 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20' };
   };
 
   const toggleCategory = (catId: any) => {
@@ -575,11 +1010,26 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
     return found ? found.name : `Plan #${requiredPlanId}`;
   }, [requiredPlanId, plans]);
 
+  const selectedClub = useMemo(() => {
+    if (!clubId) return null;
+    return clubs.find(c => String(c.id) === String(clubId)) || null;
+  }, [clubId, clubs]);
+
   const assignedClubName = useMemo(() => {
     if (!clubId) return null;
-    const found = clubs.find(c => String(c.id) === String(clubId));
-    return found ? found.name : `Club #${clubId}`;
-  }, [clubId, clubs]);
+    return selectedClub ? selectedClub.name : `Club #${clubId}`;
+  }, [clubId, selectedClub]);
+
+  const availableSportOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    Object.values(SPORTS_REGISTRY).forEach((s) => map.set(s.id, { id: s.id, name: s.name }));
+    (dynamicSports || []).forEach((s: any) => {
+      if (s && s.id && (s.is_active === undefined || Boolean(s.is_active))) {
+        map.set(String(s.id), { id: String(s.id), name: String(s.name || s.id) });
+      }
+    });
+    return Array.from(map.values());
+  }, [dynamicSports]);
 
   const assignedCompetitionName = useMemo(() => {
     if (!competitionId) return null;
@@ -714,87 +1164,72 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                     </span>
                   </div>
                   {!isEditing && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const hasData = homeTeam || awayTeam || playerPair1 || playerPair2;
-                        if (!hasData || window.confirm('Changing sport will clear participant names while keeping shared event data. Proceed?')) {
-                          const next = currentSport === 'football' ? 'tennis' : 'football';
-                          setCurrentSport(next);
-                          setHomeTeam('');
-                          setAwayTeam('');
-                          setPlayerPair1('');
-                          setPlayerPair2('');
-                          setTitle('');
-                          setSlug('');
-                        }
-                      }}
-                      className="text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-yellow-600 underline underline-offset-2 transition-colors"
-                    >
-                      Switch to {currentSport === 'football' ? 'Tennis' : 'Football'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="select-event-sport" className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Switch sport:
+                      </label>
+                      <select
+                        id="select-event-sport"
+                        value={currentSport}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (next === currentSport) return;
+                          const hasData = homeTeam || awayTeam || playerPair1 || playerPair2;
+                          if (!hasData || window.confirm('Changing sport will clear participant names while keeping shared event data (title club, competition, pricing). Proceed?')) {
+                            setCurrentSport(next);
+                            setHomeTeam('');
+                            setAwayTeam('');
+                            setPlayerPair1('');
+                            setPlayerPair2('');
+                            setTitle('');
+                            setSlug('');
+                          }
+                        }}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-yellow-500"
+                      >
+                        {availableSportOptions.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   )}
                 </div>
 
-                {/* Football Participant Fields */}
-                {currentSport === 'football' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                        Home team <span className="text-rose-500">*</span>
-                      </label>
-                      <input 
-                        type="text"
-                        value={homeTeam}
-                        onChange={(e) => handleHomeTeamChange(e.target.value)}
-                        placeholder="Home team name"
-                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                        Away team <span className="text-rose-500">*</span>
-                      </label>
-                      <input 
-                        type="text"
-                        value={awayTeam}
-                        onChange={(e) => handleAwayTeamChange(e.target.value)}
-                        placeholder="Away team name"
-                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
-                      />
-                    </div>
+                {/* Dynamic Multi-Sport Participant Fields (Teams, Players/Pairs, Combatants, Custom Sports) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                      {participantSlot1Label} <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={isPairSport ? playerPair1 : homeTeam}
+                      onChange={(e) =>
+                        isPairSport
+                          ? handlePlayerPair1Change(e.target.value)
+                          : handleHomeTeamChange(e.target.value)
+                      }
+                      placeholder={activeSportConfig.participants.slot1Placeholder || `${participantSlot1Label} name`}
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
+                    />
                   </div>
-                )}
-
-                {/* Tennis Participant Fields */}
-                {currentSport === 'tennis' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                        Player or pair 1 <span className="text-rose-500">*</span>
-                      </label>
-                      <input 
-                        type="text"
-                        value={playerPair1}
-                        onChange={(e) => handlePlayerPair1Change(e.target.value)}
-                        placeholder="e.g. C. Alcaraz or Salisbury / Ram"
-                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                        Player or pair 2 <span className="text-rose-500">*</span>
-                      </label>
-                      <input 
-                        type="text"
-                        value={playerPair2}
-                        onChange={(e) => handlePlayerPair2Change(e.target.value)}
-                        placeholder="e.g. J. Sinner or Koolhof / Mektic"
-                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                      {participantSlot2Label} <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={isPairSport ? playerPair2 : awayTeam}
+                      onChange={(e) =>
+                        isPairSport
+                          ? handlePlayerPair2Change(e.target.value)
+                          : handleAwayTeamChange(e.target.value)
+                      }
+                      placeholder={activeSportConfig.participants.slot2Placeholder || `${participantSlot2Label} name`}
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-colors"
+                    />
                   </div>
-                )}
+                </div>
 
                 {/* Title */}
                 <div>
@@ -805,8 +1240,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    readOnly={!isEditing && initialSport === 'tennis'}
-                    placeholder={initialSport === 'tennis' ? "Player or pair 1 vs Player or pair 2" : "Home club vs Away club"}
+                    placeholder={`${participantSlot1Label} vs ${participantSlot2Label}`}
                     className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-colors"
                   />
                 </div>
@@ -825,17 +1259,17 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       value={slug}
                       onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
                       onBlur={() => setSlug(prev => prev.replace(/(^-|-$)/g, '').replace(/-+/g, '-'))}
-                      placeholder="home-club-v-away-club"
+                      placeholder="participant-1-v-participant-2"
                       style={{ color: primaryColor }}
                       className="bg-transparent border-none font-mono text-xs font-bold focus:ring-0 p-0 flex-1 ml-1 outline-none"
                     />
                   </div>
                 </div>
 
-                {/* Clubs / Organisation & Competition (Inline side by side) */}
+                {/* Clubs / Organisation & Competition (Inline side by side across all sports) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Clubs / Organisation Selector */}
-                  {initialSport !== 'tennis' && <div>
+                  <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -852,14 +1286,14 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       <option value="">No club or organisation assigned</option>
                       {clubs.map(c => (
                         <option key={c.id} value={c.id}>
-                          {c.name} {c.stripe_account_id ? '• Partner' : ''}
+                          {c.name} {c.stripe_account_id ? '• Partner' : ''}{c.muxChannel?.hasChannel ? ' • Live Channel' : ''}
                         </option>
                       ))}
                     </select>
                     <p className="text-[11px] text-slate-500 mt-1.5">
-                      Assigning a club displays club branding and enables filtering.
+                      Assigning a club enables club branding, discovery filtering, and partner club live streaming across any sport.
                     </p>
-                  </div>}
+                  </div>
 
                   {/* Competition Selector */}
                   <div>
@@ -878,10 +1312,10 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                     >
                       <option value="">{`No ${(activeSportConfig.participants.competitionLabel || 'competition').toLowerCase()} assigned`}</option>
                       {/* Matching Sport Competitions */}
-                      {competitions.filter(c => (c.sport || 'football').toLowerCase() === (initialSport || 'football').toLowerCase()).length > 0 && (
+                      {competitions.filter(c => (c.sport || 'football').toLowerCase() === (currentSport || 'football').toLowerCase()).length > 0 && (
                         <optgroup label={`${activeSportConfig.name} Competitions`}>
                           {competitions
-                            .filter(c => (c.sport || 'football').toLowerCase() === (initialSport || 'football').toLowerCase())
+                            .filter(c => (c.sport || 'football').toLowerCase() === (currentSport || 'football').toLowerCase())
                             .map(comp => (
                               <option key={comp.id} value={comp.id}>
                                 {comp.name} {comp.season ? `(${comp.season})` : ''}
@@ -890,10 +1324,10 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                         </optgroup>
                       )}
                       {/* Other Sports Competitions */}
-                      {competitions.filter(c => (c.sport || 'football').toLowerCase() !== (initialSport || 'football').toLowerCase()).length > 0 && (
+                      {competitions.filter(c => (c.sport || 'football').toLowerCase() !== (currentSport || 'football').toLowerCase()).length > 0 && (
                         <optgroup label="Other Sports Competitions">
                           {competitions
-                            .filter(c => (c.sport || 'football').toLowerCase() !== (initialSport || 'football').toLowerCase())
+                            .filter(c => (c.sport || 'football').toLowerCase() !== (currentSport || 'football').toLowerCase())
                             .map(comp => (
                               <option key={comp.id} value={comp.id}>
                                 {comp.name} {comp.season ? `(${comp.season})` : ''} • [{(comp.sport || 'football').toUpperCase()}]
@@ -903,7 +1337,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       )}
                     </select>
                     <p className="text-[11px] text-slate-500 mt-1.5">
-                      {initialSport === 'tennis' ? 'Choose a tournament only if it is configured for tennis. Tournament records are not yet sport-scoped.' : 'Assigning a competition links this match to tournament schedules.'}
+                      {`Assigning a ${(activeSportConfig.participants.competitionLabel || 'competition').toLowerCase()} links this event to ${activeSportConfig.name.toLowerCase()} schedules.`}
                     </p>
                   </div>
                 </div>
@@ -1111,24 +1545,334 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   </div>
                 )}
 
-                {/* Quick Setup for Mux */}
+                {/* Mux Live Stream & Manual Playback Configuration */}
                 {streamProvider === 'mux' && (
-                  <div className="space-y-2 animate-in fade-in">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      Mux quick setup (playback ID or stream URL)
-                    </label>
-                    <input 
-                      type="text"
-                      placeholder="e.g. d54001aBCdE123 or https://stream.mux.com/PLAYBACK_ID.m3u8"
-                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
-                      onChange={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) {
-                          const pbId = val.replace(/^https?:\/\/stream\.mux\.com\//i, '').replace(/\.m3u8$/i, '');
-                          setDescription(`<mux-player playback-id="${pbId}" metadata-video-title="${title || 'Match Broadcast'}" stream-type="${currentEffectiveStatus === 'live' ? 'live' : 'on-demand'}" controls playsinline preload="metadata"></mux-player>`);
-                        }
-                      }}
-                    />
+                  <div className="space-y-4 animate-in fade-in">
+                    {selectedClub && (
+                      <div className="rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-500/10 p-3.5 flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                            <Building2 className="w-4 h-4 text-indigo-500 shrink-0" />
+                            <span>Partner Club Assigned: {selectedClub.name}</span>
+                            {selectedClub.muxChannel?.hasChannel ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                                {selectedClub.muxChannel.isSuspended ? 'Channel Suspended' : 'Reusable Channel Active'}
+                              </span>
+                            ) : selectedClub.muxStreamingApproved ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30">
+                                Approved (No Channel Yet)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                Live Streaming Approval Pending
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-indigo-800/80 dark:text-indigo-200/80">
+                            {selectedClub.muxChannel?.hasChannel
+                              ? 'This club can broadcast this Event directly using their reusable Mux channel and permanent OBS/encoder credentials in Partner Dashboard → Live Streaming. Leave this standalone stream empty if the club will use their reusable channel.'
+                              : 'Manage streaming approval or provision this club’s single reusable Mux channel in Partner Clubs rather than generating separate per-event stream keys.'}
+                          </p>
+                        </div>
+                        <Link
+                          to="/admin/clubs"
+                          className="text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:underline shrink-0"
+                        >
+                          Manage Club Channel →
+                        </Link>
+                      </div>
+                    )}
+
+                    {/* WatchWDS Managed Mux Live Stream Card */}
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/50 p-4 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <Radio className="w-4 h-4" style={{ color: primaryColor }} />
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                            Mux Live Stream
+                          </span>
+                          {(() => {
+                            const pill = formatMuxStatusPill(muxLiveStreamId ? (muxStreamStatus || 'idle') : null);
+                            return (
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${pill.cls}`}>
+                                {pill.text}
+                              </span>
+                            );
+                          })()}
+                        </div>
+
+                        {muxLiveStreamId ? (
+                          <button
+                            type="button"
+                            onClick={handleRefreshMuxStatus}
+                            disabled={isRefreshingMuxStatus}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 transition-colors"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingMuxStatus ? 'animate-spin' : ''}`} />
+                            <span>Refresh status</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleCreateMuxLiveStream}
+                            disabled={isCreatingMuxStream || muxServerConfigured === false}
+                            style={primaryButtonStyle}
+                            className="disabled:opacity-50 inline-flex items-center gap-2 text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-sm hover:opacity-90 active:scale-95"
+                          >
+                            {isCreatingMuxStream ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Radio className="w-3.5 h-3.5" />
+                            )}
+                            <span>{activeEventId ? 'Create Mux Live Stream' : 'Save Draft & Create Live Stream'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {muxServerConfigured === false && !muxLiveStreamId && (
+                        <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-700 dark:text-amber-300">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>
+                            Server Mux credentials (<code className="font-mono">MUX_TOKEN_ID</code> / <code className="font-mono">MUX_TOKEN_SECRET</code>) are not configured. You can still configure a manual Playback ID or HLS URL below.
+                          </span>
+                        </div>
+                      )}
+
+                      {muxLiveStreamId ? (
+                        <div className="space-y-3 pt-1">
+                          <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                            {muxStreamStatus === 'disabled'
+                              ? 'This Mux Live Stream is disabled.'
+                              : muxStreamStatus === 'error'
+                              ? (muxErrorMessage || 'Mux reported a stream processing error.')
+                              : 'Ready for broadcasting. WatchWDS automatically plays this stream using the Playback ID below — you do not need to paste it manually.'}
+                          </p>
+
+                          <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                            <div className="rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                                Playback ID
+                              </span>
+                              <div className="flex items-center justify-between gap-2">
+                                <code className="font-mono text-slate-900 dark:text-slate-100 truncate">
+                                  {muxPlaybackId || 'Pending...'}
+                                </code>
+                                {muxPlaybackId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyMuxField(muxPlaybackId, 'Playback ID')}
+                                    className="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0"
+                                    title="Copy Playback ID"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                                Mux Live Stream ID
+                              </span>
+                              <div className="flex items-center justify-between gap-2">
+                                <code className="font-mono text-slate-700 dark:text-slate-300 truncate">
+                                  {muxLiveStreamId}
+                                </code>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyMuxField(muxLiveStreamId, 'Live Stream ID')}
+                                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0"
+                                  title="Copy Live Stream ID"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {muxAssetPlaybackId && (
+                            <div className="rounded-lg bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 text-xs text-indigo-700 dark:text-indigo-300 flex items-center justify-between gap-2">
+                              <span>
+                                Replay VOD Asset Ready: <code className="font-mono font-bold">{muxAssetPlaybackId}</code>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyMuxField(muxAssetPlaybackId, 'Replay Asset Playback ID')}
+                                className="hover:underline font-bold shrink-0"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Broadcast RTMP Credentials */}
+                          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 space-y-2.5">
+                            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              <KeyRound className="w-3.5 h-3.5" style={{ color: primaryColor }} />
+                              <span>Broadcast Credentials (OBS / vMix / Hardware Encoder)</span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 dark:bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-200/70 dark:border-slate-800">
+                              <div className="min-w-0">
+                                <span className="text-[10px] font-bold uppercase text-slate-400 mr-2">RTMP URL:</span>
+                                <code className="font-mono text-slate-800 dark:text-slate-200 break-all">{muxRtmpUrl}</code>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyMuxField(muxRtmpUrl, 'RTMP Server URL')}
+                                className="text-slate-400 hover:text-slate-700 dark:hover:text-white shrink-0"
+                                title="Copy RTMP Server URL"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-xs bg-slate-50 dark:bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-200/70 dark:border-slate-800">
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] font-bold uppercase text-slate-400 mr-2">Stream Key:</span>
+                                <code className="font-mono text-slate-900 dark:text-white break-all">
+                                  {showMuxStreamKey && muxStreamKey ? muxStreamKey : '••••••••••••••••••••••••'}
+                                </code>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={handleToggleRevealStreamKey}
+                                  disabled={isLoadingMuxCredentials}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-200/80 hover:bg-slate-300/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
+                                >
+                                  {isLoadingMuxCredentials ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : showMuxStreamKey ? (
+                                    <EyeOff className="w-3 h-3" />
+                                  ) : (
+                                    <Eye className="w-3 h-3" />
+                                  )}
+                                  <span>{showMuxStreamKey ? 'Hide' : 'Reveal'}</span>
+                                </button>
+                                {showMuxStreamKey && muxStreamKey && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyMuxField(muxStreamKey, 'Stream Key')}
+                                    className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                                    title="Copy Stream Key"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Click <strong>{activeEventId ? 'Create Mux Live Stream' : 'Save Draft & Create Live Stream'}</strong> to generate a Playback ID and private RTMP stream key automatically.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Signed Playback Protection Controls */}
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-700/70 bg-white dark:bg-slate-900/60 p-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white">
+                            <Lock className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Playback Security Policy</span>
+                            {isUpdatingPolicy && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />}
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Restrict stream manifests with short-lived server-signed JWTs after viewer access verification.
+                          </p>
+                        </div>
+                        {!muxSigningConfigured && (
+                          <Link
+                            to="/admin/settings?tab=mux"
+                            className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline"
+                          >
+                            Configure Signing Keys →
+                          </Link>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                        <button
+                          type="button"
+                          disabled={isUpdatingPolicy}
+                          onClick={() => handleSwitchMuxPlaybackPolicy('public')}
+                          className={`p-2.5 rounded-xl border text-left transition-all ${
+                            muxPlaybackPolicy === 'public'
+                              ? 'border-amber-500 bg-amber-500/10 text-slate-900 dark:text-white'
+                              : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          <div className="font-bold flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-sky-500" />
+                            Public Playback
+                          </div>
+                          <div className="text-[10px] opacity-80 mt-0.5">Standard Mux playback without JWT tokens.</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isUpdatingPolicy}
+                          onClick={() => handleSwitchMuxPlaybackPolicy('signed')}
+                          className={`p-2.5 rounded-xl border text-left transition-all ${
+                            muxPlaybackPolicy === 'signed'
+                              ? 'border-emerald-500 bg-emerald-500/10 text-slate-900 dark:text-white'
+                              : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          <div className="font-bold flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5 text-emerald-500" />
+                            Signed Playback (JWT Protected)
+                          </div>
+                          <div className="text-[10px] opacity-80 mt-0.5">
+                            Requires WatchWDS entitlement + RS256 token.
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Watermark / Logo Overlay Configuration */}
+                    <div className="space-y-2">
+                      <MuxWatermarkEditor
+                        value={muxWatermarkConfig}
+                        onChange={setMuxWatermarkConfig}
+                        compact
+                      />
+                      {activeEventId && (
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleSaveEventWatermark}
+                            disabled={isUpdatingWatermark}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+                          >
+                            {isUpdatingWatermark && <Loader2 className="w-3 h-3 animate-spin" />}
+                            <span>Apply Watermark Settings to Event</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Existing Manual Mux Quick Setup (Retained for Legacy / Manual Events) */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Manual Mux setup (optional override / existing Playback ID or HLS URL)
+                      </label>
+                      <input 
+                        type="text"
+                        placeholder="e.g. d54001aBCdE123 or https://stream.mux.com/PLAYBACK_ID.m3u8"
+                        className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          if (val) {
+                            const pbId = val.replace(/^https?:\/\/stream\.mux\.com\//i, '').replace(/\.m3u8$/i, '');
+                            setDescription(`<mux-player playback-id="${pbId}" metadata-video-title="${title || 'Match Broadcast'}" stream-type="${currentEffectiveStatus === 'live' ? 'live' : 'on-demand'}" controls playsinline preload="metadata"></mux-player>`);
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -1158,13 +1902,29 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   <h3>Stream embed preview</h3>
                 </div>
 
-                <div className="w-full aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800/80 bg-slate-100/80 dark:bg-slate-950/40 overflow-hidden flex flex-col items-center justify-center p-2 text-center transition-colors">
-                  {description ? (
-                    <div 
-                      className="w-full h-full overflow-hidden [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block"
-                      dangerouslySetInnerHTML={{ __html: formatStreamHtml(description, { isLive: currentEffectiveStatus === 'live' }) }}
-                    />
-                  ) : (
+                <div className="relative w-full aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800/80 bg-slate-100/80 dark:bg-slate-950/40 overflow-hidden flex flex-col items-center justify-center p-2 text-center transition-colors">
+                  {(() => {
+                    const effectivePreview =
+                      streamProvider === 'mux'
+                        ? (description.trim() || (currentEffectiveStatus === 'completed' || currentEffectiveStatus === 'full_match' ? (muxAssetPlaybackId || muxPlaybackId) : (muxPlaybackId || muxAssetPlaybackId)) || '')
+                        : description;
+                    const previewIsLive =
+                      streamProvider === 'mux' && muxStreamStatus === 'active'
+                        ? true
+                        : currentEffectiveStatus === 'live';
+                    return effectivePreview ? (
+                      <div className="relative w-full h-full">
+                        <div 
+                          className="w-full h-full overflow-hidden [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block"
+                          dangerouslySetInnerHTML={{ __html: formatStreamHtml(effectivePreview, { isLive: previewIsLive, playbackToken: muxPreviewToken }) }}
+                        />
+                        {muxWatermarkConfig.enabled && muxWatermarkConfig.mode === 'player_overlay' && (
+                          <WatermarkOverlay config={muxWatermarkConfig} />
+                        )}
+                      </div>
+                    ) : null;
+                  })()}
+                  {!(streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId) : description) && (
                     <div className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
                       <div className="w-10 h-10 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center mb-2">
                         <div className="w-3 h-3 rounded-full bg-slate-400 dark:bg-slate-600" />
@@ -2010,11 +2770,16 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
             {/* Stream Player Preview */}
             <div className="aspect-video w-full rounded-xl bg-black border border-slate-200 dark:border-slate-800 overflow-hidden relative">
-              {description ? (
-                <div 
-                  className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>video]:w-full [&>video]:h-full [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:block"
-                  dangerouslySetInnerHTML={{ __html: formatStreamHtml(description, { isLive: currentEffectiveStatus === 'live' }) }}
-                />
+              {(streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId) : description) ? (
+                <div className="relative w-full h-full">
+                  <div 
+                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>video]:w-full [&>video]:h-full [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:block"
+                    dangerouslySetInnerHTML={{ __html: formatStreamHtml((streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId || '') : description), { isLive: muxStreamStatus === 'active' || currentEffectiveStatus === 'live', playbackToken: muxPreviewToken }) }}
+                  />
+                  {muxWatermarkConfig.enabled && muxWatermarkConfig.mode === 'player_overlay' && (
+                    <WatermarkOverlay config={muxWatermarkConfig} />
+                  )}
+                </div>
               ) : thumbnail ? (
                 <img src={thumbnail} alt="Match Preview" className="w-full h-full object-cover" />
               ) : (

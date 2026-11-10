@@ -522,6 +522,21 @@ export function AdminMatches() {
                                    {match.publishStatus}
                                  </span>
                               )}
+                              {match.mux_live_stream_id && (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                    match.mux_stream_status === 'active'
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                      : match.mux_stream_status === 'error'
+                                      ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                      : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                                  }`}
+                                  title={`Mux Live Stream ID: ${match.mux_live_stream_id}`}
+                                >
+                                  Mux: {match.mux_stream_status || 'idle'}
+                                  {match.mux_playback_policy === 'signed' ? ' • Signed' : ''}
+                                </span>
+                              )}
                             </>
                           )}
                         </div>

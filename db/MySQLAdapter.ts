@@ -15,19 +15,20 @@ import { cacheEngine } from '../src/utils/cacheManager.js';
 // ===== Tables that participate in multi-layer database caching =====
 const CACHEABLE_TABLES = new Set([
   'matches', 'plans', 'features', 'match_categories', 'blog_categories',
-  'clubs', 'revenue_policies', 'settings', 'payment_settings', 'email_settings',
+  'clubs', 'revenue_policies', 'settings', 'payment_settings', 'mux_settings', 'email_settings',
   'email_branding', 'ads', 'media_items'
 ]);
 
 // ===== JSON settings tables (key-value pattern) =====
 const KEY_VALUE_TABLES = new Set([
-  'settings', 'payment_settings', 'email_settings', 'email_branding'
+  'settings', 'payment_settings', 'mux_settings', 'email_settings', 'email_branding'
 ]);
 
 // Tables where the primary key column is NOT `id`
 const PK_MAP: Record<string, string> = {
   settings: 'key_name',
   payment_settings: 'key_name',
+  mux_settings: 'key_name',
   email_settings: 'key_name',
   email_branding: 'key_name',
   email_templates: 'slug',
@@ -36,6 +37,7 @@ const PK_MAP: Record<string, string> = {
   transactions: 'id',   // varchar pk
   payouts: 'id',        // varchar pk
   club_balances: 'club_id', // varchar pk
+  mux_webhook_events: 'event_id',
 };
 
 function getPkColumn(table: string): string {
@@ -190,6 +192,16 @@ function camelToSnake(str: string, tableName?: string): string {
     clubId: 'club_id',
     planScope: 'plan_scope',
     streamProvider: 'stream_provider',
+    muxLiveStreamId: 'mux_live_stream_id',
+    muxPlaybackId: 'mux_playback_id',
+    muxStreamKey: 'mux_stream_key',
+    muxStreamStatus: 'mux_stream_status',
+    muxAssetId: 'mux_asset_id',
+    muxAssetPlaybackId: 'mux_asset_playback_id',
+    muxErrorMessage: 'mux_error_message',
+    muxPlaybackPolicy: 'mux_playback_policy',
+    muxWatermarkConfig: 'mux_watermark_config',
+    muxStreamingApproved: 'mux_streaming_approved',
     stripeAccountId: 'stripe_account_id',
     stripeOnboardingComplete: 'stripe_onboarding_complete',
     contactEmail: 'contact_email',
@@ -346,6 +358,16 @@ function snakeToCamel(str: string, tableName?: string): string {
     away_team: 'awayTeam',
     player_pair_1: 'playerPair1',
     player_pair_2: 'playerPair2',
+    mux_live_stream_id: 'muxLiveStreamId',
+    mux_playback_id: 'muxPlaybackId',
+    mux_stream_key: 'muxStreamKey',
+    mux_stream_status: 'muxStreamStatus',
+    mux_asset_id: 'muxAssetId',
+    mux_asset_playback_id: 'muxAssetPlaybackId',
+    mux_error_message: 'muxErrorMessage',
+    mux_playback_policy: 'muxPlaybackPolicy',
+    mux_watermark_config: 'muxWatermarkConfig',
+    mux_streaming_approved: 'muxStreamingApproved',
   };
   return overrides[str] || str;
 }

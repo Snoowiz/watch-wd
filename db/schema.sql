@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `creator_id` VARCHAR(100) DEFAULT NULL,
   `duration` INT DEFAULT 120,
   `stream_provider` VARCHAR(50) DEFAULT 'youtube',
+  `mux_live_stream_id` VARCHAR(150) DEFAULT NULL,
+  `mux_playback_id` VARCHAR(150) DEFAULT NULL,
+  `mux_stream_key` VARCHAR(255) DEFAULT NULL,
+  `mux_stream_status` VARCHAR(50) DEFAULT NULL,
+  `mux_asset_id` VARCHAR(150) DEFAULT NULL,
+  `mux_asset_playback_id` VARCHAR(150) DEFAULT NULL,
+  `mux_error_message` TEXT DEFAULT NULL,
+  `mux_playback_policy` VARCHAR(20) DEFAULT 'public',
+  `mux_watermark_config` TEXT DEFAULT NULL,
   `club_id` VARCHAR(100) DEFAULT NULL,
   `competition_id` VARCHAR(100) DEFAULT NULL,
   `event_access_enabled` TINYINT(1) DEFAULT 0,
@@ -89,7 +98,8 @@ CREATE TABLE IF NOT EXISTS `matches` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_matches_competition` (`competition_id`),
   INDEX `idx_matches_club` (`club_id`),
-  INDEX `idx_matches_sport` (`sport`)
+  INDEX `idx_matches_sport` (`sport`),
+  INDEX `idx_matches_mux_live_stream` (`mux_live_stream_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
@@ -324,6 +334,21 @@ CREATE TABLE IF NOT EXISTS `payment_settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
+-- MUX STREAMING & SECURITY SETTINGS
+-- ============================================
+CREATE TABLE IF NOT EXISTS `mux_settings` (
+  `key_name` VARCHAR(100) PRIMARY KEY,
+  `value` JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `mux_watermarks` (
+  `id` VARCHAR(64) PRIMARY KEY,
+  `mime_type` VARCHAR(64) NOT NULL,
+  `image_base64` LONGTEXT NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
 -- EMAIL SETTINGS
 -- ============================================
 CREATE TABLE IF NOT EXISTS `email_settings` (
@@ -451,6 +476,7 @@ CREATE TABLE IF NOT EXISTS `clubs` (
   `stripe_account_id` VARCHAR(255) DEFAULT NULL,
   `stripe_onboarding_complete` TINYINT(1) DEFAULT 0,
   `is_active` TINYINT(1) DEFAULT 1,
+  `mux_streaming_approved` TINYINT(1) DEFAULT 0,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -732,4 +758,90 @@ CREATE TABLE IF NOT EXISTS `sports` (
   `requires_club` TINYINT(1) DEFAULT 0,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- PARTNER CLUB REUSABLE MUX CHANNELS
+-- ============================================
+CREATE TABLE IF NOT EXISTS `club_streaming_channels` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `club_id` VARCHAR(100) NOT NULL UNIQUE,
+  `mux_live_stream_id` VARCHAR(150) UNIQUE DEFAULT NULL,
+  `mux_playback_id` VARCHAR(150) DEFAULT NULL,
+  `mux_playback_policy` VARCHAR(20) DEFAULT 'public',
+  `stream_key_encrypted` TEXT DEFAULT NULL,
+  `stream_key_last4` VARCHAR(16) DEFAULT NULL,
+  `rtmp_ingest_url` VARCHAR(500) DEFAULT 'rtmps://global-live.mux.com:443/app',
+  `channel_status` VARCHAR(50) DEFAULT 'idle',
+  `is_approved` TINYINT(1) DEFAULT 1,
+  `is_suspended` TINYINT(1) DEFAULT 0,
+  `is_test_mode` TINYINT(1) DEFAULT 0,
+  `active_broadcast_session_id` VARCHAR(100) DEFAULT NULL,
+  `active_match_id` VARCHAR(100) DEFAULT NULL,
+  `max_session_minutes` INT DEFAULT 240,
+  `key_rotated_at` DATETIME DEFAULT NULL,
+  `last_connected_at` DATETIME DEFAULT NULL,
+  `created_by` VARCHAR(100) DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_csc_live_stream` (`mux_live_stream_id`),
+  INDEX `idx_csc_active_match` (`active_match_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- BROADCAST SESSIONS (Reusable Channel -> Event Link)
+-- ============================================
+CREATE TABLE IF NOT EXISTS `broadcast_sessions` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `channel_id` VARCHAR(100) NOT NULL,
+  `club_id` VARCHAR(100) NOT NULL,
+  `match_id` VARCHAR(100) NOT NULL,
+  `sport` VARCHAR(100) DEFAULT 'football',
+  `competition_id` VARCHAR(100) DEFAULT NULL,
+  `mux_live_stream_id` VARCHAR(150) NOT NULL,
+  `mux_asset_id` VARCHAR(150) DEFAULT NULL,
+  `mux_asset_playback_id` VARCHAR(150) DEFAULT NULL,
+  `mux_playback_policy` VARCHAR(20) DEFAULT 'public',
+  `status` VARCHAR(50) DEFAULT 'assigned',
+  `mux_stream_status` VARCHAR(50) DEFAULT 'idle',
+  `mux_error_message` TEXT DEFAULT NULL,
+  `assigned_by` VARCHAR(100) DEFAULT NULL,
+  `assigned_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `started_at` DATETIME DEFAULT NULL,
+  `disconnected_at` DATETIME DEFAULT NULL,
+  `ended_at` DATETIME DEFAULT NULL,
+  `duration_seconds` INT DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_bs_channel` (`channel_id`),
+  INDEX `idx_bs_club` (`club_id`),
+  INDEX `idx_bs_match` (`match_id`),
+  INDEX `idx_bs_live_stream` (`mux_live_stream_id`),
+  INDEX `idx_bs_asset` (`mux_asset_id`),
+  INDEX `idx_bs_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- MUX WEBHOOK IDEMPOTENCY & CHANNEL AUDIT LOGS
+-- ============================================
+CREATE TABLE IF NOT EXISTS `mux_webhook_events` (
+  `event_id` VARCHAR(150) PRIMARY KEY,
+  `event_type` VARCHAR(100) NOT NULL,
+  `mux_object_id` VARCHAR(150) DEFAULT NULL,
+  `payload_created_at` VARCHAR(64) DEFAULT NULL,
+  `processed_status` VARCHAR(50) DEFAULT 'processed',
+  `processed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `mux_channel_audit_logs` (
+  `id` VARCHAR(100) PRIMARY KEY,
+  `channel_id` VARCHAR(100) DEFAULT NULL,
+  `club_id` VARCHAR(100) NOT NULL,
+  `actor_user_id` VARCHAR(100) DEFAULT NULL,
+  `actor_role` VARCHAR(50) DEFAULT NULL,
+  `action` VARCHAR(80) NOT NULL,
+  `details` JSON DEFAULT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_mcal_club` (`club_id`),
+  INDEX `idx_mcal_channel` (`channel_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

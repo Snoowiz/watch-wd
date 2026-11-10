@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useSettingsStore } from '../../store';
-import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette, Sun, Moon, Sparkles, Play, X, Loader2 } from 'lucide-react';
+import { DollarSign, CheckCircle, CreditCard, Layout, Globe, FileText, Share2, Cookie, Chrome, Newspaper, Database, ShieldCheck, Upload, Trash2, Image, LayoutGrid, ArrowRight, Wallet, Clock, Palette, Sun, Moon, Sparkles, Play, X, Loader2, Radio } from 'lucide-react';
 import { AdminSliders } from './AdminSliders';
 import { AdminPagesSettings } from './AdminPagesSettings';
 import { AdminSocialSettings } from './AdminSocialSettings';
@@ -11,11 +11,25 @@ import { MediaPicker } from '../../components/MediaPicker';
 import { AdminFirebaseSettings } from './AdminFirebaseSettings';
 import { AdminSecuritySettings } from './AdminSecuritySettings';
 import { AdminSiteColorSettings } from './AdminSiteColorSettings';
+import { AdminMuxSettings } from './AdminMuxSettings';
 import { compressImage } from '../../lib/imageCompressor';
 import { Preloader } from '../../components/Preloader';
 
 export function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<'payment' | 'appearance' | 'pages' | 'social' | 'cookie' | 'google-auth' | 'firebase' | 'security' | 'event-access'>('payment');
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab');
+  const validTabs = ['payment', 'appearance', 'pages', 'social', 'cookie', 'google-auth', 'firebase', 'security', 'event-access', 'mux'] as const;
+  type SettingsTab = typeof validTabs[number];
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    validTabs.includes(initialTab as SettingsTab) ? (initialTab as SettingsTab) : 'payment'
+  );
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && validTabs.includes(tabParam as SettingsTab)) {
+      setActiveTab(tabParam as SettingsTab);
+    }
+  }, [searchParams]);
   
   // Payment States
   const { 
@@ -195,6 +209,17 @@ export function AdminSettings() {
         >
           <Clock className="w-4 h-4 text-amber-500" />
           Event Access & Revoke
+        </button>
+        <button
+          onClick={() => setActiveTab('mux')}
+          className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
+            activeTab === 'mux'
+              ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+          }`}
+        >
+          <Radio className="w-4 h-4 text-rose-500" />
+          Mux Streaming & Security
         </button>
       </div>
 
@@ -737,6 +762,18 @@ export function AdminSettings() {
               Time-Limited Event Access & Revocation Rules
             </h2>
             <AdminEventAccessSettings />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'mux' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-4">
+              <Radio className="w-6 h-6 text-rose-500" />
+              Mux Live Streaming, Watermarking & Signed Playback Security
+            </h2>
+            <AdminMuxSettings />
           </div>
         </div>
       )}

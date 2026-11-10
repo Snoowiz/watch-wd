@@ -129,6 +129,33 @@ export async function getSecureDocument<T = any>(collection: string, docId: stri
           );
         } catch (_) {}
       }
+    } else if (collection === 'mux_settings' && docId === 'config' && fileData) {
+      const dbObj = dbData as any;
+      const fileObj = fileData as any;
+      let repaired = false;
+
+      if (dbObj.tokenSecret && isMaskedSecret(dbObj.tokenSecret) && fileObj.tokenSecret && !isMaskedSecret(fileObj.tokenSecret)) {
+        dbObj.tokenSecret = fileObj.tokenSecret;
+        repaired = true;
+      }
+      if (dbObj.webhookSecret && isMaskedSecret(dbObj.webhookSecret) && fileObj.webhookSecret && !isMaskedSecret(fileObj.webhookSecret)) {
+        dbObj.webhookSecret = fileObj.webhookSecret;
+        repaired = true;
+      }
+      if (dbObj.signingPrivateKey && isMaskedSecret(dbObj.signingPrivateKey) && fileObj.signingPrivateKey && !isMaskedSecret(fileObj.signingPrivateKey)) {
+        dbObj.signingPrivateKey = fileObj.signingPrivateKey;
+        repaired = true;
+      }
+
+      if (repaired) {
+        try {
+          const jsonVal = JSON.stringify(dbObj);
+          await pool.execute(
+            `INSERT INTO \`${collection}\` (\`${pkColumn}\`, \`value\`) VALUES (?, ?) ON DUPLICATE KEY UPDATE \`value\` = ?`,
+            [docId, jsonVal, jsonVal]
+          );
+        } catch (_) {}
+      }
     }
 
     // Mirror to file if missing or if file didn't exist
@@ -426,5 +453,223 @@ export async function getPublicPaymentSettings(): Promise<any> {
       isTestMode: settings.paystack.isTestMode,
       merchantCurrency: settings.paystack.merchantCurrency,
     },
+  };
+}
+
+// ============================================================================
+// MUX STREAMING, WATERMARK & SIGNED PLAYBACK SETTINGS
+// ============================================================================
+
+export interface MuxWatermarkConfig {
+  enabled: boolean;
+  mode: 'mux_burn_in' | 'player_overlay';
+  url: string;
+  vertical_align: 'top' | 'middle' | 'bottom';
+  vertical_margin: string;
+  horizontal_align: 'left' | 'center' | 'right';
+  horizontal_margin: string;
+  width: string;
+  opacity: string;
+}
+
+export interface MuxPlatformSettings {
+  tokenId: string;
+  tokenSecret: string;
+  webhookSecret: string;
+  rtmpIngestUrl: string;
+  signingKeyId: string;
+  signingPrivateKey: string;
+  defaultPlaybackPolicy: 'public' | 'signed';
+  requireSignedForPaidEvents: boolean;
+  allowPartnerSelfProvision: boolean;
+  defaultTestMode: boolean;
+  defaultMaxSessionMinutes: number;
+  maxConcurrentStreamsPerClub: number;
+  defaultWatermark: MuxWatermarkConfig;
+}
+
+export const DEFAULT_MUX_WATERMARK_CONFIG: MuxWatermarkConfig = {
+  enabled: false,
+  mode: 'mux_burn_in',
+  url: '',
+  vertical_align: 'top',
+  vertical_margin: '4%',
+  horizontal_align: 'right',
+  horizontal_margin: '4%',
+  width: '14%',
+  opacity: '85%',
+};
+
+function sanitizeSizeMetric(raw: any, fallback: string): string {
+  const s = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? `${raw}%` : '';
+  if (!s) return fallback;
+  if (/^\d+(?:\.\d+)?(?:px|%)$/i.test(s)) return s;
+  if (/^\d+(?:\.\d+)?$/.test(s)) return `${s}%`;
+  return fallback;
+}
+
+export function sanitizePrivateKey(raw: any): string {
+  if (!raw || typeof raw !== 'string') return '';
+  return raw
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .trim();
+}
+
+export function normalizeWatermarkConfig(input?: any): MuxWatermarkConfig {
+  let parsed = input;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = null;
+    }
+  }
+  const src = parsed && typeof parsed === 'object' ? parsed : {};
+  const vAlign = src.vertical_align || src.verticalAlign;
+  const hAlign = src.horizontal_align || src.horizontalAlign;
+  const mode = src.mode === 'player_overlay' ? 'player_overlay' : 'mux_burn_in';
+  const rawUrl = typeof src.url === 'string' ? src.url.trim().slice(0, 2048) : '';
+
+  return {
+    enabled: Boolean(src.enabled),
+    mode,
+    url: rawUrl,
+    vertical_align: vAlign === 'middle' || vAlign === 'bottom' || vAlign === 'top' ? vAlign : DEFAULT_MUX_WATERMARK_CONFIG.vertical_align,
+    vertical_margin: sanitizeSizeMetric(src.vertical_margin ?? src.verticalMargin, DEFAULT_MUX_WATERMARK_CONFIG.vertical_margin),
+    horizontal_align: hAlign === 'left' || hAlign === 'center' || hAlign === 'right' ? hAlign : DEFAULT_MUX_WATERMARK_CONFIG.horizontal_align,
+    horizontal_margin: sanitizeSizeMetric(src.horizontal_margin ?? src.horizontalMargin, DEFAULT_MUX_WATERMARK_CONFIG.horizontal_margin),
+    width: sanitizeSizeMetric(src.width, DEFAULT_MUX_WATERMARK_CONFIG.width),
+    opacity: sanitizeSizeMetric(src.opacity, DEFAULT_MUX_WATERMARK_CONFIG.opacity),
+  };
+}
+
+let cachedMuxPlatformSettings: MuxPlatformSettings | null = null;
+
+export function getCachedMuxPlatformSettings(): MuxPlatformSettings | null {
+  return cachedMuxPlatformSettings;
+}
+
+export function setCachedMuxPlatformSettingsForTest(settings: MuxPlatformSettings | null): void {
+  cachedMuxPlatformSettings = settings;
+}
+
+function getDefaultMuxSettingsFromEnv(): MuxPlatformSettings {
+  return {
+    tokenId: sanitizeKey(process.env.MUX_TOKEN_ID || ''),
+    tokenSecret: sanitizeKey(process.env.MUX_TOKEN_SECRET || ''),
+    webhookSecret: sanitizeKey(process.env.MUX_WEBHOOK_SECRET || ''),
+    rtmpIngestUrl: sanitizeKey(process.env.MUX_RTMP_INGEST_URL || '') || 'rtmps://global-live.mux.com:443/app',
+    signingKeyId: sanitizeKey(process.env.MUX_SIGNING_KEY_ID || ''),
+    signingPrivateKey: sanitizePrivateKey(process.env.MUX_SIGNING_PRIVATE_KEY || process.env.MUX_PRIVATE_KEY || ''),
+    defaultPlaybackPolicy: 'public',
+    requireSignedForPaidEvents: false,
+    allowPartnerSelfProvision: true,
+    defaultTestMode: false,
+    defaultMaxSessionMinutes: 240,
+    maxConcurrentStreamsPerClub: 1,
+    defaultWatermark: { ...DEFAULT_MUX_WATERMARK_CONFIG },
+  };
+}
+
+/**
+ * Retrieve Mux Platform Settings with persistent DB + file-mirror healing and env fallback.
+ */
+export async function getMuxPlatformSettings(): Promise<MuxPlatformSettings> {
+  const envDefaults = getDefaultMuxSettingsFromEnv();
+  const doc = await getSecureDocument<Partial<MuxPlatformSettings>>('mux_settings', 'config', 'key_name');
+
+  const merged: MuxPlatformSettings = {
+    tokenId: sanitizeKey(doc?.tokenId) || envDefaults.tokenId,
+    tokenSecret: sanitizeKey(doc?.tokenSecret) || envDefaults.tokenSecret,
+    webhookSecret: sanitizeKey(doc?.webhookSecret) || envDefaults.webhookSecret,
+    rtmpIngestUrl: sanitizeKey(doc?.rtmpIngestUrl) || envDefaults.rtmpIngestUrl,
+    signingKeyId: sanitizeKey(doc?.signingKeyId) || envDefaults.signingKeyId,
+    signingPrivateKey: sanitizePrivateKey(doc?.signingPrivateKey) || envDefaults.signingPrivateKey,
+    defaultPlaybackPolicy: doc?.defaultPlaybackPolicy === 'signed' ? 'signed' : 'public',
+    requireSignedForPaidEvents: Boolean(doc?.requireSignedForPaidEvents),
+    allowPartnerSelfProvision: doc?.allowPartnerSelfProvision !== undefined ? Boolean(doc.allowPartnerSelfProvision) : envDefaults.allowPartnerSelfProvision,
+    defaultTestMode: Boolean(doc?.defaultTestMode),
+    defaultMaxSessionMinutes: Math.max(15, Math.min(1440, Number(doc?.defaultMaxSessionMinutes) || envDefaults.defaultMaxSessionMinutes)),
+    maxConcurrentStreamsPerClub: 1,
+    defaultWatermark: normalizeWatermarkConfig(doc?.defaultWatermark),
+  };
+
+  cachedMuxPlatformSettings = merged;
+  return merged;
+}
+
+/**
+ * Save Mux Platform Settings safely, protecting stored secrets when masked values are submitted.
+ */
+export async function saveMuxPlatformSettings(incoming: Partial<MuxPlatformSettings> | any): Promise<MuxPlatformSettings> {
+  const existing = await getMuxPlatformSettings();
+  const body = incoming && typeof incoming === 'object' ? incoming : {};
+
+  let finalTokenSecret = existing.tokenSecret;
+  if (typeof body.tokenSecret === 'string' && body.tokenSecret.trim() && !isMaskedSecret(body.tokenSecret)) {
+    finalTokenSecret = sanitizeKey(body.tokenSecret);
+  }
+
+  let finalWebhookSecret = existing.webhookSecret;
+  if (typeof body.webhookSecret === 'string' && body.webhookSecret.trim() && !isMaskedSecret(body.webhookSecret)) {
+    finalWebhookSecret = sanitizeKey(body.webhookSecret);
+  }
+
+  let finalSigningPrivateKey = existing.signingPrivateKey;
+  if (typeof body.signingPrivateKey === 'string' && body.signingPrivateKey.trim() && !isMaskedSecret(body.signingPrivateKey)) {
+    finalSigningPrivateKey = sanitizePrivateKey(body.signingPrivateKey);
+  }
+
+  const rawMaxMins = body.defaultMaxSessionMinutes !== undefined ? Number(body.defaultMaxSessionMinutes) : existing.defaultMaxSessionMinutes;
+
+  const merged: MuxPlatformSettings = {
+    tokenId: body.tokenId !== undefined ? sanitizeKey(body.tokenId) : existing.tokenId,
+    tokenSecret: finalTokenSecret,
+    webhookSecret: finalWebhookSecret,
+    rtmpIngestUrl: (body.rtmpIngestUrl !== undefined ? sanitizeKey(body.rtmpIngestUrl) : existing.rtmpIngestUrl) || 'rtmps://global-live.mux.com:443/app',
+    signingKeyId: body.signingKeyId !== undefined ? sanitizeKey(body.signingKeyId) : existing.signingKeyId,
+    signingPrivateKey: finalSigningPrivateKey,
+    defaultPlaybackPolicy: body.defaultPlaybackPolicy === 'signed' ? 'signed' : (body.defaultPlaybackPolicy === 'public' ? 'public' : existing.defaultPlaybackPolicy),
+    requireSignedForPaidEvents: body.requireSignedForPaidEvents !== undefined ? Boolean(body.requireSignedForPaidEvents) : existing.requireSignedForPaidEvents,
+    allowPartnerSelfProvision: body.allowPartnerSelfProvision !== undefined ? Boolean(body.allowPartnerSelfProvision) : existing.allowPartnerSelfProvision,
+    defaultTestMode: body.defaultTestMode !== undefined ? Boolean(body.defaultTestMode) : existing.defaultTestMode,
+    defaultMaxSessionMinutes: Math.max(15, Math.min(1440, Number.isFinite(rawMaxMins) ? rawMaxMins : 240)),
+    maxConcurrentStreamsPerClub: 1,
+    defaultWatermark: body.defaultWatermark !== undefined ? normalizeWatermarkConfig(body.defaultWatermark) : existing.defaultWatermark,
+  };
+
+  await saveSecureDocument('mux_settings', 'config', merged, 'key_name');
+  cachedMuxPlatformSettings = merged;
+  return merged;
+}
+
+/**
+ * Masked representation of Mux Platform Settings safe for admin UI rendering.
+ */
+export async function getAdminMuxSettings(): Promise<any> {
+  const s = await getMuxPlatformSettings();
+  return {
+    tokenId: s.tokenId,
+    tokenSecret: s.tokenSecret ? maskSecret(s.tokenSecret) : '',
+    hasTokenSecret: Boolean(s.tokenSecret),
+    webhookSecret: s.webhookSecret ? maskSecret(s.webhookSecret) : '',
+    hasWebhookSecret: Boolean(s.webhookSecret),
+    rtmpIngestUrl: s.rtmpIngestUrl,
+    signingKeyId: s.signingKeyId,
+    signingPrivateKey: s.signingPrivateKey ? maskSecret(s.signingPrivateKey.replace(/\s+/g, '')) : '',
+    hasSigningPrivateKey: Boolean(s.signingPrivateKey),
+    isApiConfigured: Boolean(s.tokenId && s.tokenSecret),
+    isWebhookConfigured: Boolean(s.webhookSecret),
+    isSigningConfigured: Boolean(s.signingKeyId && s.signingPrivateKey),
+    defaultPlaybackPolicy: s.defaultPlaybackPolicy,
+    requireSignedForPaidEvents: s.requireSignedForPaidEvents,
+    allowPartnerSelfProvision: s.allowPartnerSelfProvision,
+    defaultTestMode: s.defaultTestMode,
+    defaultMaxSessionMinutes: s.defaultMaxSessionMinutes,
+    maxConcurrentStreamsPerClub: s.maxConcurrentStreamsPerClub,
+    defaultWatermark: s.defaultWatermark,
   };
 }
