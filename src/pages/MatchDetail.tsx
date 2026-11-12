@@ -1028,6 +1028,14 @@ export function MatchDetail() {
                   thumbnailToken={streamData?.thumbnail_token || null}
                   storyboardToken={streamData?.storyboard_token || null}
                   watermarkConfig={streamData?.watermark_config || null}
+                  isMuxRecordedAsset={Boolean(
+                    activeProvider === 'mux' &&
+                    !playerIsLive &&
+                    streamData?.mux_asset_playback_id &&
+                    streamData?.playback_id === streamData?.mux_asset_playback_id &&
+                    !streamData?.embed_code &&
+                    !streamData?.video_url
+                  )}
                 />
               );
             })()

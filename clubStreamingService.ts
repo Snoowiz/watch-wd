@@ -18,6 +18,7 @@ import {
   normalizePlaybackPolicy,
   parseMuxWebhookEvent,
   resetMuxLiveStreamKey,
+  resolveEffectiveWatermarkConfig,
   updateMuxLiveStreamWatermark,
   MuxPlaybackPolicy,
 } from './muxService.js';
@@ -550,12 +551,20 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
         .sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
       const clubApproved = Boolean(Number(club.mux_streaming_approved ?? club.muxStreamingApproved ?? 0));
+      let authMethod: 'google' | 'password' = 'password';
+      try {
+        const userDoc = await db.collection('users').doc(String(req.user.id)).get();
+        if (userDoc.exists && userDoc.data()?.password === 'google-auth-no-password') {
+          authMethod = 'google';
+        }
+      } catch (_) {}
 
       res.setHeader('Cache-Control', 'no-store, private');
       return res.json({
         globalStreamingEnabled: globalEnabled,
         muxServerConfigured: muxCfg.isConfigured,
         allowPartnerSelfProvision: muxCfg.allowPartnerSelfProvision,
+        authMethod,
         club: {
           id: club.id,
           name: club.name,
@@ -812,20 +821,27 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
         effectivePolicy = 'public';
       }
 
-      // If Event watermark is burn-in, apply new_asset_settings safely before stream starts
-      if (event.mux_watermark_config && muxCfg.isConfigured) {
-        const wm = normalizeWatermarkConfig(event.mux_watermark_config);
-        if (wm.enabled && wm.mode === 'mux_burn_in' && wm.url) {
-          const base = (process.env.APP_URL || getRequestBaseUrl(req) || '').replace(/\/+$/, '');
-          const pubUrl = wm.url.startsWith('/') && base ? `${base}${wm.url}` : wm.url;
-          const overlay = buildWatermarkOverlayInput(wm, pubUrl);
-          if (overlay && !pubUrl.includes('localhost')) {
-            await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
-              playbackPolicy: effectivePolicy,
-              overlayConfig: overlay,
-            }).catch(() => {});
+      // Sync Mux new_asset_settings safely before stream starts (apply effective Event or default burn-in, or clear stale burn-in)
+      if (muxCfg.isConfigured && channel.mux_live_stream_id) {
+        const effectiveWm = resolveEffectiveWatermarkConfig(event, muxCfg.defaultWatermark);
+        const base = (process.env.APP_URL || getRequestBaseUrl(req) || '').replace(/\/+$/, '');
+        let overlay: { url: string; overlay_settings: any } | null = null;
+        if (effectiveWm && effectiveWm.enabled && effectiveWm.mode === 'mux_burn_in' && effectiveWm.url) {
+          let candidateUrl = effectiveWm.url.trim();
+          const localWmMatch = candidateUrl.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(\/api\/mux\/watermarks\/.+)$/i);
+          if (localWmMatch && base && !base.includes('localhost') && !base.includes('127.0.0.1')) {
+            candidateUrl = `${base}${localWmMatch[1]}`;
+          } else if (candidateUrl.startsWith('/') && base) {
+            candidateUrl = `${base}${candidateUrl}`;
+          }
+          if (!candidateUrl.includes('localhost') && !candidateUrl.includes('127.0.0.1')) {
+            overlay = buildWatermarkOverlayInput(effectiveWm, candidateUrl);
           }
         }
+        await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
+          playbackPolicy: effectivePolicy,
+          overlayConfig: overlay,
+        }).catch(() => {});
       }
 
       const sessionId = 'bs_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');

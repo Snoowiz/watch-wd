@@ -20,6 +20,7 @@ export interface MatchStreamPlayerProps {
   thumbnailToken?: string | null;
   storyboardToken?: string | null;
   watermarkConfig?: MuxWatermarkConfig | string | null;
+  isMuxRecordedAsset?: boolean;
 }
 
 export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
@@ -38,6 +39,7 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
   thumbnailToken = null,
   storyboardToken = null,
   watermarkConfig = null,
+  isMuxRecordedAsset = false,
 }: MatchStreamPlayerProps) {
   const [mobileVideoStarted, setMobileVideoStarted] = useState(false);
   const [isAssetProcessing, setIsAssetProcessing] = useState(false);
@@ -277,14 +279,17 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
       ) : (
         /* 2. Primary Media Player Embed (Kept stably mounted in DOM) */
         <div
-          className="w-full h-full"
+          className="relative z-0 w-full h-full"
           dangerouslySetInnerHTML={{ __html: sanitizedStreamHtml }}
         />
       )}
 
-      {/* Optional Non-Destructive Player Watermark Overlay (never doubles when Mux burn-in is active) */}
+      {/* Optional Non-Destructive Player Watermark Overlay (live/embed/manual Mux fallback without doubling VOD burn-in) */}
       {!isAssetProcessing && (!isMobile || mobileVideoStarted) && (
-        <WatermarkOverlay config={parsedWatermark} />
+        <WatermarkOverlay
+          config={parsedWatermark}
+          allowBurnInFallback={!isMuxRecordedAsset}
+        />
       )}
 
       {/* 3. Stable Processing Placeholder (Shown while Mux is actively transcoding newly uploaded assets) */}

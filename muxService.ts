@@ -1080,6 +1080,56 @@ export function parseMuxWebhookEvent(event: any, preferredPolicy?: MuxPlaybackPo
 }
 
 /**
+ * Resolves the effective watermark configuration for an Event, inheriting platform
+ * defaultWatermark (or channel watermark) whenever the Event has not explicitly overridden
+ * or opted out of watermarking.
+ */
+export function resolveEffectiveWatermarkConfig(
+  match: any,
+  defaultWatermark?: MuxWatermarkConfig | null,
+  channelWatermark?: MuxWatermarkConfig | null
+): MuxWatermarkConfig | null {
+  const raw = match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null;
+
+  let rawObj: any = null;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      rawObj = JSON.parse(raw);
+    } catch {
+      rawObj = null;
+    }
+  } else if (raw && typeof raw === 'object') {
+    rawObj = raw;
+  }
+
+  if (rawObj && typeof rawObj === 'object') {
+    const normalized = normalizeWatermarkConfig(rawObj);
+    if (normalized.enabled && normalized.url) {
+      return normalized;
+    }
+    if (!normalized.enabled && (normalized.url || rawObj.disabled === true)) {
+      return null;
+    }
+  }
+
+  if (channelWatermark) {
+    const chWm = normalizeWatermarkConfig(channelWatermark);
+    if (chWm.enabled && chWm.url) {
+      return chWm;
+    }
+  }
+
+  if (defaultWatermark) {
+    const defWm = normalizeWatermarkConfig(defaultWatermark);
+    if (defWm.enabled && defWm.url) {
+      return defWm;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Resolves the safe, non-secret playback response object for an entitled viewer (`POST /api/matches/:id/stream`).
  * Never returns `stream_key` or `mux_stream_key`.
  * Preserves legacy YouTube, Custom Embed, and manual Mux Event playback.
@@ -1090,6 +1140,8 @@ export function resolveMatchStreamResponse(
     signingConfig?: { keyId: string; privateKey: string } | null;
     expirationSeconds?: number;
     watermarkConfig?: MuxWatermarkConfig | null;
+    defaultWatermark?: MuxWatermarkConfig | null;
+    channelWatermark?: MuxWatermarkConfig | null;
   }
 ): {
   video_url: string | null;
@@ -1118,11 +1170,10 @@ export function resolveMatchStreamResponse(
   const isMuxActivelyLive = String(muxStreamStatus || '').toLowerCase() === 'active';
   const playbackPolicy = normalizePlaybackPolicy(match?.mux_playback_policy || match?.muxPlaybackPolicy);
 
-  const rawWatermark =
+  const watermarkConfig =
     options?.watermarkConfig !== undefined
-      ? options.watermarkConfig
-      : (match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null);
-  const watermarkConfig = rawWatermark ? normalizeWatermarkConfig(rawWatermark) : null;
+      ? (options.watermarkConfig ? normalizeWatermarkConfig(options.watermarkConfig) : null)
+      : resolveEffectiveWatermarkConfig(match, options?.defaultWatermark, options?.channelWatermark);
 
   let resolvedPlaybackId: string | null = match?.playback_id || match?.playbackId || null;
 

@@ -45,6 +45,7 @@ export function parseWatermarkConfig(raw?: MuxWatermarkConfig | string | null): 
       : DEFAULT_WATERMARK_CONFIG.horizontal_margin,
     width: typeof obj.width === 'string' && obj.width.trim() ? obj.width.trim() : DEFAULT_WATERMARK_CONFIG.width,
     opacity: typeof obj.opacity === 'string' && obj.opacity.trim() ? obj.opacity.trim() : DEFAULT_WATERMARK_CONFIG.opacity,
+    ...(obj.disabled === true && !obj.enabled ? { disabled: true } : {}),
   };
 }
 
@@ -55,16 +56,38 @@ function parseOpacityValue(raw?: string): number {
   return Math.max(0.05, Math.min(1, fraction));
 }
 
+export function resolveRenderableWatermarkUrl(rawUrl?: string | null): string {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed) return '';
+  if (typeof window !== 'undefined') {
+    const localWmMatch = trimmed.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(\/api\/mux\/watermarks\/.+)$/i);
+    if (localWmMatch) {
+      return localWmMatch[1];
+    }
+  }
+  return trimmed;
+}
+
 export function WatermarkOverlay({
   config,
   forcePreview = false,
+  allowBurnInFallback = false,
 }: {
   config?: MuxWatermarkConfig | string | null;
   forcePreview?: boolean;
+  allowBurnInFallback?: boolean;
 }) {
+  const [imgFailed, setImgFailed] = React.useState(false);
   const wm = parseWatermarkConfig(config);
-  if (!wm.url) return null;
-  if (!forcePreview && (!wm.enabled || wm.mode !== 'player_overlay')) {
+  const renderUrl = resolveRenderableWatermarkUrl(wm.url);
+
+  React.useEffect(() => {
+    setImgFailed(false);
+  }, [renderUrl]);
+
+  if (!renderUrl || imgFailed) return null;
+  const isRenderableMode = wm.mode === 'player_overlay' || allowBurnInFallback;
+  if (!forcePreview && (!wm.enabled || !isRenderableMode)) {
     return null;
   }
 
@@ -103,8 +126,17 @@ export function WatermarkOverlay({
   }
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden select-none">
-      <img src={wm.url} alt="" style={style} draggable={false} />
+    <div
+      className="pointer-events-none absolute inset-0 z-20 overflow-hidden select-none"
+      style={{ transform: 'translateZ(0)' }}
+    >
+      <img
+        src={renderUrl}
+        alt=""
+        style={style}
+        draggable={false}
+        onError={() => setImgFailed(true)}
+      />
     </div>
   );
 }

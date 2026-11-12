@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   Building2, DollarSign, Calendar, TrendingUp, CreditCard, 
   Play, ExternalLink, ShieldCheck, AlertCircle, Clock, 
@@ -18,6 +18,7 @@ interface ClubInfo {
   contactEmail: string | null;
   stripeAccountId: string | null;
   stripeOnboardingComplete: boolean | number;
+  muxStreamingApproved?: boolean | number;
 }
 
 interface BalanceInfo {
@@ -94,25 +95,59 @@ interface PolicyInfo {
 export function PartnerDashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const token = localStorage.getItem('token');
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'streaming' | 'matches' | 'earnings' | 'payouts' | 'policy'>('overview');
+  const resolveInitialTab = (): 'overview' | 'streaming' | 'matches' | 'earnings' | 'payouts' | 'policy' => {
+    const qTab = (searchParams.get('tab') || '').toLowerCase();
+    const valid = ['overview', 'streaming', 'matches', 'earnings', 'payouts', 'policy'];
+    if (valid.includes(qTab)) return qTab as any;
+    if (location.pathname.toLowerCase().includes('/partner/streaming')) return 'streaming';
+    return 'overview';
+  };
+
+  const [activeTab, setActiveTabState] = useState<'overview' | 'streaming' | 'matches' | 'earnings' | 'payouts' | 'policy'>(resolveInitialTab);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const [club, setClub] = useState<ClubInfo | null>(null);
+  const [adminClubs, setAdminClubs] = useState<Array<{ id: string; name: string; muxStreamingApproved?: boolean }>>([]);
+  const [selectedClubId, setSelectedClubId] = useState<string>(searchParams.get('clubId') || '');
+  const [selectedStreamEventId, setSelectedStreamEventId] = useState<string | null>(searchParams.get('eventId'));
   const [credentialModalMatch, setCredentialModalMatch] = useState<MatchItem | null>(null);
   const [muxCreds, setMuxCreds] = useState<{ rtmp_ingest_url: string; mux_stream_key: string; mux_stream_status: string; mux_live_stream_id: string } | null>(null);
   const [muxCredsError, setMuxCredsError] = useState<string | null>(null);
   const [loadingCreds, setLoadingCreds] = useState(false);
   const [revealKey, setRevealKey] = useState(false);
 
-  const openPartnerCredentialsModal = async (_m: MatchItem) => {
+  const setActiveTab = (nextTab: 'overview' | 'streaming' | 'matches' | 'earnings' | 'payouts' | 'policy') => {
+    setActiveTabState(nextTab);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', nextTab);
+    if (selectedClubId) next.set('clubId', selectedClubId);
+    setSearchParams(next, { replace: true });
+  };
+
+  useEffect(() => {
+    const qTab = (searchParams.get('tab') || '').toLowerCase();
+    const valid = ['overview', 'streaming', 'matches', 'earnings', 'payouts', 'policy'];
+    if (valid.includes(qTab) && qTab !== activeTab) {
+      setActiveTabState(qTab as any);
+    } else if (!qTab && location.pathname.toLowerCase().includes('/partner/streaming') && activeTab !== 'streaming') {
+      setActiveTabState('streaming');
+    }
+  }, [location.pathname, searchParams]);
+
+  const openPartnerCredentialsModal = async (m: MatchItem) => {
     setCredentialModalMatch(null);
     setMuxCreds(null);
     setMuxCredsError(null);
     setRevealKey(false);
     setLoadingCreds(false);
+    if (m?.id) {
+      setSelectedStreamEventId(String(m.id));
+    }
     setActiveTab('streaming');
   };
   const [balance, setBalance] = useState<BalanceInfo>({ available_balance: 0, pending_balance: 0, total_earned: 0, total_paid_out: 0 });
@@ -132,15 +167,52 @@ export function PartnerDashboard() {
     }
   }, [user, navigate]);
 
-  const fetchDashboardData = async () => {
+  // Admin preview: load partner clubs list so admins can inspect any club's portal & streaming console
+  useEffect(() => {
+    if (!token || user?.role !== 'admin') return;
+    fetch('/api/admin/clubs', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => {
+        if (!Array.isArray(rows) || rows.length === 0) return;
+        const normalized = rows.map((c: any) => ({
+          id: String(c.id),
+          name: c.name || `Club #${c.id}`,
+          muxStreamingApproved: Boolean(Number(c.mux_streaming_approved ?? c.muxStreamingApproved ?? 0)),
+        }));
+        setAdminClubs(normalized);
+        const queryClub = searchParams.get('clubId');
+        const userClub = (user as any)?.clubId || (user as any)?.club_id;
+        if (!selectedClubId) {
+          const preferred =
+            normalized.find((c) => c.id === String(queryClub || '')) ||
+            normalized.find((c) => c.id === String(userClub || '')) ||
+            normalized.find((c) => c.muxStreamingApproved) ||
+            normalized[0];
+          if (preferred) setSelectedClubId(preferred.id);
+        }
+      })
+      .catch(() => {});
+  }, [token, user?.role]);
+
+  const effectiveClubId =
+    user?.role === 'admin'
+      ? selectedClubId || String((user as any)?.clubId || (user as any)?.club_id || '')
+      : String((user as any)?.clubId || (user as any)?.club_id || club?.id || '');
+
+  const fetchDashboardData = useCallback(async (overrideClubId?: string) => {
     if (!token) return;
+    const targetClubId = overrideClubId !== undefined ? overrideClubId : (user?.role === 'admin' ? selectedClubId : '');
+    if (user?.role === 'admin' && !targetClubId && adminClubs.length > 0) {
+      return;
+    }
+    const qs = targetClubId ? `?clubId=${encodeURIComponent(targetClubId)}` : '';
     try {
       const [dashRes, matchesRes, earningsRes, payoutsRes, policyRes] = await Promise.all([
-        fetch('/api/partner/dashboard', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/partner/matches', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/partner/earnings', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/partner/payouts', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/partner/revenue-policy', { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`/api/partner/dashboard${qs}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/partner/matches${qs}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/partner/earnings${qs}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/partner/payouts${qs}`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/partner/revenue-policy${qs}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
       if (dashRes.ok) {
@@ -170,11 +242,11 @@ export function PartnerDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token, user?.role, selectedClubId, adminClubs.length]);
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [fetchDashboardData]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -196,8 +268,10 @@ export function PartnerDashboard() {
     );
   }
 
-  // Pending application state
-  const isPendingPartner = (user as any)?.status === 'pending' || ((user as any)?.role === 'partner' && !(user as any)?.clubId && !(user as any)?.club_id && user?.role !== 'admin');
+  // Pending application state (respect server-resolved club if store cache lagged behind)
+  const isPendingPartner =
+    (user as any)?.status === 'pending' ||
+    ((user as any)?.role === 'partner' && !club && !(user as any)?.clubId && !(user as any)?.club_id && user?.role !== 'admin');
   if (isPendingPartner) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
@@ -283,7 +357,36 @@ export function PartnerDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 self-stretch md:self-auto justify-end">
+          <div className="flex flex-wrap items-center gap-2.5 self-stretch md:self-auto justify-end">
+            {user?.role === 'admin' && adminClubs.length > 0 && (
+              <select
+                aria-label="Preview Partner Club"
+                value={selectedClubId}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setSelectedClubId(nextId);
+                  setSelectedStreamEventId(null);
+                  const next = new URLSearchParams(searchParams);
+                  if (nextId) next.set('clubId', nextId);
+                  setSearchParams(next, { replace: true });
+                }}
+                className="px-3 py-2 rounded-xl bg-slate-950/70 border border-white/20 text-xs font-bold text-white outline-none focus:border-amber-400"
+              >
+                {adminClubs.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                    {c.name} {c.muxStreamingApproved ? '• Streaming Ready' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab('streaming')}
+              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              <span>Live Streaming</span>
+            </button>
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -442,12 +545,21 @@ export function PartnerDashboard() {
                         </div>
                       </div>
 
-                      <Link
-                        to={`/matches/${m.id}`}
-                        className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold text-xs flex items-center gap-1 shrink-0"
-                      >
-                        <Play className="w-3 h-3 fill-current" /> Stream
-                      </Link>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openPartnerCredentialsModal(m)}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center gap-1"
+                        >
+                          <Radio className="w-3 h-3" /> Go Live
+                        </button>
+                        <Link
+                          to={`/matches/${m.id}`}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold text-xs flex items-center gap-1"
+                        >
+                          <Play className="w-3 h-3 fill-current" /> Watch
+                        </Link>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -510,8 +622,9 @@ export function PartnerDashboard() {
       {/* TAB 2: LIVE STREAMING CONSOLE */}
       {activeTab === 'streaming' && (
         <PartnerLiveStreamingTab
-          clubId={club?.id}
-          onStatusChanged={fetchDashboardData}
+          clubId={effectiveClubId || club?.id}
+          initialMatchId={selectedStreamEventId}
+          onStatusChanged={() => fetchDashboardData(effectiveClubId || undefined)}
         />
       )}
 

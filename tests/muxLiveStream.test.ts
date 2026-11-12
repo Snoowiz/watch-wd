@@ -35,6 +35,7 @@ import {
   normalizeMuxStreamStatus,
   parseMuxWebhookEvent,
   resetMuxLiveStreamKey,
+  resolveEffectiveWatermarkConfig,
   resolveMatchStreamResponse,
   signMuxPlaybackToken,
   signMuxPlaybackTokens,
@@ -59,7 +60,10 @@ import {
   sanitizePrivateKey,
   setCachedMuxPlatformSettingsForTest,
 } from '../db/persistentConfig.js';
-import { parseWatermarkConfig } from '../src/components/WatermarkOverlay.js';
+import {
+  parseWatermarkConfig,
+  resolveRenderableWatermarkUrl,
+} from '../src/components/WatermarkOverlay.js';
 import { formatStreamHtml } from '../src/utils/embedHelper.js';
 import {
   cleanEditorialDescription,
@@ -1401,6 +1405,70 @@ describe('Mux Live Stream Infrastructure', () => {
       expect(liveOfEventB.mux_playback_id).toBe('pb_club_live');
       expect(liveOfEventB.mux_stream_status).toBe('active');
       expect(invalidated).toContain('matches');
+    });
+
+    it('resolves platform default watermark fallback, respects opt-out, and normalizes localhost watermark URLs', () => {
+      const platformDefault = {
+        enabled: true,
+        mode: 'mux_burn_in' as const,
+        url: 'https://watchwds.com/api/mux/watermarks/brand.png',
+        vertical_align: 'top' as const,
+        vertical_margin: '4%',
+        horizontal_align: 'right' as const,
+        horizontal_margin: '4%',
+        width: '14%',
+        opacity: '85%',
+      };
+
+      // 1) Event without explicit watermark inherits platform default
+      const inheritedFromNull = resolveEffectiveWatermarkConfig(
+        { mux_watermark_config: null },
+        platformDefault
+      );
+      expect(inheritedFromNull?.enabled).toBe(true);
+      expect(inheritedFromNull?.url).toBe('https://watchwds.com/api/mux/watermarks/brand.png');
+
+      // 2) Event with empty default placeholder { enabled: false, url: '' } also inherits platform default
+      const inheritedFromPlaceholder = resolveEffectiveWatermarkConfig(
+        { mux_watermark_config: JSON.stringify({ enabled: false, url: '' }) },
+        platformDefault
+      );
+      expect(inheritedFromPlaceholder?.enabled).toBe(true);
+
+      // 3) Explicit per-event opt-out (disabled: true) overrides default watermark
+      const optedOut = resolveEffectiveWatermarkConfig(
+        { mux_watermark_config: JSON.stringify({ enabled: false, disabled: true, url: '' }) },
+        platformDefault
+      );
+      expect(optedOut).toBeNull();
+
+      // 4) resolveMatchStreamResponse passes inherited defaultWatermark into stream response
+      const streamResp = resolveMatchStreamResponse(
+        {
+          stream_provider: 'youtube',
+          video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          mux_watermark_config: JSON.stringify({ enabled: false, url: '' }),
+        },
+        { defaultWatermark: platformDefault }
+      );
+      expect(streamResp.watermark_config?.enabled).toBe(true);
+      expect(streamResp.watermark_config?.url).toBe('https://watchwds.com/api/mux/watermarks/brand.png');
+
+      // 5) WatermarkOverlay helper normalizes stale localhost origins to relative API paths in browser
+      const origWindow = (globalThis as any).window;
+      (globalThis as any).window = origWindow || {};
+      try {
+        expect(resolveRenderableWatermarkUrl('http://localhost:3000/api/mux/watermarks/wm_1.png')).toBe(
+          '/api/mux/watermarks/wm_1.png'
+        );
+        expect(resolveRenderableWatermarkUrl('https://cdn.watchwds.com/logo.png')).toBe(
+          'https://cdn.watchwds.com/logo.png'
+        );
+        const parsedOptOut = parseWatermarkConfig(JSON.stringify({ enabled: false, disabled: true, url: '' }));
+        expect(parsedOptOut.disabled).toBe(true);
+      } finally {
+        (globalThis as any).window = origWindow;
+      }
     });
   });
 });

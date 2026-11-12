@@ -462,6 +462,7 @@ export async function getPublicPaymentSettings(): Promise<any> {
 
 export interface MuxWatermarkConfig {
   enabled: boolean;
+  disabled?: boolean;
   mode: 'mux_burn_in' | 'player_overlay';
   url: string;
   vertical_align: 'top' | 'middle' | 'bottom';
@@ -535,6 +536,7 @@ export function normalizeWatermarkConfig(input?: any): MuxWatermarkConfig {
 
   return {
     enabled: Boolean(src.enabled),
+    ...(!src.enabled && src.disabled === true ? { disabled: true } : {}),
     mode,
     url: rawUrl,
     vertical_align: vAlign === 'middle' || vAlign === 'bottom' || vAlign === 'top' ? vAlign : DEFAULT_MUX_WATERMARK_CONFIG.vertical_align,

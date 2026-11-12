@@ -130,7 +130,7 @@ export function MuxWatermarkEditor({
                   <div>
                     <div className="text-xs font-bold">Mux Burn-In (Stream & VOD)</div>
                     <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Baked into live & recorded video via Mux API
+                      Mux burns into future VOD recordings; Player Overlay displays live automatically and on non-Mux players without doubling.
                     </div>
                   </div>
                 </button>

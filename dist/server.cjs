@@ -2097,6 +2097,7 @@ function normalizeWatermarkConfig(input) {
   const rawUrl = typeof src.url === "string" ? src.url.trim().slice(0, 2048) : "";
   return {
     enabled: Boolean(src.enabled),
+    ...!src.enabled && src.disabled === true ? { disabled: true } : {},
     mode,
     url: rawUrl,
     vertical_align: vAlign === "middle" || vAlign === "bottom" || vAlign === "top" ? vAlign : DEFAULT_MUX_WATERMARK_CONFIG.vertical_align,
@@ -3163,6 +3164,41 @@ function parseMuxWebhookEvent(event, preferredPolicy) {
   }
   return base;
 }
+function resolveEffectiveWatermarkConfig(match, defaultWatermark, channelWatermark) {
+  const raw = match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null;
+  let rawObj = null;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      rawObj = JSON.parse(raw);
+    } catch {
+      rawObj = null;
+    }
+  } else if (raw && typeof raw === "object") {
+    rawObj = raw;
+  }
+  if (rawObj && typeof rawObj === "object") {
+    const normalized = normalizeWatermarkConfig(rawObj);
+    if (normalized.enabled && normalized.url) {
+      return normalized;
+    }
+    if (!normalized.enabled && (normalized.url || rawObj.disabled === true)) {
+      return null;
+    }
+  }
+  if (channelWatermark) {
+    const chWm = normalizeWatermarkConfig(channelWatermark);
+    if (chWm.enabled && chWm.url) {
+      return chWm;
+    }
+  }
+  if (defaultWatermark) {
+    const defWm = normalizeWatermarkConfig(defaultWatermark);
+    if (defWm.enabled && defWm.url) {
+      return defWm;
+    }
+  }
+  return null;
+}
 function resolveMatchStreamResponse(match, options) {
   const provider = String(match?.stream_provider || match?.streamProvider || "").toLowerCase();
   const matchStatus = String(match?.status || "").toLowerCase();
@@ -3172,8 +3208,7 @@ function resolveMatchStreamResponse(match, options) {
   const muxStreamStatus = match?.mux_stream_status || match?.muxStreamStatus || null;
   const isMuxActivelyLive = String(muxStreamStatus || "").toLowerCase() === "active";
   const playbackPolicy = normalizePlaybackPolicy(match?.mux_playback_policy || match?.muxPlaybackPolicy);
-  const rawWatermark = options?.watermarkConfig !== void 0 ? options.watermarkConfig : match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null;
-  const watermarkConfig = rawWatermark ? normalizeWatermarkConfig(rawWatermark) : null;
+  const watermarkConfig = options?.watermarkConfig !== void 0 ? options.watermarkConfig ? normalizeWatermarkConfig(options.watermarkConfig) : null : resolveEffectiveWatermarkConfig(match, options?.defaultWatermark, options?.channelWatermark);
   let resolvedPlaybackId = match?.playback_id || match?.playbackId || null;
   if (!resolvedPlaybackId && provider !== "youtube" && provider !== "custom") {
     if (isEndedOrReplay && !isMuxActivelyLive && muxAssetPbId) {
@@ -3636,11 +3671,20 @@ function registerClubStreamingRoutes(deps) {
         };
       }).filter((e) => e.revokeStatus === "normal" && e.publishStatus !== "deleted").sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
       const clubApproved = Boolean(Number(club.mux_streaming_approved ?? club.muxStreamingApproved ?? 0));
+      let authMethod = "password";
+      try {
+        const userDoc = await db2.collection("users").doc(String(req.user.id)).get();
+        if (userDoc.exists && userDoc.data()?.password === "google-auth-no-password") {
+          authMethod = "google";
+        }
+      } catch (_) {
+      }
       res.setHeader("Cache-Control", "no-store, private");
       return res.json({
         globalStreamingEnabled: globalEnabled,
         muxServerConfigured: muxCfg.isConfigured,
         allowPartnerSelfProvision: muxCfg.allowPartnerSelfProvision,
+        authMethod,
         club: {
           id: club.id,
           name: club.name,
@@ -3864,20 +3908,27 @@ function registerClubStreamingRoutes(deps) {
       if (effectivePolicy === "signed" && !muxCfg.isSigningConfigured) {
         effectivePolicy = "public";
       }
-      if (event.mux_watermark_config && muxCfg.isConfigured) {
-        const wm = normalizeWatermarkConfig(event.mux_watermark_config);
-        if (wm.enabled && wm.mode === "mux_burn_in" && wm.url) {
-          const base = (process.env.APP_URL || getRequestBaseUrl(req) || "").replace(/\/+$/, "");
-          const pubUrl = wm.url.startsWith("/") && base ? `${base}${wm.url}` : wm.url;
-          const overlay = buildWatermarkOverlayInput(wm, pubUrl);
-          if (overlay && !pubUrl.includes("localhost")) {
-            await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
-              playbackPolicy: effectivePolicy,
-              overlayConfig: overlay
-            }).catch(() => {
-            });
+      if (muxCfg.isConfigured && channel.mux_live_stream_id) {
+        const effectiveWm = resolveEffectiveWatermarkConfig(event, muxCfg.defaultWatermark);
+        const base = (process.env.APP_URL || getRequestBaseUrl(req) || "").replace(/\/+$/, "");
+        let overlay = null;
+        if (effectiveWm && effectiveWm.enabled && effectiveWm.mode === "mux_burn_in" && effectiveWm.url) {
+          let candidateUrl = effectiveWm.url.trim();
+          const localWmMatch = candidateUrl.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(\/api\/mux\/watermarks\/.+)$/i);
+          if (localWmMatch && base && !base.includes("localhost") && !base.includes("127.0.0.1")) {
+            candidateUrl = `${base}${localWmMatch[1]}`;
+          } else if (candidateUrl.startsWith("/") && base) {
+            candidateUrl = `${base}${candidateUrl}`;
+          }
+          if (!candidateUrl.includes("localhost") && !candidateUrl.includes("127.0.0.1")) {
+            overlay = buildWatermarkOverlayInput(effectiveWm, candidateUrl);
           }
         }
+        await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
+          playbackPolicy: effectivePolicy,
+          overlayConfig: overlay
+        }).catch(() => {
+        });
       }
       const sessionId = "bs_" + Date.now().toString(36) + "_" + import_crypto3.default.randomBytes(4).toString("hex");
       const sport = String(event.sport || "football").trim();
@@ -6398,7 +6449,11 @@ async function startServer() {
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied. Purchase or valid subscription required.", hasAccess: false });
       }
-      await getMuxPlatformSettings().catch(() => null);
+      const muxSettings = await getMuxPlatformSettings().catch(() => null);
+      const effectiveWatermark = resolveEffectiveWatermarkConfig(
+        match,
+        muxSettings?.defaultWatermark || getMuxConfig().defaultWatermark || null
+      );
       const accessExpiresRaw = matchingPurchase ? matchingPurchase.access_expires_at || matchingPurchase.accessExpiresAt || null : null;
       let tokenTtlSeconds = 7200;
       if (accessExpiresRaw) {
@@ -6408,7 +6463,9 @@ async function startServer() {
         }
       }
       const resolvedStream = resolveMatchStreamResponse(match, {
-        expirationSeconds: tokenTtlSeconds
+        expirationSeconds: tokenTtlSeconds,
+        watermarkConfig: effectiveWatermark,
+        defaultWatermark: muxSettings?.defaultWatermark || null
       });
       if (resolvedStream.signing_error) {
         return res.status(503).json({
@@ -6799,8 +6856,14 @@ async function startServer() {
       return { publicUrl: "", validation: { valid: false, error: "Watermark image URL is empty." } };
     }
     const base = (process.env.APP_URL || getRequestBaseUrl(req) || "").replace(/\/+$/, "");
-    const publicUrl = trimmed.startsWith("/") && base ? `${base}${trimmed}` : trimmed;
-    return { publicUrl, validation: validateMuxWatermarkUrl(publicUrl) };
+    let candidate = trimmed;
+    const localMatch = candidate.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(\/api\/mux\/watermarks\/.+)$/i);
+    if (localMatch && base && !base.includes("localhost") && !base.includes("127.0.0.1")) {
+      candidate = `${base}${localMatch[1]}`;
+    } else if (candidate.startsWith("/") && base) {
+      candidate = `${base}${candidate}`;
+    }
+    return { publicUrl: candidate, validation: validateMuxWatermarkUrl(candidate) };
   };
   app.post("/api/admin/mux/watermark-upload", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
     try {
@@ -6901,10 +6964,50 @@ async function startServer() {
   });
   app.put("/api/admin/mux/settings", authenticate, requireRole(["admin", "operator"]), async (req, res) => {
     try {
-      await saveMuxPlatformSettings(req.body || {});
+      const saved = await saveMuxPlatformSettings(req.body || {});
+      let syncedChannelsCount = 0;
+      if (req.body?.defaultWatermark !== void 0) {
+        const cfg = getMuxConfig();
+        if (cfg.isConfigured) {
+          let overlayConfig = null;
+          let shouldSkipBurnInSync = false;
+          if (saved.defaultWatermark?.enabled && saved.defaultWatermark.mode === "mux_burn_in" && saved.defaultWatermark.url) {
+            const { publicUrl, validation } = resolveWatermarkPublicUrl(req, saved.defaultWatermark.url);
+            if (validation.valid && !validation.isLocalhost) {
+              overlayConfig = buildWatermarkOverlayInput(saved.defaultWatermark, publicUrl);
+            } else {
+              shouldSkipBurnInSync = true;
+            }
+          }
+          if (!shouldSkipBurnInSync) {
+            const channels = await query(
+              "SELECT `id`, `mux_live_stream_id`, `mux_playback_policy`, `active_match_id` FROM `club_streaming_channels` WHERE `mux_live_stream_id` IS NOT NULL AND `is_suspended` = 0"
+            ).catch(() => []);
+            for (const ch of channels || []) {
+              try {
+                if (ch.active_match_id) {
+                  const mDoc = await db.collection("matches").doc(String(ch.active_match_id)).get();
+                  if (mDoc.exists) {
+                    const mData = mDoc.data();
+                    const customResolved = resolveEffectiveWatermarkConfig(mData, null);
+                    if (customResolved) continue;
+                  }
+                }
+                await updateMuxLiveStreamWatermark(String(ch.mux_live_stream_id), {
+                  playbackPolicy: normalizePlaybackPolicy(ch.mux_playback_policy),
+                  overlayConfig
+                });
+                syncedChannelsCount += 1;
+              } catch (syncErr) {
+                console.warn(`[Mux] Club channel watermark sync skipped for ${ch.id}:`, syncErr?.message);
+              }
+            }
+          }
+        }
+      }
       const refreshed = await getAdminMuxSettings();
       res.setHeader("Cache-Control", "no-store, private");
-      return res.json(refreshed);
+      return res.json({ ...refreshed, syncedChannelsCount });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
@@ -7003,7 +7106,10 @@ async function startServer() {
         });
       }
       const incomingWm = req.body?.watermarkConfig !== void 0 ? req.body.watermarkConfig : match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null;
-      const normalizedWm = incomingWm ? normalizeWatermarkConfig(incomingWm) : null;
+      const normalizedWm = resolveEffectiveWatermarkConfig(
+        { mux_watermark_config: incomingWm },
+        cfg.defaultWatermark
+      );
       let overlayConfig = null;
       if (normalizedWm && normalizedWm.enabled && normalizedWm.mode === "mux_burn_in") {
         const { publicUrl, validation } = resolveWatermarkPublicUrl(req, normalizedWm.url);
@@ -7094,7 +7200,7 @@ async function startServer() {
         matchId: String(matchId),
         mux_watermark_config: wm,
         muxUpdated,
-        note: muxUpdated && wm.enabled && wm.mode === "mux_burn_in" ? "Updated Mux new_asset_settings for future recorded broadcasts/assets." : void 0
+        note: muxUpdated && wm.enabled && wm.mode === "mux_burn_in" ? "Updated Mux new_asset_settings for future recorded broadcasts/assets." : wm.enabled && wm.mode === "player_overlay" ? "Instant Player Overlay updated for viewers." : void 0
       });
     } catch (e) {
       return res.status(502).json({ error: e?.message || "Failed to update watermark configuration" });

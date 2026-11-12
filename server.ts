@@ -102,6 +102,7 @@ import {
   signMuxPlaybackTokens,
   verifyMuxWebhookSignature,
   parseMuxWebhookEvent,
+  resolveEffectiveWatermarkConfig,
   resolveMatchStreamResponse,
   normalizeMuxStreamStatus,
   extractMuxPlaybackId,
@@ -2142,7 +2143,11 @@ async function startServer() {
         return res.status(403).json({ error: "Access denied. Purchase or valid subscription required.", hasAccess: false });
       }
 
-      await getMuxPlatformSettings().catch(() => null);
+      const muxSettings = await getMuxPlatformSettings().catch(() => null);
+      const effectiveWatermark = resolveEffectiveWatermarkConfig(
+        match,
+        muxSettings?.defaultWatermark || getMuxConfig().defaultWatermark || null
+      );
 
       const accessExpiresRaw = matchingPurchase
         ? (matchingPurchase.access_expires_at || matchingPurchase.accessExpiresAt || null)
@@ -2157,6 +2162,8 @@ async function startServer() {
 
       const resolvedStream = resolveMatchStreamResponse(match, {
         expirationSeconds: tokenTtlSeconds,
+        watermarkConfig: effectiveWatermark,
+        defaultWatermark: muxSettings?.defaultWatermark || null,
       });
 
       if (resolvedStream.signing_error) {
@@ -2587,8 +2594,14 @@ async function startServer() {
       return { publicUrl: '', validation: { valid: false, error: 'Watermark image URL is empty.' } };
     }
     const base = (process.env.APP_URL || getRequestBaseUrl(req) || '').replace(/\/+$/, '');
-    const publicUrl = trimmed.startsWith('/') && base ? `${base}${trimmed}` : trimmed;
-    return { publicUrl, validation: validateMuxWatermarkUrl(publicUrl) };
+    let candidate = trimmed;
+    const localMatch = candidate.match(/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(\/api\/mux\/watermarks\/.+)$/i);
+    if (localMatch && base && !base.includes('localhost') && !base.includes('127.0.0.1')) {
+      candidate = `${base}${localMatch[1]}`;
+    } else if (candidate.startsWith('/') && base) {
+      candidate = `${base}${candidate}`;
+    }
+    return { publicUrl: candidate, validation: validateMuxWatermarkUrl(candidate) };
   };
 
   app.post("/api/admin/mux/watermark-upload", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
@@ -2704,10 +2717,56 @@ async function startServer() {
 
   app.put("/api/admin/mux/settings", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
     try {
-      await saveMuxPlatformSettings(req.body || {});
+      const saved = await saveMuxPlatformSettings(req.body || {});
+      let syncedChannelsCount = 0;
+
+      if (req.body?.defaultWatermark !== undefined) {
+        const cfg = getMuxConfig();
+        if (cfg.isConfigured) {
+          let overlayConfig: { url: string; overlay_settings: any } | null = null;
+          let shouldSkipBurnInSync = false;
+
+          if (saved.defaultWatermark?.enabled && saved.defaultWatermark.mode === 'mux_burn_in' && saved.defaultWatermark.url) {
+            const { publicUrl, validation } = resolveWatermarkPublicUrl(req, saved.defaultWatermark.url);
+            if (validation.valid && !validation.isLocalhost) {
+              overlayConfig = buildWatermarkOverlayInput(saved.defaultWatermark, publicUrl);
+            } else {
+              shouldSkipBurnInSync = true;
+            }
+          }
+
+          if (!shouldSkipBurnInSync) {
+            const channels = await query<any>(
+              "SELECT `id`, `mux_live_stream_id`, `mux_playback_policy`, `active_match_id` FROM `club_streaming_channels` WHERE `mux_live_stream_id` IS NOT NULL AND `is_suspended` = 0"
+            ).catch(() => []);
+
+            for (const ch of channels || []) {
+              try {
+                // Skip updating if active Event defines its own custom watermark override
+                if (ch.active_match_id) {
+                  const mDoc = await db.collection("matches").doc(String(ch.active_match_id)).get();
+                  if (mDoc.exists) {
+                    const mData = mDoc.data();
+                    const customResolved = resolveEffectiveWatermarkConfig(mData, null);
+                    if (customResolved) continue;
+                  }
+                }
+                await updateMuxLiveStreamWatermark(String(ch.mux_live_stream_id), {
+                  playbackPolicy: normalizePlaybackPolicy(ch.mux_playback_policy),
+                  overlayConfig,
+                });
+                syncedChannelsCount += 1;
+              } catch (syncErr: any) {
+                console.warn(`[Mux] Club channel watermark sync skipped for ${ch.id}:`, syncErr?.message);
+              }
+            }
+          }
+        }
+      }
+
       const refreshed = await getAdminMuxSettings();
       res.setHeader("Cache-Control", "no-store, private");
-      return res.json(refreshed);
+      return res.json({ ...refreshed, syncedChannelsCount });
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
     }
@@ -2821,7 +2880,10 @@ async function startServer() {
       const incomingWm = req.body?.watermarkConfig !== undefined
         ? req.body.watermarkConfig
         : (match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null);
-      const normalizedWm = incomingWm ? normalizeWatermarkConfig(incomingWm) : null;
+      const normalizedWm = resolveEffectiveWatermarkConfig(
+        { mux_watermark_config: incomingWm },
+        cfg.defaultWatermark
+      );
 
       let overlayConfig: { url: string; overlay_settings: any } | null = null;
       if (normalizedWm && normalizedWm.enabled && normalizedWm.mode === 'mux_burn_in') {
@@ -2925,7 +2987,9 @@ async function startServer() {
         muxUpdated,
         note: muxUpdated && wm.enabled && wm.mode === 'mux_burn_in'
           ? "Updated Mux new_asset_settings for future recorded broadcasts/assets."
-          : undefined,
+          : wm.enabled && wm.mode === 'player_overlay'
+            ? "Instant Player Overlay updated for viewers."
+            : undefined,
       });
     } catch (e: any) {
       return res.status(502).json({ error: e?.message || "Failed to update watermark configuration" });

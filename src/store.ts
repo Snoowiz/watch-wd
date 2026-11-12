@@ -1227,6 +1227,7 @@ export const useAdStore = create<AdState>()(
 
 export interface MuxWatermarkConfig {
   enabled: boolean;
+  disabled?: boolean;
   mode: 'mux_burn_in' | 'player_overlay';
   url: string;
   vertical_align: 'top' | 'middle' | 'bottom';
