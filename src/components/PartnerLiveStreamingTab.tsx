@@ -385,12 +385,19 @@ export function PartnerLiveStreamingTab({
         setFeedback({ type: 'error', message: data?.error || 'Failed to assign event to streaming channel.' });
         return;
       }
-      setFeedback({
-        type: 'success',
-        message: data.idempotent
-          ? 'This Event is already linked to your reusable streaming channel and ready for broadcast.'
-          : 'Event assigned to your reusable channel! You can now start your encoder whenever ready.',
-      });
+      if (data?.muxWatermarkWarning) {
+        setFeedback({
+          type: 'error',
+          message: `Event assigned to channel, but Mux watermark warning: ${data.muxWatermarkWarning}`,
+        });
+      } else {
+        setFeedback({
+          type: 'success',
+          message: data.idempotent
+            ? 'This Event is already linked to your reusable streaming channel and ready for broadcast.'
+            : 'Event assigned to your reusable channel! You can now start your encoder whenever ready.',
+        });
+      }
       await loadStreamingStatus();
       onStatusChanged?.();
     } catch {

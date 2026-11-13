@@ -152,10 +152,21 @@ describe('Mux Live Stream Infrastructure', () => {
         passthrough: 'match-999',
         new_asset_settings: {
           playback_policies: ['public'],
-          passthrough: 'match-999',
         },
       });
       expect(payload.new_asset_settings.inputs).toBeUndefined();
+    });
+
+    it('strictly omits passthrough from new_asset_settings to adhere to Mux API contract and prevent 400 validation error', () => {
+      const payload = buildMuxLiveStreamPayload({
+        passthrough: 'club:42',
+        playbackPolicy: 'signed',
+        testMode: true,
+      });
+
+      expect(payload.passthrough).toBe('club:42');
+      expect((payload.new_asset_settings as any).passthrough).toBeUndefined();
+      expect(payload.new_asset_settings.playback_policies).toEqual(['signed']);
     });
 
     it('supports future watermark overlay_settings hook cleanly without changing top-level shape', () => {
@@ -1469,6 +1480,86 @@ describe('Mux Live Stream Infrastructure', () => {
       } finally {
         (globalThis as any).window = origWindow;
       }
+    });
+
+    it('injects fullscreen-element into mux-player and DOMPurify preserves it for fullscreen watermark display', () => {
+      const htmlFromBareId = formatStreamHtml('d54001aBCdE123', {
+        containerId: 'watchwds-player-container-test',
+      });
+      expect(htmlFromBareId).toContain('<mux-player');
+      expect(htmlFromBareId).toContain('fullscreen-element="watchwds-player-container-test"');
+
+      const htmlFromExisting = formatStreamHtml('<mux-player playback-id="my_live_stream_pb" controls></mux-player>', {
+        containerId: 'watchwds-player-container-existing',
+      });
+      expect(htmlFromExisting).toContain('fullscreen-element="watchwds-player-container-existing"');
+    });
+
+    it('updates Mux live stream watermark overlay and resets inputs cleanly when cleared', async () => {
+      process.env.MUX_TOKEN_ID = 'test_token';
+      process.env.MUX_TOKEN_SECRET = 'test_secret';
+
+      let lastBody: any = null;
+      const fetchMock = vi.fn().mockImplementation((_url: string, init: any) => {
+        lastBody = init?.body ? JSON.parse(init.body) : null;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ data: { id: 'ls_test', status: 'idle' } }),
+        });
+      });
+      globalThis.fetch = fetchMock as any;
+
+      // 1. Set watermark overlay
+      await updateMuxLiveStreamWatermark('ls_test', {
+        playbackPolicy: 'public',
+        overlayConfig: {
+          url: 'https://watchwds.com/api/mux/watermarks/logo.png',
+          overlay_settings: {
+            vertical_align: 'top',
+            vertical_margin: '4%',
+            horizontal_align: 'right',
+            horizontal_margin: '4%',
+            width: '14%',
+            opacity: '85%',
+          },
+        },
+      });
+
+      expect(lastBody).toEqual({
+        new_asset_settings: {
+          playback_policies: ['public'],
+          inputs: [
+            {},
+            {
+              url: 'https://watchwds.com/api/mux/watermarks/logo.png',
+              overlay_settings: {
+                vertical_align: 'top',
+                vertical_margin: '4%',
+                horizontal_align: 'right',
+                horizontal_margin: '4%',
+                width: '14%',
+                opacity: '85%',
+              },
+            },
+          ],
+        },
+      });
+      expect(lastBody.new_asset_settings.passthrough).toBeUndefined();
+
+      // 2. Clear watermark overlay
+      await updateMuxLiveStreamWatermark('ls_test', {
+        playbackPolicy: 'signed',
+        overlayConfig: null,
+      });
+
+      expect(lastBody).toEqual({
+        new_asset_settings: {
+          playback_policies: ['signed'],
+          inputs: [{}],
+        },
+      });
+      expect(lastBody.new_asset_settings.passthrough).toBeUndefined();
     });
   });
 });

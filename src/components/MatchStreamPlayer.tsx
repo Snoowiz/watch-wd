@@ -88,6 +88,10 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
     if (!container) return;
     const muxEl = container.querySelector('mux-player') as any;
     if (!muxEl) return;
+    if (containerId) {
+      muxEl.setAttribute('fullscreen-element', containerId);
+      try { muxEl.fullscreenElement = containerId; } catch (_) {}
+    }
     if (playbackToken) {
       muxEl.setAttribute('playback-token', playbackToken);
       try { muxEl.playbackToken = playbackToken; } catch (_) {}
@@ -104,6 +108,18 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
 
   const parsedWatermark = useMemo(() => parseWatermarkConfig(watermarkConfig), [watermarkConfig]);
 
+  // Generate a stable key for player DOM persistence and fullscreen target container ID
+  const playerStableKey = useMemo(() => {
+    if (!rawStreamContent) return 'empty_player';
+    // Clean string key
+    const clean = rawStreamContent.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+    return `player_${clean}`;
+  }, [rawStreamContent]);
+
+  const containerId = useMemo(() => {
+    return `watchwds-player-container-${playerStableKey}`;
+  }, [playerStableKey]);
+
   // Memoize sanitized HTML so string identity remains stable across parent renders
   const sanitizedStreamHtml = useMemo(() => {
     return formatStreamHtml(rawStreamContent, {
@@ -112,16 +128,9 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
       playbackToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.playbackToken : playbackToken,
       thumbnailToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.thumbnailToken : thumbnailToken,
       storyboardToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.storyboardToken : storyboardToken,
+      containerId,
     });
-  }, [rawStreamContent, mobileVideoStarted, isLive, Boolean(playbackToken)]);
-
-  // Generate a stable key for player DOM persistence
-  const playerStableKey = useMemo(() => {
-    if (!rawStreamContent) return 'empty_player';
-    // Clean string key
-    const clean = rawStreamContent.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
-    return `player_${clean}`;
-  }, [rawStreamContent]);
+  }, [rawStreamContent, mobileVideoStarted, isLive, Boolean(playbackToken), containerId]);
 
   const handleMobilePlay = useCallback(async () => {
     setMobileVideoStarted(true);
@@ -248,8 +257,9 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
   return (
     <div
       ref={containerRef}
+      id={containerId}
       key={playerStableKey}
-      className="w-full h-full absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:border-0 [&_video]:w-full [&_video]:h-full [&_video]:object-contain [&_mux-player]:w-full [&_mux-player]:h-full [&_mux-player]:block flex items-center justify-center bg-slate-900"
+      className="w-full h-full absolute inset-0 [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:border-0 [&_video]:w-full [&_video]:h-full [&_video]:object-contain [&_mux-player]:w-full [&_mux-player]:h-full [&_mux-player]:block flex items-center justify-center bg-slate-900 overflow-hidden [&:fullscreen]:w-screen [&:fullscreen]:h-screen [&:fullscreen]:max-w-none [&:fullscreen]:max-h-none [&:fullscreen]:bg-black [&:-webkit-full-screen]:w-screen [&:-webkit-full-screen]:h-screen [&:-webkit-full-screen]:max-w-none [&:-webkit-full-screen]:max-h-none [&:-webkit-full-screen]:bg-black"
     >
       {/* 1. Mobile Tap-to-Play Overlay (preserves user interaction requirement) */}
       {!mobileVideoStarted && isMobile ? (

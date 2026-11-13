@@ -71,7 +71,6 @@ export interface MuxNewAssetInput {
 
 export interface MuxNewAssetSettings {
   playback_policies: Array<'public' | 'signed'>;
-  passthrough?: string;
   inputs?: MuxNewAssetInput[];
 }
 
@@ -180,7 +179,6 @@ export function buildMuxLiveStreamPayload(options: {
 
   const newAssetSettings: MuxNewAssetSettings = {
     playback_policies: [policy],
-    ...(options.passthrough ? { passthrough: options.passthrough } : {}),
   };
 
   // Watermark / Overlay Preparation hook (inert unless overlayConfig is supplied in a future phase)
@@ -621,7 +619,7 @@ export async function updateMuxLiveStreamWatermark(
             overlay_settings: params.overlayConfig.overlay_settings,
           },
         ]
-      : [],
+      : [{}],
   };
 
   return muxApiRequest<MuxLiveStreamResource>(`/live-streams/${encodeURIComponent(liveStreamId)}`, {

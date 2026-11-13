@@ -101,6 +101,7 @@ export function WatermarkOverlay({
     objectFit: 'contain',
     opacity: parseOpacityValue(wm.opacity),
     filter: 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45))',
+    pointerEvents: 'none',
   };
 
   if (wm.vertical_align === 'top') {

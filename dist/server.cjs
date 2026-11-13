@@ -2553,8 +2553,7 @@ function normalizeMuxStreamStatus(rawStatus) {
 function buildMuxLiveStreamPayload(options) {
   const policy = options.playbackPolicy || "public";
   const newAssetSettings = {
-    playback_policies: [policy],
-    ...options.passthrough ? { passthrough: options.passthrough } : {}
+    playback_policies: [policy]
   };
   if (options.overlayConfig?.url) {
     newAssetSettings.inputs = [
@@ -2841,7 +2840,7 @@ async function updateMuxLiveStreamWatermark(liveStreamId, params) {
         url: params.overlayConfig.url,
         overlay_settings: params.overlayConfig.overlay_settings
       }
-    ] : []
+    ] : [{}]
   };
   return muxApiRequest(`/live-streams/${encodeURIComponent(liveStreamId)}`, {
     method: "PATCH",
@@ -3908,6 +3907,8 @@ function registerClubStreamingRoutes(deps) {
       if (effectivePolicy === "signed" && !muxCfg.isSigningConfigured) {
         effectivePolicy = "public";
       }
+      let muxWatermarkSynced = false;
+      let muxWatermarkWarning = null;
       if (muxCfg.isConfigured && channel.mux_live_stream_id) {
         const effectiveWm = resolveEffectiveWatermarkConfig(event, muxCfg.defaultWatermark);
         const base = (process.env.APP_URL || getRequestBaseUrl(req) || "").replace(/\/+$/, "");
@@ -3924,11 +3925,16 @@ function registerClubStreamingRoutes(deps) {
             overlay = buildWatermarkOverlayInput(effectiveWm, candidateUrl);
           }
         }
-        await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
-          playbackPolicy: effectivePolicy,
-          overlayConfig: overlay
-        }).catch(() => {
-        });
+        try {
+          await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
+            playbackPolicy: effectivePolicy,
+            overlayConfig: overlay
+          });
+          muxWatermarkSynced = true;
+        } catch (wmErr) {
+          console.warn(`[Mux] Channel watermark sync failed during event assignment for channel ${channel.id}:`, wmErr?.message);
+          muxWatermarkWarning = `Watermark configuration could not be synced to Mux (${wmErr?.message || "API error"}). Live player overlay will continue to display on the website.`;
+        }
       }
       const sessionId = "bs_" + Date.now().toString(36) + "_" + import_crypto3.default.randomBytes(4).toString("hex");
       const sport = String(event.sport || "football").trim();
@@ -3976,7 +3982,9 @@ function registerClubStreamingRoutes(deps) {
       return res.status(201).json({
         success: true,
         session: sessionRow,
-        channel: sanitizeChannelForClient(updatedChannel)
+        channel: sanitizeChannelForClient(updatedChannel),
+        muxWatermarkSynced,
+        muxWatermarkWarning: muxWatermarkWarning || void 0
       });
     } catch (e) {
       return res.status(500).json({ error: e.message });

@@ -34,6 +34,7 @@ export function formatStreamHtml(
     playbackToken?: string | null;
     thumbnailToken?: string | null;
     storyboardToken?: string | null;
+    containerId?: string | null;
   }
 ): string {
   if (!raw) return '';
@@ -47,6 +48,10 @@ export function formatStreamHtml(
   const playbackToken = safeJwtToken(options?.playbackToken);
   const thumbnailToken = safeJwtToken(options?.thumbnailToken);
   const storyboardToken = safeJwtToken(options?.storyboardToken);
+  const containerId = options?.containerId && typeof options.containerId === 'string'
+    ? options.containerId.replace(/[^a-zA-Z0-9_-]/g, '').trim()
+    : '';
+  const fsAttr = containerId ? `fullscreen-element="${containerId}" ` : '';
 
   // 1. YouTube URL detection
   const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
@@ -74,12 +79,12 @@ export function formatStreamHtml(
   if (!content.includes('<iframe') && !content.includes('<video') && !content.includes('<mux-player')) {
     if (matchMuxStream && matchMuxStream[1]) {
       const playbackId = matchMuxStream[1];
-      content = `<mux-player playback-id="${playbackId}" stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${playbackId}" ${fsAttr}stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (matchMuxPlayer && matchMuxPlayer[1]) {
       const playbackId = matchMuxPlayer[1];
-      content = `<mux-player playback-id="${playbackId}" stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${playbackId}" ${fsAttr}stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (isBarePlaybackId) {
-      content = `<mux-player playback-id="${content}" stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${content}" ${fsAttr}stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (matchYt && matchYt[1]) {
       const videoId = matchYt[1];
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -90,7 +95,7 @@ export function formatStreamHtml(
     } else if (matchVideoFile) {
       const ext = (matchVideoFile[1] || '').toLowerCase();
       if (ext === 'm3u8') {
-        content = `<mux-player src="${content}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+        content = `<mux-player src="${content}" ${fsAttr}controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
       } else {
         content = `<video src="${content}" controls playsinline ${autoplay ? 'autoplay muted' : ''} style="width: 100%; height: 100%; object-fit: contain;"></video>`;
       }
@@ -120,6 +125,9 @@ export function formatStreamHtml(
 
     // Ensure mux-player styling, playsinline, and preload if missing
     if (content.includes('<mux-player')) {
+      if (containerId && !content.includes('fullscreen-element=')) {
+        content = content.replace(/<mux-player\s/i, `<mux-player fullscreen-element="${containerId}" `);
+      }
       if (!content.includes('style=')) {
         content = content.replace(/<mux-player\s/i, '<mux-player style="width: 100%; height: 100%; display: block;" ');
       }
@@ -206,6 +214,7 @@ export function formatStreamHtml(
       'title',
       'loading',
       'playback-id',
+      'fullscreen-element',
       'playback-token',
       'thumbnail-token',
       'storyboard-token',

@@ -821,7 +821,8 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
         effectivePolicy = 'public';
       }
 
-      // Sync Mux new_asset_settings safely before stream starts (apply effective Event or default burn-in, or clear stale burn-in)
+      let muxWatermarkSynced = false;
+      let muxWatermarkWarning: string | null = null;
       if (muxCfg.isConfigured && channel.mux_live_stream_id) {
         const effectiveWm = resolveEffectiveWatermarkConfig(event, muxCfg.defaultWatermark);
         const base = (process.env.APP_URL || getRequestBaseUrl(req) || '').replace(/\/+$/, '');
@@ -838,10 +839,16 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
             overlay = buildWatermarkOverlayInput(effectiveWm, candidateUrl);
           }
         }
-        await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
-          playbackPolicy: effectivePolicy,
-          overlayConfig: overlay,
-        }).catch(() => {});
+        try {
+          await updateMuxLiveStreamWatermark(String(channel.mux_live_stream_id), {
+            playbackPolicy: effectivePolicy,
+            overlayConfig: overlay,
+          });
+          muxWatermarkSynced = true;
+        } catch (wmErr: any) {
+          console.warn(`[Mux] Channel watermark sync failed during event assignment for channel ${channel.id}:`, wmErr?.message);
+          muxWatermarkWarning = `Watermark configuration could not be synced to Mux (${wmErr?.message || 'API error'}). Live player overlay will continue to display on the website.`;
+        }
       }
 
       const sessionId = 'bs_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
@@ -897,6 +904,8 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
         success: true,
         session: sessionRow,
         channel: sanitizeChannelForClient(updatedChannel),
+        muxWatermarkSynced,
+        muxWatermarkWarning: muxWatermarkWarning || undefined,
       });
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
