@@ -1,3 +1,5 @@
+import { youtubeSource } from '../../utils/youtube';
+import { WatchWDSYouTubePlayer } from '../../components/WatchWDSYouTubePlayer';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore, useMediaStore, useSportStore, MuxWatermarkConfig } from '../../store';
@@ -1536,10 +1538,11 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                     <input 
                       type="text"
                       placeholder="https://www.youtube.com/watch?v=..."
+                      value={description}
                       className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
                       onChange={(e) => {
                         const val = e.target.value.trim();
-                        if (val) setDescription(val);
+                        setDescription(val);
                       }}
                     />
                   </div>
@@ -1902,7 +1905,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   <h3>Stream embed preview</h3>
                 </div>
 
-                <div className="relative w-full aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800/80 bg-slate-100/80 dark:bg-slate-950/40 overflow-hidden flex flex-col items-center justify-center p-2 text-center transition-colors">
+                <div className="relative w-full rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800/80 bg-slate-100/80 dark:bg-slate-950/40 overflow-hidden flex flex-col items-center justify-center p-2 text-center transition-colors">
                   {(() => {
                     const effectivePreview =
                       streamProvider === 'mux'
@@ -1912,8 +1915,8 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       streamProvider === 'mux' && muxStreamStatus === 'active'
                         ? true
                         : currentEffectiveStatus === 'live';
-                    return effectivePreview ? (
-                      <div className="relative w-full h-full">
+                    return youtubeSource(effectivePreview) ? <WatchWDSYouTubePlayer source={effectivePreview} title={title} isLive={previewIsLive} /> : effectivePreview ? (
+                      <div className="relative w-full aspect-video">
                         <div 
                           className="w-full h-full overflow-hidden [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block"
                           dangerouslySetInnerHTML={{ __html: formatStreamHtml(effectivePreview, { isLive: previewIsLive, playbackToken: muxPreviewToken }) }}
@@ -2769,8 +2772,8 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
             </div>
 
             {/* Stream Player Preview */}
-            <div className="aspect-video w-full rounded-xl bg-black border border-slate-200 dark:border-slate-800 overflow-hidden relative">
-              {(streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId) : description) ? (
+            <div className={`w-full rounded-xl bg-black border border-slate-200 dark:border-slate-800 overflow-hidden relative ${youtubeSource(description) ? "" : "aspect-video"}`}>
+              {youtubeSource(description) ? <WatchWDSYouTubePlayer source={description} title={title} isLive={currentEffectiveStatus === 'live'} /> : (streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId) : description) ? (
                 <div className="relative w-full h-full">
                   <div 
                     className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>video]:w-full [&>video]:h-full [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:block"

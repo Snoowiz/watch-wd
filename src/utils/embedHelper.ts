@@ -1,4 +1,5 @@
 import DOMPurify from 'isomorphic-dompurify';
+import { youtubeSource } from './youtube';
 
 /**
  * Loads the @mux/mux-player Web Component custom element script if not already loaded.
@@ -38,6 +39,8 @@ export function formatStreamHtml(
   }
 ): string {
   if (!raw) return '';
+  const youtube = youtubeSource(raw);
+  if (youtube) return `<iframe src="${youtube.src.replace(/&/g, '&amp;')}" title="YouTube video player" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share" allowfullscreen style="width:100%;height:100%;min-width:200px;min-height:200px;border:0"></iframe>`;
   let content = raw.trim();
   const autoplay = options?.autoplay ?? false;
   const isLive = options?.isLive;
@@ -52,10 +55,6 @@ export function formatStreamHtml(
     ? options.containerId.replace(/[^a-zA-Z0-9_-]/g, '').trim()
     : '';
   const fsAttr = containerId ? `fullscreen-element="${containerId}" ` : '';
-
-  // 1. YouTube URL detection
-  const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
-  const matchYt = content.match(ytRegex);
 
   // 2. Mux URL detection (e.g. https://stream.mux.com/{playbackId}.m3u8 or https://player.mux.com/{playbackId})
   const muxStreamRegex = /(?:https?:\/\/)?stream\.mux\.com\/([a-zA-Z0-9_-]+)(?:\.m3u8)?/i;
@@ -85,10 +84,6 @@ export function formatStreamHtml(
       content = `<mux-player playback-id="${playbackId}" ${fsAttr}stream-type="${streamType}" controls playsinline webkit-playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (isBarePlaybackId) {
       content = `<mux-player playback-id="${content}" ${fsAttr}stream-type="${streamType}" controls playsinline webkit-playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
-    } else if (matchYt && matchYt[1]) {
-      const videoId = matchYt[1];
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      content = `<iframe src="https://www.youtube.com/embed/${videoId}?enablejsapi=1${origin ? `&origin=${encodeURIComponent(origin)}` : ''}${autoplay ? '&autoplay=1' : ''}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width: 100%; height: 100%;"></iframe>`;
     } else if (matchVimeo && matchVimeo[1]) {
       const vimeoId = matchVimeo[1];
       content = `<iframe src="https://player.vimeo.com/video/${vimeoId}${autoplay ? '?autoplay=1' : ''}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen style="width: 100%; height: 100%;"></iframe>`;
@@ -101,28 +96,6 @@ export function formatStreamHtml(
       }
     }
   } else {
-    // If it contains an iframe for YouTube, ensure proper referrerpolicy, allow, and origin parameter
-    if (content.includes('<iframe') && /youtube\.com|youtu\.be|youtube-nocookie\.com/i.test(content)) {
-      if (!content.includes('referrerpolicy')) {
-        content = content.replace(/<iframe\s/i, '<iframe referrerpolicy="strict-origin-when-cross-origin" ');
-      } else {
-        content = content.replace(/referrerpolicy="[^"]*"/i, 'referrerpolicy="strict-origin-when-cross-origin"');
-      }
-
-      const requiredAllow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
-      if (!content.includes('allow=')) {
-        content = content.replace(/<iframe\s/i, `<iframe allow="${requiredAllow}" `);
-      }
-
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      if (origin && !content.includes('origin=')) {
-        content = content.replace(/src="([^"]+)"/i, (m, p1) => {
-          const sep = p1.includes('?') ? '&' : '?';
-          return `src="${p1}${sep}origin=${encodeURIComponent(origin)}&enablejsapi=1"`;
-        });
-      }
-    }
-
     // Ensure mux-player styling, playsinline, and preload if missing
     if (content.includes('<mux-player')) {
       if (containerId && !content.includes('fullscreen-element=')) {
@@ -187,7 +160,7 @@ export function formatStreamHtml(
     } catch {
       // safe fallback
     }
-    return html;
+    return '';
   };
 
   return sanitize(content, {

@@ -1,3 +1,4 @@
+import { youtubeSource } from '../utils/youtube';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import DOMPurify from 'dompurify';
@@ -987,8 +988,8 @@ export function MatchDetail() {
 
       {/* 4. Existing Video Player Section */}
       <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
-        <div className={`bg-black relative flex items-center justify-center overflow-hidden ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
-          <AdOverlay match={match} />
+        <div className={`bg-black relative flex items-center justify-center overflow-hidden ${effectiveHasAccess ? (youtubeSource(rawStreamContent) ? '' : 'aspect-video') : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
+          {!youtubeSource(rawStreamContent) && <AdOverlay match={match} />}
           {effectiveHasAccess ? (
             (() => {
               const activeMuxStatus = streamData?.mux_stream_status ?? match?.mux_stream_status ?? null;
