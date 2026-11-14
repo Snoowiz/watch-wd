@@ -2555,16 +2555,6 @@ function buildMuxLiveStreamPayload(options) {
   const newAssetSettings = {
     playback_policies: [policy]
   };
-  if (options.overlayConfig?.url) {
-    newAssetSettings.inputs = [
-      {},
-      // Primary live feed input
-      {
-        url: options.overlayConfig.url,
-        overlay_settings: options.overlayConfig.overlay_settings
-      }
-    ];
-  }
   return {
     playback_policies: [policy],
     ...options.passthrough ? { passthrough: options.passthrough } : {},
@@ -2833,14 +2823,7 @@ async function completeMuxLiveStream(liveStreamId) {
 async function updateMuxLiveStreamWatermark(liveStreamId, params) {
   const policy = normalizePlaybackPolicy(params.playbackPolicy);
   const newAssetSettings = {
-    playback_policies: [policy],
-    inputs: params.overlayConfig?.url ? [
-      {},
-      {
-        url: params.overlayConfig.url,
-        overlay_settings: params.overlayConfig.overlay_settings
-      }
-    ] : [{}]
+    playback_policies: [policy]
   };
   return muxApiRequest(`/live-streams/${encodeURIComponent(liveStreamId)}`, {
     method: "PATCH",
@@ -3175,13 +3158,21 @@ function resolveEffectiveWatermarkConfig(match, defaultWatermark, channelWaterma
   } else if (raw && typeof raw === "object") {
     rawObj = raw;
   }
+  const defWm = defaultWatermark ? normalizeWatermarkConfig(defaultWatermark) : null;
   if (rawObj && typeof rawObj === "object") {
     const normalized = normalizeWatermarkConfig(rawObj);
-    if (normalized.enabled && normalized.url) {
-      return normalized;
-    }
     if (!normalized.enabled && (normalized.url || rawObj.disabled === true)) {
       return null;
+    }
+    if (normalized.enabled && normalized.url) {
+      const isCustomOverride = Boolean(rawObj.is_custom_override) || Boolean(defWm?.url) && normalized.url !== defWm?.url;
+      if (isCustomOverride) {
+        return normalized;
+      }
+      if (defWm && defWm.enabled && defWm.url) {
+        return defWm;
+      }
+      return normalized;
     }
   }
   if (channelWatermark) {
@@ -3190,11 +3181,8 @@ function resolveEffectiveWatermarkConfig(match, defaultWatermark, channelWaterma
       return chWm;
     }
   }
-  if (defaultWatermark) {
-    const defWm = normalizeWatermarkConfig(defaultWatermark);
-    if (defWm.enabled && defWm.url) {
-      return defWm;
-    }
+  if (defWm && defWm.enabled && defWm.url) {
+    return defWm;
   }
   return null;
 }
@@ -6974,6 +6962,17 @@ async function startServer() {
     try {
       const saved = await saveMuxPlatformSettings(req.body || {});
       let syncedChannelsCount = 0;
+      cacheEngine.invalidateCollection("matches");
+      cacheEngine.invalidateCollection("club_streaming_channels");
+      cacheEngine.invalidatePattern("database", "mux");
+      cacheEngine.invalidatePattern("fragment", "/api/admin/mux");
+      if (saved.defaultWatermark) {
+        await execute(
+          "UPDATE `matches` SET `mux_watermark_config` = ? WHERE `mux_watermark_config` IS NOT NULL AND `mux_watermark_config` NOT LIKE '%\"is_custom_override\":true%'",
+          [JSON.stringify(saved.defaultWatermark)]
+        ).catch(() => {
+        });
+      }
       if (req.body?.defaultWatermark !== void 0) {
         const cfg = getMuxConfig();
         if (cfg.isConfigured) {

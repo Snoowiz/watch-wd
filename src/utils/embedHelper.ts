@@ -79,12 +79,12 @@ export function formatStreamHtml(
   if (!content.includes('<iframe') && !content.includes('<video') && !content.includes('<mux-player')) {
     if (matchMuxStream && matchMuxStream[1]) {
       const playbackId = matchMuxStream[1];
-      content = `<mux-player playback-id="${playbackId}" ${fsAttr}stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${playbackId}" ${fsAttr}stream-type="${streamType}" controls playsinline webkit-playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (matchMuxPlayer && matchMuxPlayer[1]) {
       const playbackId = matchMuxPlayer[1];
-      content = `<mux-player playback-id="${playbackId}" ${fsAttr}stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${playbackId}" ${fsAttr}stream-type="${streamType}" controls playsinline webkit-playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (isBarePlaybackId) {
-      content = `<mux-player playback-id="${content}" ${fsAttr}stream-type="${streamType}" controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+      content = `<mux-player playback-id="${content}" ${fsAttr}stream-type="${streamType}" controls playsinline webkit-playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
     } else if (matchYt && matchYt[1]) {
       const videoId = matchYt[1];
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -95,9 +95,9 @@ export function formatStreamHtml(
     } else if (matchVideoFile) {
       const ext = (matchVideoFile[1] || '').toLowerCase();
       if (ext === 'm3u8') {
-        content = `<mux-player src="${content}" ${fsAttr}controls playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
+        content = `<mux-player src="${content}" ${fsAttr}controls playsinline webkit-playsinline preload="metadata" ${autoplay ? 'autoplay="muted"' : ''} style="width: 100%; height: 100%; display: block;"></mux-player>`;
       } else {
-        content = `<video src="${content}" controls playsinline ${autoplay ? 'autoplay muted' : ''} style="width: 100%; height: 100%; object-fit: contain;"></video>`;
+        content = `<video src="${content}" controls playsinline webkit-playsinline ${autoplay ? 'autoplay muted' : ''} style="width: 100%; height: 100%; object-fit: contain;"></video>`;
       }
     }
   } else {
@@ -132,7 +132,9 @@ export function formatStreamHtml(
         content = content.replace(/<mux-player\s/i, '<mux-player style="width: 100%; height: 100%; display: block;" ');
       }
       if (!content.includes('playsinline')) {
-        content = content.replace(/<mux-player\s/i, '<mux-player playsinline ');
+        content = content.replace(/<mux-player\s/i, '<mux-player playsinline webkit-playsinline ');
+      } else if (!content.includes('webkit-playsinline')) {
+        content = content.replace(/<mux-player\s/i, '<mux-player webkit-playsinline ');
       }
       if (!content.includes('preload=')) {
         content = content.replace(/<mux-player\s/i, '<mux-player preload="metadata" ');

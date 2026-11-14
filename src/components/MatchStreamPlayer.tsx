@@ -294,11 +294,11 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
         />
       )}
 
-      {/* Optional Non-Destructive Player Watermark Overlay (live/embed/manual Mux fallback without doubling VOD burn-in) */}
+      {/* Persistent Player Watermark Overlay (preserved in normal and fullscreen playback) */}
       {!isAssetProcessing && (!isMobile || mobileVideoStarted) && (
         <WatermarkOverlay
           config={parsedWatermark}
-          allowBurnInFallback={!isMuxRecordedAsset}
+          allowBurnInFallback={true}
         />
       )}
 

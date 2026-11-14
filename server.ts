@@ -2720,6 +2720,19 @@ async function startServer() {
       const saved = await saveMuxPlatformSettings(req.body || {});
       let syncedChannelsCount = 0;
 
+      // Invalidate match and streaming caches immediately
+      cacheEngine.invalidateCollection("matches");
+      cacheEngine.invalidateCollection("club_streaming_channels");
+      cacheEngine.invalidatePattern("database", "mux");
+      cacheEngine.invalidatePattern("fragment", "/api/admin/mux");
+
+      if (saved.defaultWatermark) {
+        await execute(
+          "UPDATE `matches` SET `mux_watermark_config` = ? WHERE `mux_watermark_config` IS NOT NULL AND `mux_watermark_config` NOT LIKE '%\"is_custom_override\":true%'",
+          [JSON.stringify(saved.defaultWatermark)]
+        ).catch(() => {});
+      }
+
       if (req.body?.defaultWatermark !== undefined) {
         const cfg = getMuxConfig();
         if (cfg.isConfigured) {

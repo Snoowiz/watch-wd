@@ -989,16 +989,6 @@ export function MatchDetail() {
       <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
         <div className={`bg-black relative flex items-center justify-center overflow-hidden ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
           <AdOverlay match={match} />
-          {effectiveHasAccess && accessCountdown && accessCountdown !== 'Expired' && (
-            <div className={`absolute top-4 left-4 z-30 flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg border transition-all ${
-              isUrgent 
-                ? 'bg-rose-500/90 text-white border-rose-400 animate-pulse shadow-rose-900/40' 
-                : 'bg-slate-900/80 text-yellow-400 border-yellow-500/40 shadow-black/40'
-            }`}>
-              <Clock className="w-3.5 h-3.5" />
-              <span>Access expires in: <strong className="font-mono text-white ml-1">{accessCountdown}</strong></span>
-            </div>
-          )}
           {effectiveHasAccess ? (
             (() => {
               const activeMuxStatus = streamData?.mux_stream_status ?? match?.mux_stream_status ?? null;
@@ -1027,7 +1017,7 @@ export function MatchDetail() {
                   playbackToken={streamData?.playback_token || null}
                   thumbnailToken={streamData?.thumbnail_token || null}
                   storyboardToken={streamData?.storyboard_token || null}
-                  watermarkConfig={streamData?.watermark_config || null}
+                  watermarkConfig={streamData?.watermark_config || match?.mux_watermark_config || (match as any)?.muxWatermarkConfig || null}
                   isMuxRecordedAsset={Boolean(
                     activeProvider === 'mux' &&
                     !playerIsLive &&

@@ -190,20 +190,9 @@ describe('Mux Live Stream Infrastructure', () => {
 
       expect(payload.latency_mode).toBe('low');
       expect(payload.reconnect_window).toBe(60);
-      expect(payload.new_asset_settings.inputs).toEqual([
-        {},
-        {
-          url: 'https://cdn.example.com/watermark.png',
-          overlay_settings: {
-            vertical_align: 'top',
-            vertical_margin: '5%',
-            horizontal_align: 'right',
-            horizontal_margin: '5%',
-            width: '120px',
-            opacity: '80%',
-          },
-        },
-      ]);
+      expect(payload.new_asset_settings.playback_policies).toEqual(['public']);
+      // Validates that empty {} input is omitted on live stream creation to prevent Mux 'empty url' validation error
+      expect(payload.new_asset_settings.inputs).toBeUndefined();
     });
 
     it('prefers public playback ID when extracting playback IDs', () => {
@@ -686,7 +675,7 @@ describe('Mux Live Stream Infrastructure', () => {
       expect(clientParsed).toEqual(serverNormalized);
     });
 
-    it('updates Mux live stream new_asset_settings inputs via PATCH', async () => {
+    it('updates Mux live stream new_asset_settings playback policy via PATCH without malformed empty inputs', async () => {
       process.env.MUX_TOKEN_ID = 'test_id';
       process.env.MUX_TOKEN_SECRET = 'test_secret';
 
@@ -715,8 +704,8 @@ describe('Mux Live Stream Infrastructure', () => {
       expect(init.method).toBe('PATCH');
       const body = JSON.parse(init.body);
       expect(body.new_asset_settings.playback_policies).toEqual(['signed']);
-      expect(body.new_asset_settings.inputs).toHaveLength(2);
-      expect(body.new_asset_settings.inputs[1].url).toBe('https://cdn.example.com/logo.png');
+      // Validates that empty {} inputs are omitted on live stream updates to prevent Mux 'empty url' validation error
+      expect(body.new_asset_settings.inputs).toBeUndefined();
     });
   });
 
@@ -1529,23 +1518,10 @@ describe('Mux Live Stream Infrastructure', () => {
       expect(lastBody).toEqual({
         new_asset_settings: {
           playback_policies: ['public'],
-          inputs: [
-            {},
-            {
-              url: 'https://watchwds.com/api/mux/watermarks/logo.png',
-              overlay_settings: {
-                vertical_align: 'top',
-                vertical_margin: '4%',
-                horizontal_align: 'right',
-                horizontal_margin: '4%',
-                width: '14%',
-                opacity: '85%',
-              },
-            },
-          ],
         },
       });
       expect(lastBody.new_asset_settings.passthrough).toBeUndefined();
+      expect(lastBody.new_asset_settings.inputs).toBeUndefined();
 
       // 2. Clear watermark overlay
       await updateMuxLiveStreamWatermark('ls_test', {
@@ -1556,10 +1532,10 @@ describe('Mux Live Stream Infrastructure', () => {
       expect(lastBody).toEqual({
         new_asset_settings: {
           playback_policies: ['signed'],
-          inputs: [{}],
         },
       });
       expect(lastBody.new_asset_settings.passthrough).toBeUndefined();
+      expect(lastBody.new_asset_settings.inputs).toBeUndefined();
     });
   });
 });

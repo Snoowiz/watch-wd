@@ -71,7 +71,7 @@ export function resolveRenderableWatermarkUrl(rawUrl?: string | null): string {
 export function WatermarkOverlay({
   config,
   forcePreview = false,
-  allowBurnInFallback = false,
+  allowBurnInFallback = true,
 }: {
   config?: MuxWatermarkConfig | string | null;
   forcePreview?: boolean;
@@ -86,7 +86,7 @@ export function WatermarkOverlay({
   }, [renderUrl]);
 
   if (!renderUrl || imgFailed) return null;
-  const isRenderableMode = wm.mode === 'player_overlay' || allowBurnInFallback;
+  const isRenderableMode = wm.mode === 'player_overlay' || wm.mode === 'mux_burn_in' || allowBurnInFallback;
   if (!forcePreview && (!wm.enabled || !isRenderableMode)) {
     return null;
   }
@@ -128,7 +128,7 @@ export function WatermarkOverlay({
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-20 overflow-hidden select-none"
+      className="pointer-events-none absolute inset-0 z-30 overflow-hidden select-none"
       style={{ transform: 'translateZ(0)' }}
     >
       <img

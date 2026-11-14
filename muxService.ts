@@ -181,17 +181,6 @@ export function buildMuxLiveStreamPayload(options: {
     playback_policies: [policy],
   };
 
-  // Watermark / Overlay Preparation hook (inert unless overlayConfig is supplied in a future phase)
-  if (options.overlayConfig?.url) {
-    newAssetSettings.inputs = [
-      {}, // Primary live feed input
-      {
-        url: options.overlayConfig.url,
-        overlay_settings: options.overlayConfig.overlay_settings,
-      },
-    ];
-  }
-
   return {
     playback_policies: [policy],
     ...(options.passthrough ? { passthrough: options.passthrough } : {}),
@@ -611,15 +600,6 @@ export async function updateMuxLiveStreamWatermark(
   const policy = normalizePlaybackPolicy(params.playbackPolicy);
   const newAssetSettings: MuxNewAssetSettings = {
     playback_policies: [policy],
-    inputs: params.overlayConfig?.url
-      ? [
-          {},
-          {
-            url: params.overlayConfig.url,
-            overlay_settings: params.overlayConfig.overlay_settings,
-          },
-        ]
-      : [{}],
   };
 
   return muxApiRequest<MuxLiveStreamResource>(`/live-streams/${encodeURIComponent(liveStreamId)}`, {
@@ -1100,13 +1080,25 @@ export function resolveEffectiveWatermarkConfig(
     rawObj = raw;
   }
 
+  const defWm = defaultWatermark ? normalizeWatermarkConfig(defaultWatermark) : null;
+
   if (rawObj && typeof rawObj === 'object') {
     const normalized = normalizeWatermarkConfig(rawObj);
-    if (normalized.enabled && normalized.url) {
-      return normalized;
-    }
+    // Explicit opt-out for this event
     if (!normalized.enabled && (normalized.url || rawObj.disabled === true)) {
       return null;
+    }
+    if (normalized.enabled && normalized.url) {
+      const isCustomOverride = Boolean(rawObj.is_custom_override) || (Boolean(defWm?.url) && normalized.url !== defWm?.url);
+      if (isCustomOverride) {
+        return normalized;
+      }
+      // If the match was using the platform default watermark, dynamically inherit the latest platform default
+      // position, margins, width, opacity, and delivery mode so changes in Admin Mux Settings apply immediately.
+      if (defWm && defWm.enabled && defWm.url) {
+        return defWm;
+      }
+      return normalized;
     }
   }
 
@@ -1117,11 +1109,8 @@ export function resolveEffectiveWatermarkConfig(
     }
   }
 
-  if (defaultWatermark) {
-    const defWm = normalizeWatermarkConfig(defaultWatermark);
-    if (defWm.enabled && defWm.url) {
-      return defWm;
-    }
+  if (defWm && defWm.enabled && defWm.url) {
+    return defWm;
   }
 
   return null;
