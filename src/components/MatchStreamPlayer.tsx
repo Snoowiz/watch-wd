@@ -1,3 +1,5 @@
+import { youtubeSource } from '../utils/youtube';
+import { WatchWDSYouTubePlayer } from './WatchWDSYouTubePlayer';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { PlayCircle, Loader2, RefreshCw, AlertCircle, Sparkles } from 'lucide-react';
 import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
@@ -209,6 +211,10 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
       container.removeEventListener('loadedmetadata', handleReady, true);
     };
   }, [sanitizedStreamHtml, handleCheckStreamReady]);
+
+  if (youtubeSource(rawStreamContent)) {
+    return <WatchWDSYouTubePlayer source={rawStreamContent} title={title} isLive={isLive} />;
+  }
 
   if (!rawStreamContent) {
     if (isUnavailable) {
