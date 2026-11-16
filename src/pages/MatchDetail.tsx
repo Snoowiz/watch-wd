@@ -9,7 +9,7 @@ import { AdOverlay } from '../components/AdOverlay';
 import { AddFundsModal } from '../components/AddFundsModal';
 import { AccountGateModal } from '../components/AccountGateModal';
 import { requestNotificationPermission, subscribeToMatch, setupMessageListener, unsubscribeFromMatch, getNotificationPermission } from '../services/notificationService';
-import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../utils/embedHelper';
+import { formatStreamHtml, loadMuxPlayerIfNeeded, isMediaMarkup } from '../utils/embedHelper';
 import { formatMatchStatus, isInterview, isHighlights, isVideoOnlyContent, cleanEditorialDescription } from '../utils/statusHelper';
 import { MatchStreamPlayer } from '../components/MatchStreamPlayer';
 
@@ -578,18 +578,28 @@ export function MatchDetail() {
         ? (streamData?.mux_playback_id || streamData?.mux_asset_playback_id || null)
         : null;
 
-    return (
+    const directSource =
       streamData?.embed_code ||
       streamData?.video_url ||
       streamData?.playback_id ||
       streamData?.playbackId ||
       muxPbId ||
-      streamData?.description ||
       match?.playback_id ||
       match?.playbackId ||
-      match?.description ||
-      ''
-    );
+      null;
+
+    if (directSource) return directSource;
+
+    // Only fallback to description if it contains actual stream media markup / video URLs,
+    // never for plain editorial text!
+    if (streamData?.description && isMediaMarkup(streamData.description)) {
+      return streamData.description;
+    }
+    if (match?.description && isMediaMarkup(match.description)) {
+      return match.description;
+    }
+
+    return '';
   }, [
     streamData?.stream_provider,
     streamData?.embed_code,
@@ -898,19 +908,19 @@ export function MatchDetail() {
   const assignedClub = clubs.find(c => String(c.id) === String(matchClubId));
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8 pb-24">
+    <div className="w-full max-w-6xl mx-auto space-y-6 sm:space-y-8 pb-24 min-w-0 max-w-full">
       {/* 1, 2, 3: Header Section ABOVE the Video Player */}
-      <div className="flex flex-col items-start gap-2.5 text-left w-full px-4 sm:px-0 pt-1 sm:pt-2">
-        <div className="flex items-start justify-between gap-3 sm:gap-4 w-full">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white leading-tight tracking-tight text-left">
+      <div className="flex flex-col items-start gap-2.5 text-left w-full min-w-0 max-w-full px-4 sm:px-0 pt-1 sm:pt-2">
+        <div className="flex items-start justify-between gap-3 sm:gap-4 w-full min-w-0">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white leading-tight tracking-tight text-left break-words [overflow-wrap:anywhere] min-w-0 flex-1">
             {match.title}
           </h1>
         </div>
         
         {/* Metadata row: Status, Competition, Club, Date, Time */}
-        <div className="flex flex-wrap items-center justify-start gap-2.5 sm:gap-3 w-full">
+        <div className="flex flex-wrap items-center justify-start gap-2.5 sm:gap-3 w-full min-w-0 max-w-full">
           {/* Verified broadcast status badge */}
-          <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest ${
+          <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest shrink-0 ${
             dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' :
             dynamicStatus === 'highlights' ? 'bg-purple-600 text-white' :
             (dynamicStatus === 'full_match' || dynamicStatus === 'completed') ? 'bg-slate-700 text-white' :
@@ -928,11 +938,11 @@ export function MatchDetail() {
             return (
               <Link
                 to={`/matches?competition=${encodeURIComponent(assignedComp.slug || assignedComp.id)}`}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors shadow-sm"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors shadow-sm max-w-full"
                 title={`Competition: ${assignedComp.name}`}
               >
-                <Trophy className="w-3.5 h-3.5" />
-                <span>{assignedComp.name}</span>
+                <Trophy className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate max-w-[200px] sm:max-w-xs">{assignedComp.name}</span>
               </Link>
             );
           })()}
@@ -941,11 +951,11 @@ export function MatchDetail() {
           {assignedClub && (
             <Link
               to={`/matches?club=${encodeURIComponent(assignedClub.id)}`}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors shadow-sm max-w-full"
               title={`Club / Organisation: ${assignedClub.name}`}
             >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>{assignedClub.name}</span>
+              <Building2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate max-w-[200px] sm:max-w-xs">{assignedClub.name}</span>
             </Link>
           )}
 
@@ -986,8 +996,8 @@ export function MatchDetail() {
       </div>
 
       {/* 4. Existing Video Player Section */}
-      <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800">
-        <div className={`bg-black relative flex items-center justify-center overflow-hidden ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
+      <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800 w-auto max-w-full">
+        <div className={`bg-black relative flex items-center justify-center overflow-hidden w-full max-w-full ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
           <AdOverlay match={match} />
           {effectiveHasAccess ? (
             (() => {
@@ -1140,9 +1150,9 @@ export function MatchDetail() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
+      <div className="grid lg:grid-cols-3 gap-8 min-w-0 max-w-full">
         {/* Main Column */}
-        <div className="lg:col-span-2 space-y-5 sm:space-y-6">
+        <div className="lg:col-span-2 space-y-5 sm:space-y-6 min-w-0 max-w-full">
           {/* 5. Access Information and Primary Action (when viewing is restricted) */}
           {!effectiveHasAccess && (
             <div className="bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 sm:p-6 shadow-sm text-left">
@@ -1410,7 +1420,7 @@ export function MatchDetail() {
                   </div>
                 )}
                 
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words text-left">
+                <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] text-left">
                   <div 
                     className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm"
                     dangerouslySetInnerHTML={{ 
@@ -1438,7 +1448,7 @@ export function MatchDetail() {
         </div>
 
         {/* Sidebar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4 sm:gap-6 lg:self-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4 sm:gap-6 lg:self-start min-w-0 max-w-full">
           {/* Creator Tools Section */}
           {user && (user.role === 'creator' || user.creatorStatus === 'approved') && (
             <div className="bg-indigo-600 p-5 sm:p-8 rounded-xl shadow-xl text-white">
@@ -1520,9 +1530,9 @@ export function MatchDetail() {
               </h3>
               <div className="flex flex-col gap-3">
                 {relatedMatches.map(m => (
-                  <Link key={m.id} to={`/matches/${m.slug}`} className="group block">
-                    <div className="flex gap-3 bg-white dark:bg-slate-800 rounded-xl p-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border border-slate-100 dark:border-slate-700 shadow-sm">
-                      <div className="w-36 aspect-video rounded-lg overflow-hidden relative shrink-0 bg-slate-900">
+                  <Link key={m.id} to={`/matches/${m.slug}`} className="group block min-w-0 max-w-full">
+                    <div className="flex gap-3 bg-white dark:bg-slate-800 rounded-xl p-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border border-slate-100 dark:border-slate-700 shadow-sm min-w-0 max-w-full">
+                      <div className="w-28 sm:w-36 aspect-video rounded-lg overflow-hidden relative shrink-0 bg-slate-900">
                         <img 
                           src={m.thumbnail}
                           alt={m.title}

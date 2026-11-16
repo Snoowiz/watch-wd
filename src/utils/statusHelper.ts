@@ -31,14 +31,54 @@ export function isVideoOnlyContent(item?: { status?: string | null; title?: stri
 
 /**
  * Cleans public description by stripping internal editorial tags (e.g. #full-match, #interview, SEO: lines)
- * without modifying the underlying stored data.
+ * and raw embedded media tags (iframe, mux-player, video, embed, object) or standalone stream URLs,
+ * keeping editorial descriptions clean and preventing duplicate players or layout blowout on mobile.
  */
 export function cleanEditorialDescription(rawText?: string | null): string {
   if (!rawText) return 'No description provided.';
-  return rawText
+
+  let cleaned = rawText
+    // Strip SEO prefix
     .replace(/(?:^|\n)\s*SEO:[^\n]*/gi, '')
+    // Strip status hashtags
     .replace(/#(?:full-match|full_match|interview|highlights)\b/gi, '')
-    .trim() || 'No description provided.';
+    // Strip iframe tags (with or without closing tag)
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<iframe\b[^>]*\/?>/gi, '')
+    // Strip mux-player tags
+    .replace(/<mux-player\b[^>]*>[\s\S]*?<\/mux-player>/gi, '')
+    .replace(/<mux-player\b[^>]*\/?>/gi, '')
+    // Strip video tags
+    .replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, '')
+    .replace(/<video\b[^>]*\/?>/gi, '')
+    // Strip embed & object tags
+    .replace(/<embed\b[^>]*\/?>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '');
+
+  // Strip lines that are solely standalone video stream URLs
+  const lines = cleaned.split('\n').filter(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    // Standalone YouTube, Mux, or Vimeo URLs
+    if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com|stream\.mux\.com|player\.mux\.com|vimeo\.com)[^\s]*$/i.test(trimmed)) {
+      return false;
+    }
+    // Standalone direct video file stream URL
+    if (/^https?:\/\/[^\s<"']+\.(m3u8|mp4|webm|ogg)(?:\?[^\s<"']*)?$/i.test(trimmed)) {
+      return false;
+    }
+    return true;
+  });
+
+  cleaned = lines.join('\n').trim();
+
+  // Strip leftover empty HTML tags like <p></p>, <p><br></p>, <div></div>
+  cleaned = cleaned
+    .replace(/<p>\s*(<br\s*\/?>)?\s*<\/p>/gi, '')
+    .replace(/<div>\s*<\/div>/gi, '')
+    .trim();
+
+  return cleaned || 'No description provided.';
 }
 
 /**

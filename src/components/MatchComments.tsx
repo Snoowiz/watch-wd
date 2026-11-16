@@ -130,15 +130,15 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
           </div>
         ) : (
           matchComments.map((comment) => (
-            <div key={comment.id} className="flex gap-2 sm:gap-3 items-start">
+            <div key={comment.id} className="flex gap-2 sm:gap-3 items-start min-w-0 max-w-full">
               <UserAvatar 
                 src={comment.avatar} 
                 name={comment.username} 
                 className={`${isCompact ? 'w-6 h-6 text-[10px]' : 'w-8 h-8 text-xs'} rounded-full shrink-0 mt-1 shadow-sm`}
                 shape="circle"
               />
-              <div className="flex flex-col items-start max-w-[85%] sm:max-w-[75%]">
-                <div className="flex items-baseline gap-2 mb-1">
+              <div className="flex flex-col items-start min-w-0 max-w-[85%] sm:max-w-[75%]">
+                <div className="flex items-baseline gap-2 mb-1 min-w-0 max-w-full">
                   <span className={`font-bold ${isCompact ? 'text-xs' : 'text-sm'} text-slate-900 dark:text-white line-clamp-1`}>{comment.username}</span>
                   <span className="text-[10px] text-slate-400 whitespace-nowrap">
                     {(() => {
@@ -152,7 +152,7 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
                     })()}
                   </span>
                 </div>
-                <div className={`${isCompact ? 'px-3 py-1.5 text-xs' : 'px-3 py-2 sm:px-4 sm:py-2 text-sm'} rounded-2xl break-words ${
+                <div className={`${isCompact ? 'px-3 py-1.5 text-xs' : 'px-3 py-2 sm:px-4 sm:py-2 text-sm'} rounded-2xl break-words [overflow-wrap:anywhere] max-w-full ${
                   String(comment.userId) === String(user?.id)
                     ? 'bg-indigo-500 text-white rounded-tr-sm' 
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-tl-sm'
@@ -198,16 +198,21 @@ export function MatchComments({ match, hasAccess }: MatchCommentsProps) {
         ) : (
           <div className="relative">
             {showEmojiPicker && (
-              <div ref={emojiPickerRef} className="absolute bottom-full right-0 mb-2 z-50">
+              <div
+                ref={emojiPickerRef}
+                className="absolute bottom-full right-0 mb-2 z-50 w-72 sm:w-80 max-w-[calc(100vw-2rem)] shadow-2xl rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700"
+              >
                 <EmojiPicker 
                   onEmojiClick={onEmojiClick}
                   theme={document.documentElement.classList.contains('dark') ? Theme.DARK : Theme.LIGHT}
                   lazyLoadEmojis={true}
+                  width="100%"
+                  height={360}
                 />
               </div>
             )}
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <div className="relative flex-1">
+            <form onSubmit={handleSubmit} className="flex gap-2 min-w-0 max-w-full">
+              <div className="relative flex-1 min-w-0">
                 <input
                   type="text"
                   value={newComment}

@@ -129,8 +129,10 @@ export const MatchStreamPlayer = React.memo(function MatchStreamPlayer({
       thumbnailToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.thumbnailToken : thumbnailToken,
       storyboardToken: initialTokensRef.current.content === rawStreamContent ? initialTokensRef.current.storyboardToken : storyboardToken,
       containerId,
+      streamProvider,
+      title,
     });
-  }, [rawStreamContent, mobileVideoStarted, isLive, Boolean(playbackToken), containerId]);
+  }, [rawStreamContent, mobileVideoStarted, isLive, Boolean(playbackToken), containerId, streamProvider, title]);
 
   const handleMobilePlay = useCallback(async () => {
     setMobileVideoStarted(true);

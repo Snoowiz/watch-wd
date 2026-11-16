@@ -17,7 +17,7 @@ import 'react-quill-new/dist/quill.snow.css';
 import { format } from 'date-fns';
 import { MediaPicker } from '../../components/MediaPicker';
 import { compressImage } from '../../lib/imageCompressor';
-import { formatStreamHtml, loadMuxPlayerIfNeeded } from '../../utils/embedHelper';
+import { formatStreamHtml, loadMuxPlayerIfNeeded, extractYouTubeVideoId, buildYouTubeIframeHtml } from '../../utils/embedHelper';
 import { formatMatchStatus } from '../../utils/statusHelper';
 import { 
   DEFAULT_PRIMARY_COLOR, 
@@ -164,6 +164,12 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
       ? 'mux'
       : 'youtube')
   );
+  const [youtubeSource, setYoutubeSource] = useState<string>(() => {
+    if (existingMatch?.video_url) return existingMatch.video_url;
+    if (existingMatch?.embed_code) return existingMatch.embed_code;
+    const isYt = existingMatch?.stream_provider === 'youtube' || /youtube\.com|youtu\.be/i.test(existingMatch?.description || '');
+    return isYt ? (existingMatch?.description || '') : '';
+  });
   const [muxServerConfigured, setMuxServerConfigured] = useState<boolean | null>(null);
   const [muxRtmpUrl, setMuxRtmpUrl] = useState<string>('rtmps://global-live.mux.com:443/app');
   const [muxLiveStreamId, setMuxLiveStreamId] = useState<string | null>(existingMatch?.mux_live_stream_id || null);
@@ -396,6 +402,9 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
           ? 'mux'
           : 'youtube')
       );
+      if (existingMatch.video_url || existingMatch.embed_code || existingMatch.stream_provider === 'youtube') {
+        setYoutubeSource(existingMatch.video_url || existingMatch.embed_code || (existingMatch.stream_provider === 'youtube' ? existingMatch.description : '') || '');
+      }
       if (existingMatch.home_team || (existingMatch as any).homeTeam) {
         setHomeTeam(existingMatch.home_team || (existingMatch as any).homeTeam || '');
       }
@@ -643,6 +652,23 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
           : customDurationVal * 60;
       }
 
+      let finalVideoUrl = existingMatch?.video_url || null;
+      let finalEmbedCode = existingMatch?.embed_code || null;
+      let finalDescription = description;
+
+      if (streamProvider === 'youtube') {
+        const ytId = extractYouTubeVideoId(youtubeSource);
+        if (ytId) {
+          finalVideoUrl = youtubeSource.trim().startsWith('http') ? youtubeSource.trim() : `https://www.youtube.com/watch?v=${ytId}`;
+          finalEmbedCode = buildYouTubeIframeHtml(ytId, { title: finalTitle });
+        }
+        if (/^<iframe.*youtube.*<\/iframe>$/i.test(finalDescription.trim()) || /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)/i.test(finalDescription.trim())) {
+          finalDescription = '';
+        }
+      } else if (streamProvider === 'custom') {
+        finalEmbedCode = description.trim();
+      }
+
       const matchData: Match = {
         id: (isEditing ? String(id) : String(Date.now())) as any,
         title: finalTitle,
@@ -657,6 +683,8 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
         club_id: clubId || null,
         competition_id: competitionId,
         stream_provider: streamProvider,
+        video_url: finalVideoUrl,
+        embed_code: finalEmbedCode,
         mux_playback_policy: muxPlaybackPolicy,
         mux_watermark_config: muxWatermarkConfig,
         embedPrice: ppvPrice * 10,
@@ -674,7 +702,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
         event_access_expires_at: accessEndTime ? resolveValidIsoDate(accessEndTime) : null,
         thumbnail: finalThumbnail || 'https://picsum.photos/seed/default/800/450',
         content,
-        description,
+        description: finalDescription,
         categories: selectedCategories,
         access: accessType === 'free' ? 'free' : 'paid',
         seo,
@@ -1527,21 +1555,58 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   </div>
                 </div>
 
-                {/* Quick Setup for YouTube */}
+                {/* Standardised YouTube Video Setup */}
                 {streamProvider === 'youtube' && (
-                  <div className="space-y-2 animate-in fade-in">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      YouTube quick setup (watch URL or embed)
-                    </label>
+                  <div className="space-y-3 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        YouTube Video URL or Video ID
+                      </label>
+                      {(() => {
+                        const validId = extractYouTubeVideoId(youtubeSource);
+                        return validId ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                            <CheckCircle className="w-3 h-3" />
+                            ID: {validId}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+
                     <input 
                       type="text"
-                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={youtubeSource}
+                      placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ or dQw4w9WgXcQ"
                       className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none font-mono transition-colors"
                       onChange={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) setDescription(val);
+                        setYoutubeSource(e.target.value);
                       }}
                     />
+
+                    {/* Validation error message if invalid */}
+                    {youtubeSource.trim() && !extractYouTubeVideoId(youtubeSource) && (
+                      <p className="text-xs text-red-500 dark:text-red-400 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        Please enter a valid YouTube watch URL, youtu.be link, /live/ link, /shorts/ link, or an 11-character video ID.
+                      </p>
+                    )}
+
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Supports full YouTube watch URLs, short links (youtu.be), live broadcasts, shorts, or raw 11-character video IDs. WatchWDS automatically configures a responsive, compliant player.
+                    </p>
+
+                    {/* Commercial Compliance Notice for YouTube under paid / access-gated events */}
+                    {accessType !== 'free' && (
+                      <div className="rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/80 dark:bg-amber-500/10 p-3.5 flex items-start gap-3">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1 text-xs text-amber-900 dark:text-amber-200">
+                          <p className="font-bold">Commercial & Rights Compliance Notice</p>
+                          <p className="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90">
+                            YouTube Terms of Service require embedded public videos to remain accessible without gated paywalls or commercial restrictions. For Pay-Per-View (PPV) or subscription-gated Events, we strongly recommend using Mux Video / Live.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1876,27 +1941,28 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                   </div>
                 )}
 
-                {/* Stream HTML / Embed Markup */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                    Stream HTML / Embed Markup
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={4}
-                    placeholder="Existing embed markup remains editable..."
-                    className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl p-4 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none resize-y leading-relaxed transition-colors"
-                  />
-                </div>
-
-                <p className="text-xs text-slate-500">
-                  Keep provider-specific inputs and existing conversion / embed logic.
-                </p>
+                {/* Custom Stream Embed Markup */}
+                {streamProvider === 'custom' && (
+                  <div className="space-y-2 animate-in fade-in">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                      Custom Stream Embed Code / HTML
+                    </label>
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={4}
+                      placeholder="Paste raw iframe, video or embed markup here..."
+                      className="w-full bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 focus:border-[var(--primary-500)] focus:ring-1 focus:ring-[var(--primary-500)] rounded-xl p-4 text-xs sm:text-sm font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none resize-y leading-relaxed transition-colors"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Custom embed code will be sanitized and constrained to fit responsive video containers without breaking mobile layout.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Stream Embed Live Preview Card */}
-              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all">
+              <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all min-w-0 max-w-full overflow-hidden">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Video className="w-5 h-5" style={{ color: primaryColor }} />
                   <h3>Stream embed preview</h3>
@@ -1905,9 +1971,11 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                 <div className="relative w-full aspect-video rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-800/80 bg-slate-100/80 dark:bg-slate-950/40 overflow-hidden flex flex-col items-center justify-center p-2 text-center transition-colors">
                   {(() => {
                     const effectivePreview =
-                      streamProvider === 'mux'
+                      streamProvider === 'youtube'
+                        ? youtubeSource.trim()
+                        : streamProvider === 'mux'
                         ? (description.trim() || (currentEffectiveStatus === 'completed' || currentEffectiveStatus === 'full_match' ? (muxAssetPlaybackId || muxPlaybackId) : (muxPlaybackId || muxAssetPlaybackId)) || '')
-                        : description;
+                        : description.trim();
                     const previewIsLive =
                       streamProvider === 'mux' && muxStreamStatus === 'active'
                         ? true
@@ -1916,7 +1984,7 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       <div className="relative w-full h-full">
                         <div 
                           className="w-full h-full overflow-hidden [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:rounded-lg [&>video]:w-full [&>video]:h-full [&>video]:rounded-lg [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:rounded-lg [&>mux-player]:block"
-                          dangerouslySetInnerHTML={{ __html: formatStreamHtml(effectivePreview, { isLive: previewIsLive, playbackToken: muxPreviewToken }) }}
+                          dangerouslySetInnerHTML={{ __html: formatStreamHtml(effectivePreview, { streamProvider, isLive: previewIsLive, playbackToken: muxPreviewToken, title }) }}
                         />
                         {muxWatermarkConfig.enabled && muxWatermarkConfig.mode === 'player_overlay' && (
                           <WatermarkOverlay config={muxWatermarkConfig} />
@@ -1924,12 +1992,12 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
                       </div>
                     ) : null;
                   })()}
-                  {!(streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId) : description) && (
+                  {!(streamProvider === 'youtube' ? youtubeSource.trim() : (streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId) : description.trim())) && (
                     <div className="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
                       <div className="w-10 h-10 rounded-full border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center mb-2">
                         <div className="w-3 h-3 rounded-full bg-slate-400 dark:bg-slate-600" />
                       </div>
-                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Existing stream preview renders here</p>
+                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Stream preview will render here</p>
                     </div>
                   )}
                 </div>
@@ -2770,24 +2838,32 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
 
             {/* Stream Player Preview */}
             <div className="aspect-video w-full rounded-xl bg-black border border-slate-200 dark:border-slate-800 overflow-hidden relative">
-              {(streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId) : description) ? (
-                <div className="relative w-full h-full">
-                  <div 
-                    className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>video]:w-full [&>video]:h-full [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:block"
-                    dangerouslySetInnerHTML={{ __html: formatStreamHtml((streamProvider === 'mux' ? (description.trim() || muxPlaybackId || muxAssetPlaybackId || '') : description), { isLive: muxStreamStatus === 'active' || currentEffectiveStatus === 'live', playbackToken: muxPreviewToken }) }}
-                  />
-                  {muxWatermarkConfig.enabled && muxWatermarkConfig.mode === 'player_overlay' && (
-                    <WatermarkOverlay config={muxWatermarkConfig} />
-                  )}
-                </div>
-              ) : thumbnail ? (
-                <img src={thumbnail} alt="Match Preview" className="w-full h-full object-cover" />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                  <Play className="w-12 h-12 mb-2 text-slate-400 dark:text-slate-600" />
-                  <p className="text-sm font-semibold">No stream or thumbnail configured yet</p>
-                </div>
-              )}
+              {(() => {
+                const effectivePreview =
+                  streamProvider === 'youtube'
+                    ? youtubeSource.trim()
+                    : streamProvider === 'mux'
+                    ? (description.trim() || muxPlaybackId || muxAssetPlaybackId || '')
+                    : description.trim();
+                return effectivePreview ? (
+                  <div className="relative w-full h-full">
+                    <div 
+                      className="w-full h-full [&>iframe]:w-full [&>iframe]:h-full [&>video]:w-full [&>video]:h-full [&>mux-player]:w-full [&>mux-player]:h-full [&>mux-player]:block"
+                      dangerouslySetInnerHTML={{ __html: formatStreamHtml(effectivePreview, { streamProvider, isLive: muxStreamStatus === 'active' || currentEffectiveStatus === 'live', playbackToken: muxPreviewToken, title }) }}
+                    />
+                    {muxWatermarkConfig.enabled && muxWatermarkConfig.mode === 'player_overlay' && (
+                      <WatermarkOverlay config={muxWatermarkConfig} />
+                    )}
+                  </div>
+                ) : thumbnail ? (
+                  <img src={thumbnail} alt="Match Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                    <Play className="w-12 h-12 mb-2 text-slate-400 dark:text-slate-600" />
+                    <span className="text-xs">No stream or thumbnail configured</span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Match Information Preview */}

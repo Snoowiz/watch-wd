@@ -1290,6 +1290,10 @@ export interface Match {
   start_time?: string | null;
   publish_status?: 'pending' | 'approved' | 'rejected' | 'published' | 'draft' | 'scheduled' | 'deleted' | null;
   stream_provider?: 'youtube' | 'mux' | 'custom' | null;
+  video_url?: string | null;
+  embed_code?: string | null;
+  playback_id?: string | null;
+  playbackId?: string | null;
   mux_live_stream_id?: string | null;
   mux_playback_id?: string | null;
   mux_stream_status?: string | null;
