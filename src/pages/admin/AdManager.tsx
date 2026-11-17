@@ -170,7 +170,8 @@ export function AdManager() {
           </div>
 
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-500">
                   <th className="p-4">Campaign Name</th>
@@ -222,6 +223,7 @@ export function AdManager() {
               </tbody>
             </table>
           </div>
+        </div>
         </>
       ) : (
         <div className="space-y-6">
@@ -248,7 +250,8 @@ export function AdManager() {
             <div className="p-4 border-b border-slate-200 dark:border-slate-700">
               <h3 className="font-bold text-slate-900 dark:text-white">Campaign Performance</h3>
             </div>
-            <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-500">
                   <th className="p-4">Campaign</th>
@@ -278,6 +281,7 @@ export function AdManager() {
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 

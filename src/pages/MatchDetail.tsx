@@ -908,9 +908,9 @@ export function MatchDetail() {
   const assignedClub = clubs.find(c => String(c.id) === String(matchClubId));
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-6 sm:space-y-8 pb-24 min-w-0 max-w-full">
+    <div className="w-full max-w-6xl mx-auto space-y-6 sm:space-y-8 pb-24 min-w-0">
       {/* 1, 2, 3: Header Section ABOVE the Video Player */}
-      <div className="flex flex-col items-start gap-2.5 text-left w-full min-w-0 max-w-full px-4 sm:px-0 pt-1 sm:pt-2">
+      <div className="flex flex-col items-start gap-2.5 text-left w-full min-w-0 pt-1 sm:pt-2">
         <div className="flex items-start justify-between gap-3 sm:gap-4 w-full min-w-0">
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white leading-tight tracking-tight text-left break-words [overflow-wrap:anywhere] min-w-0 flex-1">
             {match.title}
@@ -918,7 +918,7 @@ export function MatchDetail() {
         </div>
         
         {/* Metadata row: Status, Competition, Club, Date, Time */}
-        <div className="flex flex-wrap items-center justify-start gap-2.5 sm:gap-3 w-full min-w-0 max-w-full">
+        <div className="flex flex-wrap items-center justify-start gap-2.5 sm:gap-3 w-full min-w-0">
           {/* Verified broadcast status badge */}
           <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest shrink-0 ${
             dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' :
@@ -996,8 +996,8 @@ export function MatchDetail() {
       </div>
 
       {/* 4. Existing Video Player Section */}
-      <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800 w-auto max-w-full">
-        <div className={`bg-black relative flex items-center justify-center overflow-hidden w-full max-w-full ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
+      <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800 w-[calc(100%+2rem)] sm:w-full">
+        <div className={`bg-black relative flex items-center justify-center overflow-hidden w-full ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
           <AdOverlay match={match} />
           {effectiveHasAccess ? (
             (() => {
@@ -1150,9 +1150,9 @@ export function MatchDetail() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8 min-w-0 max-w-full">
+      <div className="grid lg:grid-cols-3 gap-8 min-w-0">
         {/* Main Column */}
-        <div className="lg:col-span-2 space-y-5 sm:space-y-6 min-w-0 max-w-full">
+        <div className="lg:col-span-2 space-y-5 sm:space-y-6 min-w-0">
           {/* 5. Access Information and Primary Action (when viewing is restricted) */}
           {!effectiveHasAccess && (
             <div className="bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 sm:p-6 shadow-sm text-left">
@@ -1448,7 +1448,7 @@ export function MatchDetail() {
         </div>
 
         {/* Sidebar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4 sm:gap-6 lg:self-start min-w-0 max-w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4 sm:gap-6 lg:self-start min-w-0">
           {/* Creator Tools Section */}
           {user && (user.role === 'creator' || user.creatorStatus === 'approved') && (
             <div className="bg-indigo-600 p-5 sm:p-8 rounded-xl shadow-xl text-white">

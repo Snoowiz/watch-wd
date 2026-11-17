@@ -215,7 +215,8 @@ export function AdminTasks() {
       )}
 
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
           <thead>
             <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
               <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Mission</th>
@@ -273,6 +274,7 @@ export function AdminTasks() {
           </tbody>
         </table>
       </div>
+    </div>
     </div>
   );
 }

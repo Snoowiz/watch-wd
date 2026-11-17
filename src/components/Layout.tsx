@@ -284,7 +284,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
       </nav>
 
-      <main className={`flex-1 w-full min-w-0 max-w-full ${isHomePage ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24'} md:pb-8 pb-24`}>
+      <main className={`flex-1 w-full min-w-0 ${isHomePage ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24'} md:pb-8 pb-24`}>
         {children}
       </main>
       

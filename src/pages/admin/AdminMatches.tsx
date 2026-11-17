@@ -328,7 +328,7 @@ export function AdminMatches() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Event Management</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Create and manage events, schedule broadcasts, or moderate viewer comments.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button 
             onClick={() => navigate('/admin/categories')}
             className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold py-2.5 px-6 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center gap-2"
@@ -347,7 +347,7 @@ export function AdminMatches() {
       </div>
 
       {/* Tabs Selector */}
-      <div className="flex border-b border-slate-200 dark:border-slate-700 gap-6">
+      <div className="flex border-b border-slate-200 dark:border-slate-700 gap-6 overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('matches')}
           className={`pb-3.5 px-2 font-bold text-sm transition-all border-b-2 ${

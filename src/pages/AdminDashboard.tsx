@@ -520,8 +520,8 @@ export function AdminDashboard() {
         </header>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8">
-          <div className="max-w-7xl mx-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-8">
+          <div className="max-w-7xl mx-auto w-full min-w-0">
             <Routes>
               <Route path="/" element={<AdminOverview />} />
               <Route path="/users" element={<AdminUsers />} />
@@ -971,13 +971,13 @@ function AdminOverview() {
               <Link
                 key={idx}
                 to={mod.path}
-                className="bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 hover:border-yellow-500/50 p-3 rounded-xl transition-all group block shadow-xs"
+                className="bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 hover:border-yellow-500/50 p-3 rounded-xl transition-all group block shadow-xs min-w-0 overflow-hidden"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <Icon className={`w-4 h-4 ${mod.color} group-hover:scale-110 transition-transform`} />
-                  <span className="text-[10px] font-mono bg-slate-200/70 dark:bg-slate-900 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded font-bold">{mod.status}</span>
+                <div className="flex items-center justify-between gap-1 mb-2">
+                  <Icon className={`w-4 h-4 shrink-0 ${mod.color} group-hover:scale-110 transition-transform`} />
+                  <span className="text-[10px] font-mono bg-slate-200/70 dark:bg-slate-900 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded font-bold truncate max-w-[80px] sm:max-w-none">{mod.status}</span>
                 </div>
-                <div className="text-lg font-black text-slate-900 dark:text-white group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">{mod.count}</div>
+                <div className="text-lg font-black text-slate-900 dark:text-white group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors truncate">{mod.count}</div>
                 <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate">{mod.name}</div>
               </Link>
             );
@@ -1104,18 +1104,18 @@ function AdminOverview() {
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
                   <div className="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.6)] animate-pulse shrink-0"></div>
-                  <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
+                  <div className="min-w-0 flex-1 flex flex-wrap sm:flex-nowrap justify-between items-center gap-1 text-xs">
                     <span className="font-mono text-slate-400 uppercase tracking-wider">Free Audience Gate</span>
-                    <span className="font-bold text-yellow-600 dark:text-yellow-400">{freeViewingData.summary.uniqueViewers} Unique Viewers ({freeViewingData.summary.conversionRate}% Conv)</span>
+                    <span className="font-bold text-yellow-600 dark:text-yellow-400 text-right">{freeViewingData.summary.uniqueViewers} Unique Viewers ({freeViewingData.summary.conversionRate}% Conv)</span>
                   </div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
                   <div className={`w-2 h-2 rounded-full shrink-0 ${muxStatusSummary?.configured ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse' : 'bg-slate-400'}`}></div>
-                  <div className="min-w-0 flex-1 flex justify-between items-center text-xs">
+                  <div className="min-w-0 flex-1 flex flex-wrap sm:flex-nowrap justify-between items-center gap-1 text-xs">
                     <span className="font-mono text-slate-400 uppercase tracking-wider">Mux Broadcast Engine</span>
                     <Link
                       to="/admin/settings?tab=mux"
-                      className={`font-bold hover:underline ${muxStatusSummary?.configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
+                      className={`font-bold hover:underline text-right ${muxStatusSummary?.configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
                     >
                       {muxStatusSummary?.configured
                         ? (muxStatusSummary.signingConfigured ? 'Live + Signed JWT Ready' : 'Live Active (Public Mode)')
@@ -1131,9 +1131,9 @@ function AdminOverview() {
                       ? 'bg-sky-500'
                       : 'bg-slate-400'
                   }`}></div>
-                  <div className="min-w-0 flex-1 flex justify-between items-center gap-2 text-xs">
+                  <div className="min-w-0 flex-1 flex flex-wrap sm:flex-nowrap justify-between items-center gap-2 text-xs">
                     <span className="font-mono text-slate-400 uppercase tracking-wider">Club Reusable Channels</span>
-                    <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2.5 shrink-0 justify-end">
                       <Link
                         to="/admin/clubs"
                         className="font-bold text-sky-600 dark:text-sky-400 hover:underline"
