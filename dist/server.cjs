@@ -33,7 +33,8 @@ __export(server_exports, {
   executeStripeWithFallback: () => executeStripeWithFallback,
   getStripeClient: () => getStripeClient,
   sanitizeStripeKey: () => sanitizeStripeKey,
-  stripeHttpsAgent: () => stripeHttpsAgent
+  stripeHttpsAgent: () => stripeHttpsAgent,
+  verifyStripeWebhookRequest: () => verifyStripeWebhookRequest
 });
 module.exports = __toCommonJS(server_exports);
 var import_express2 = __toESM(require("express"), 1);
@@ -3264,6 +3265,16 @@ function stripSecretsFromAuditDetails(details) {
   }
   return out;
 }
+function checkMuxSigningPolicy(effectivePolicy, isSigningConfigured) {
+  if (effectivePolicy === "signed" && !isSigningConfigured) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Signed Playback requires Mux Signing Keys (MUX_SIGNING_KEY_ID / MUX_SIGNING_PRIVATE_KEY). Configure signing keys in Admin Settings > Mux Streaming first."
+    };
+  }
+  return { ok: true };
+}
 function resolveAuthorizedClubId(user, requestedClubId) {
   if (!user) return null;
   const role = String(user.role || "").toLowerCase();
@@ -3472,8 +3483,12 @@ function registerClubStreamingRoutes(deps) {
       throw err;
     }
     let policy = normalizePlaybackPolicy(params.playbackPolicy || cfg.defaultPlaybackPolicy);
-    if (policy === "signed" && !cfg.isSigningConfigured) {
-      policy = "public";
+    const policyCheck = checkMuxSigningPolicy(policy, cfg.isSigningConfigured);
+    if (!policyCheck.ok) {
+      const failed = policyCheck;
+      const err = new Error(failed.error);
+      err.status = failed.status;
+      throw err;
     }
     const useTestMode = params.testMode !== void 0 ? Boolean(params.testMode) : Boolean(cfg.defaultTestMode);
     let overlayConfig = null;
@@ -3900,8 +3915,10 @@ function registerClubStreamingRoutes(deps) {
       let effectivePolicy = normalizePlaybackPolicy(
         event.mux_playback_policy || (muxCfg.requireSignedForPaidEvents && isPaid ? "signed" : channel.mux_playback_policy)
       );
-      if (effectivePolicy === "signed" && !muxCfg.isSigningConfigured) {
-        effectivePolicy = "public";
+      const policyCheck = checkMuxSigningPolicy(effectivePolicy, muxCfg.isSigningConfigured);
+      if (!policyCheck.ok) {
+        const failedPolicy = policyCheck;
+        return res.status(failedPolicy.status).json({ error: failedPolicy.error });
       }
       let muxWatermarkSynced = false;
       let muxWatermarkWarning = null;
@@ -4728,6 +4745,21 @@ async function executeStripeWithFallback(secretKey, operation) {
       return await operation(fallbackClient);
     }
     throw err;
+  }
+}
+function verifyStripeWebhookRequest(params) {
+  const { rawBody, signature, webhookSecret, stripe } = params;
+  if (!signature) {
+    return { ok: false, status: 400, error: "Missing stripe-signature header." };
+  }
+  if (!rawBody || rawBody.length === 0) {
+    return { ok: false, status: 400, error: "Raw request body is unavailable; cannot verify webhook signature." };
+  }
+  try {
+    const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    return { ok: true, event };
+  } catch (err) {
+    return { ok: false, status: 400, error: `Webhook signature verification failed: ${err.message}` };
   }
 }
 import_dotenv2.default.config();
@@ -13730,20 +13762,24 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (!stripeSecretKey) {
         return res.json({ received: true });
       }
-      const stripe = getStripeClient(stripeSecretKey);
       const webhookSecret = gatewaySettings.stripe.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
-      let event = req.body;
-      if (webhookSecret) {
-        const sig = req.headers["stripe-signature"];
-        if (sig) {
-          try {
-            event = stripe.webhooks.constructEvent(req.rawBody || JSON.stringify(req.body), sig, webhookSecret);
-          } catch (err) {
-            console.error("Stripe Webhook Signature Verification Failed:", err.message);
-            return res.status(400).send(`Webhook Error: ${err.message}`);
-          }
-        }
+      if (!webhookSecret) {
+        console.error("[Stripe Webhook] Webhook secret is not configured. Refusing to process unverified payload. Add STRIPE_WEBHOOK_SECRET or configure it in Admin > Payment Settings.");
+        return res.status(503).json({ error: "Stripe webhook secret is not configured." });
       }
+      const stripe = getStripeClient(stripeSecretKey);
+      const verifyResult = verifyStripeWebhookRequest({
+        rawBody: req.rawBody,
+        signature: req.headers["stripe-signature"],
+        webhookSecret,
+        stripe
+      });
+      if (!verifyResult.ok) {
+        const failed = verifyResult;
+        console.error(`[Stripe Webhook] Rejected (HTTP ${failed.status}): ${failed.error}`);
+        return res.status(failed.status).json({ error: failed.error });
+      }
+      const event = verifyResult.event;
       if (!event || !event.type) {
         return res.status(400).json({ error: "Invalid webhook payload" });
       }
@@ -13783,14 +13819,28 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           }
           return res.json({ received: true, already_processed: true });
         }
-        let verified = false;
+        let fullSession;
         try {
-          const fullSession = await stripe.checkout.sessions.retrieve(session.id || session.session_id);
-          if (fullSession.payment_status === "paid") verified = true;
+          fullSession = await stripe.checkout.sessions.retrieve(session.id);
         } catch (verifyErr) {
-          if (session.payment_status === "paid") verified = true;
+          console.error("[Stripe Webhook] Failed to retrieve session for verification:", verifyErr?.message);
+          return res.status(500).json({ error: "Failed to retrieve session from Stripe. Delivery will be retried." });
         }
-        if (!verified) return res.json({ received: true, verified: false });
+        const retrievedTxnId = fullSession.metadata?.txn_id || fullSession.client_reference_id;
+        if (retrievedTxnId !== txnId) {
+          console.warn(`[Stripe Webhook] Session/transaction mismatch: session has "${retrievedTxnId}", expected "${txnId}". Ignoring delivery.`);
+          return res.json({ received: true, verified: false, reason: "session_txn_mismatch" });
+        }
+        if (fullSession.payment_status !== "paid") {
+          return res.json({ received: true, verified: false });
+        }
+        const claim = await execute(
+          "UPDATE `transactions` SET `status` = 'processing' WHERE `id` = ? AND `status` = 'pending'",
+          [txnId]
+        );
+        if (claim.affectedRows === 0) {
+          return res.json({ received: true, already_processed: true });
+        }
         const { type, amount, metadata } = txnData;
         const userId = txnData.userId || txnData.user_id;
         const userRef = db.collection("users").doc(userId);
@@ -15292,6 +15342,7 @@ startServer().catch((err) => {
   executeStripeWithFallback,
   getStripeClient,
   sanitizeStripeKey,
-  stripeHttpsAgent
+  stripeHttpsAgent,
+  verifyStripeWebhookRequest
 });
 //# sourceMappingURL=server.cjs.map
