@@ -94,7 +94,7 @@ export function MatchComments({ match, hasAccess, hideHeader = false, inputPosit
     <div className={`bg-slate-50 dark:bg-slate-900/50 shrink-0 ${isCompact ? 'p-2' : 'p-3'}`}>
       {!hasAccess ? (
         <div className="text-center p-3 bg-slate-200 dark:bg-slate-800 rounded-xl text-sm text-slate-500 dark:text-slate-400">
-          Unlock this match to join the conversation.
+          {user ? 'Unlock this match to join the conversation.' : 'Sign in to join the conversation.'}
         </div>
       ) : !isCommentingEnabled ? (
         <div className="text-center p-3 bg-slate-200 dark:bg-slate-800 rounded-xl text-sm text-slate-500 dark:text-slate-400">
