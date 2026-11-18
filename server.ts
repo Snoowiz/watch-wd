@@ -327,6 +327,12 @@ export async function ensureIncrementalColumns() {
     "CREATE TABLE IF NOT EXISTS `mux_settings` (`key_name` VARCHAR(100) PRIMARY KEY, `value` JSON NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "CREATE TABLE IF NOT EXISTS `mux_watermarks` (`id` VARCHAR(64) PRIMARY KEY, `mime_type` VARCHAR(64) NOT NULL, `image_base64` LONGTEXT NOT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "ALTER TABLE `clubs` ADD COLUMN `mux_streaming_approved` TINYINT(1) DEFAULT 0",
+    "ALTER TABLE `clubs` ADD COLUMN `can_create_events` TINYINT(1) DEFAULT 1",
+    "ALTER TABLE `clubs` ADD COLUMN `can_edit_events` TINYINT(1) DEFAULT 1",
+    "ALTER TABLE `clubs` ADD COLUMN `can_publish_events` TINYINT(1) DEFAULT 1",
+    "ALTER TABLE `clubs` ADD COLUMN `can_set_pricing` TINYINT(1) DEFAULT 1",
+    "ALTER TABLE `clubs` ADD COLUMN `can_select_competitions` TINYINT(1) DEFAULT 1",
+    "ALTER TABLE `clubs` ADD COLUMN `can_select_categories` TINYINT(1) DEFAULT 1",
     "CREATE TABLE IF NOT EXISTS `club_streaming_channels` (`id` VARCHAR(100) PRIMARY KEY, `club_id` VARCHAR(100) NOT NULL UNIQUE, `mux_live_stream_id` VARCHAR(150) UNIQUE DEFAULT NULL, `mux_playback_id` VARCHAR(150) DEFAULT NULL, `mux_playback_policy` VARCHAR(20) DEFAULT 'public', `stream_key_encrypted` TEXT DEFAULT NULL, `stream_key_last4` VARCHAR(16) DEFAULT NULL, `rtmp_ingest_url` VARCHAR(500) DEFAULT 'rtmps://global-live.mux.com:443/app', `channel_status` VARCHAR(50) DEFAULT 'idle', `is_approved` TINYINT(1) DEFAULT 1, `is_suspended` TINYINT(1) DEFAULT 0, `is_test_mode` TINYINT(1) DEFAULT 0, `active_broadcast_session_id` VARCHAR(100) DEFAULT NULL, `active_match_id` VARCHAR(100) DEFAULT NULL, `max_session_minutes` INT DEFAULT 240, `key_rotated_at` DATETIME DEFAULT NULL, `last_connected_at` DATETIME DEFAULT NULL, `created_by` VARCHAR(100) DEFAULT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_csc_live_stream` (`mux_live_stream_id`), INDEX `idx_csc_active_match` (`active_match_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "CREATE TABLE IF NOT EXISTS `broadcast_sessions` (`id` VARCHAR(100) PRIMARY KEY, `channel_id` VARCHAR(100) NOT NULL, `club_id` VARCHAR(100) NOT NULL, `match_id` VARCHAR(100) NOT NULL, `sport` VARCHAR(100) DEFAULT 'football', `competition_id` VARCHAR(100) DEFAULT NULL, `mux_live_stream_id` VARCHAR(150) NOT NULL, `mux_asset_id` VARCHAR(150) DEFAULT NULL, `mux_asset_playback_id` VARCHAR(150) DEFAULT NULL, `mux_playback_policy` VARCHAR(20) DEFAULT 'public', `status` VARCHAR(50) DEFAULT 'assigned', `mux_stream_status` VARCHAR(50) DEFAULT 'idle', `mux_error_message` TEXT DEFAULT NULL, `assigned_by` VARCHAR(100) DEFAULT NULL, `assigned_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `started_at` DATETIME DEFAULT NULL, `disconnected_at` DATETIME DEFAULT NULL, `ended_at` DATETIME DEFAULT NULL, `duration_seconds` INT DEFAULT 0, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_bs_channel` (`channel_id`), INDEX `idx_bs_club` (`club_id`), INDEX `idx_bs_match` (`match_id`), INDEX `idx_bs_live_stream` (`mux_live_stream_id`), INDEX `idx_bs_asset` (`mux_asset_id`), INDEX `idx_bs_status` (`status`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "CREATE TABLE IF NOT EXISTS `mux_webhook_events` (`event_id` VARCHAR(150) PRIMARY KEY, `event_type` VARCHAR(100) NOT NULL, `mux_object_id` VARCHAR(150) DEFAULT NULL, `payload_created_at` VARCHAR(64) DEFAULT NULL, `processed_status` VARCHAR(50) DEFAULT 'processed', `processed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
@@ -645,7 +651,8 @@ async function startServer() {
       ...userData,
       planId: plan_id,
       planExpiresAt: plan_expires_at,
-      clubId: club_id || null,
+      club_id: club_id || data.clubId || null,
+      clubId: club_id || data.clubId || null,
       onboardingCompleted: isCompleted,
       onboarding_completed: isCompleted ? 1 : 0,
       avatar: data.avatar || data.user_avatar || null,
@@ -2018,8 +2025,24 @@ async function startServer() {
         hasAccess = true;
       } else if (userRole === 'admin' || userRole === 'operator') {
         hasAccess = true;
-      } else if (userRole === 'partner' && req.user.club_id && String(match.club_id || match.clubId) === String(req.user.club_id)) {
-        hasAccess = true;
+      } else if (userRole === 'partner') {
+        let partnerClubId = req.user.club_id || req.user.clubId;
+        if (!partnerClubId) {
+          try {
+            const uDoc = await db.collection("users").doc(String(req.user.id)).get();
+            if (uDoc.exists) {
+              partnerClubId = uDoc.data()?.club_id || uDoc.data()?.clubId || null;
+            }
+          } catch (_) {}
+        }
+        const rawMatchClubId = match.club_id || match.clubId;
+        const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
+        const isMatchOperator = req.user.id && String(match.operator_id || match.operatorId) === String(req.user.id);
+        const isClubMatch = partnerClubId && matchClubId && String(matchClubId) === String(partnerClubId);
+
+        if (isMatchOperator || isClubMatch) {
+          hasAccess = true;
+        }
       } else if (userId) {
         // Check PPV purchase (only for authenticated users)
         const purchasesSnap = await db.collection("purchases")
@@ -2446,9 +2469,73 @@ async function startServer() {
     return matchData;
   }
 
-  app.post("/api/matches", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+  app.post("/api/matches", authenticate, requireRole(["admin", "operator", "partner"]), async (req: any, res) => {
     try {
       const matchData = sanitizeAndNormalizeMatchWrite(req.body, true);
+      const userRole = String(req.user.role || '').toLowerCase();
+
+      if (userRole === 'partner') {
+        let partnerClubId = req.user.club_id || req.user.clubId;
+        if (!partnerClubId) {
+          const uDoc = await db.collection("users").doc(String(req.user.id)).get();
+          if (uDoc.exists) {
+            partnerClubId = uDoc.data()?.club_id || uDoc.data()?.clubId || null;
+          }
+        }
+        if (!partnerClubId) {
+          return res.status(403).json({ error: "No partner club associated with your account." });
+        }
+
+        const clubDoc = await db.collection("clubs").doc(String(partnerClubId)).get();
+        if (!clubDoc.exists) {
+          return res.status(404).json({ error: "Partner club not found." });
+        }
+        const clubData = clubDoc.data();
+        if (clubData.is_active !== undefined && !Number(clubData.is_active)) {
+          return res.status(403).json({ error: "Your partner club account is deactivated." });
+        }
+
+        const canCreate = clubData.can_create_events !== undefined ? Boolean(Number(clubData.can_create_events)) : (clubData.canCreateEvents !== undefined ? Boolean(clubData.canCreateEvents) : true);
+        if (!canCreate) {
+          return res.status(403).json({ error: "Your club is not currently permitted to create events. Please contact platform administration." });
+        }
+
+        const canSetPricing = clubData.can_set_pricing !== undefined ? Boolean(Number(clubData.can_set_pricing)) : (clubData.canSetPricing !== undefined ? Boolean(clubData.canSetPricing) : true);
+        const canPublish = clubData.can_publish_events !== undefined ? Boolean(Number(clubData.can_publish_events)) : (clubData.canPublishEvents !== undefined ? Boolean(clubData.canPublishEvents) : true);
+        const canSelectComps = clubData.can_select_competitions !== undefined ? Boolean(Number(clubData.can_select_competitions)) : (clubData.canSelectCompetitions !== undefined ? Boolean(clubData.canSelectCompetitions) : true);
+        const canSelectCats = clubData.can_select_categories !== undefined ? Boolean(Number(clubData.can_select_categories)) : (clubData.canSelectCategories !== undefined ? Boolean(clubData.canSelectCategories) : true);
+
+        // Enforce club assignment and Mux streaming provider for partner-created events
+        matchData.club_id = String(partnerClubId);
+        matchData.stream_provider = 'mux';
+
+        if (!canSetPricing) {
+          matchData.access = 'free';
+          matchData.access_type = 'free';
+          matchData.ppv_price = 0;
+          matchData.price = 0;
+        }
+
+        if (!canPublish && matchData.publish_status !== 'draft') {
+          matchData.publish_status = 'draft';
+        }
+
+        if (!canSelectComps) {
+          matchData.competition_id = null;
+        }
+
+        if (!canSelectCats) {
+          matchData.categories = [];
+        }
+      }
+
+      if (!matchData.slug) {
+        const titlePart = (matchData.title || `${matchData.home_team || matchData.player_pair_1 || 'event'}-${matchData.away_team || matchData.player_pair_2 || 'broadcast'}`)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '');
+        matchData.slug = `${titlePart || 'event'}-${Date.now().toString(36)}`;
+      }
 
       const docRef = await db.collection("matches").add({ ...matchData, operator_id: req.user.id, created_at: new Date().toISOString() });
       
@@ -2469,13 +2556,56 @@ async function startServer() {
       }
       }
 
-      res.json({ id: docRef.id });
+      res.json({ id: docRef.id, slug: matchData.slug });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator"]), async (req: any, res) => {
+  app.put("/api/matches/:id", authenticate, requireRole(["admin", "operator", "partner"]), async (req: any, res) => {
     try {
       const matchData = sanitizeAndNormalizeMatchWrite(req.body, false);
+      const userRole = String(req.user.role || '').toLowerCase();
+
+      if (userRole === 'partner') {
+        const existingDoc = await db.collection("matches").doc(req.params.id).get();
+        if (!existingDoc.exists) {
+          return res.status(404).json({ error: "Match not found" });
+        }
+        const existingMatch = existingDoc.data();
+        let partnerClubId = req.user.club_id || req.user.clubId;
+        if (!partnerClubId) {
+          const uDoc = await db.collection("users").doc(String(req.user.id)).get();
+          if (uDoc.exists) {
+            partnerClubId = uDoc.data()?.club_id || uDoc.data()?.clubId || null;
+          }
+        }
+        const rawMatchClubId = existingMatch.club_id || existingMatch.clubId;
+        const isOwnClub = partnerClubId && rawMatchClubId && String(rawMatchClubId) === String(partnerClubId);
+        const isOwnOperator = req.user.id && String(existingMatch.operator_id) === String(req.user.id);
+        if (!isOwnClub && !isOwnOperator) {
+          return res.status(403).json({ error: "Forbidden: You may only edit events belonging to your own club." });
+        }
+
+        const clubDoc = await db.collection("clubs").doc(String(partnerClubId)).get();
+        const clubData = clubDoc.exists ? clubDoc.data() : {};
+        const canEdit = clubData.can_edit_events !== undefined ? Boolean(Number(clubData.can_edit_events)) : (clubData.canEditEvents !== undefined ? Boolean(clubData.canEditEvents) : true);
+        if (!canEdit) {
+          return res.status(403).json({ error: "Your club is not currently permitted to edit events." });
+        }
+
+        const canSetPricing = clubData.can_set_pricing !== undefined ? Boolean(Number(clubData.can_set_pricing)) : (clubData.canSetPricing !== undefined ? Boolean(clubData.canSetPricing) : true);
+        const canPublish = clubData.can_publish_events !== undefined ? Boolean(Number(clubData.can_publish_events)) : (clubData.canPublishEvents !== undefined ? Boolean(clubData.canPublishEvents) : true);
+
+        matchData.club_id = String(partnerClubId);
+        if (!canSetPricing && (matchData.access === 'paid' || matchData.access_type === 'ppv' || Number(matchData.ppv_price || matchData.price) > 0)) {
+          matchData.access = 'free';
+          matchData.access_type = 'free';
+          matchData.ppv_price = 0;
+          matchData.price = 0;
+        }
+        if (!canPublish && matchData.publish_status !== 'draft') {
+          matchData.publish_status = 'draft';
+        }
+      }
 
       await db.collection("matches").doc(req.params.id).update(matchData);
 
@@ -8174,6 +8304,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (req.body.season !== undefined) updateData.season = req.body.season;
       if (req.body.sport !== undefined) updateData.sport = (req.body.sport || 'football').toLowerCase();
       if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive ? 1 : 0;
+      if (req.body.can_create_events !== undefined) updateData.can_create_events = req.body.can_create_events ? 1 : 0;
+      if (req.body.canCreateEvents !== undefined) updateData.can_create_events = req.body.canCreateEvents ? 1 : 0;
+      if (req.body.can_edit_events !== undefined) updateData.can_edit_events = req.body.can_edit_events ? 1 : 0;
+      if (req.body.canEditEvents !== undefined) updateData.can_edit_events = req.body.canEditEvents ? 1 : 0;
+      if (req.body.can_publish_events !== undefined) updateData.can_publish_events = req.body.can_publish_events ? 1 : 0;
+      if (req.body.canPublishEvents !== undefined) updateData.can_publish_events = req.body.canPublishEvents ? 1 : 0;
+      if (req.body.can_set_pricing !== undefined) updateData.can_set_pricing = req.body.can_set_pricing ? 1 : 0;
+      if (req.body.canSetPricing !== undefined) updateData.can_set_pricing = req.body.canSetPricing ? 1 : 0;
+      if (req.body.can_select_competitions !== undefined) updateData.can_select_competitions = req.body.can_select_competitions ? 1 : 0;
+      if (req.body.canSelectCompetitions !== undefined) updateData.can_select_competitions = req.body.canSelectCompetitions ? 1 : 0;
+      if (req.body.can_select_categories !== undefined) updateData.can_select_categories = req.body.can_select_categories ? 1 : 0;
+      if (req.body.canSelectCategories !== undefined) updateData.can_select_categories = req.body.canSelectCategories ? 1 : 0;
 
       await db.collection("competitions").doc(id).update(updateData);
       cacheEngine.invalidateCollection("competitions");
@@ -8207,9 +8349,30 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       }
       const clubs = snap.docs.map(doc => {
         const d = doc.data();
+        const canCreate = Boolean(Number(d.can_create_events ?? d.canCreateEvents ?? 1));
+        const canEdit = Boolean(Number(d.can_edit_events ?? d.canEditEvents ?? 1));
+        const canPublish = Boolean(Number(d.can_publish_events ?? d.canPublishEvents ?? 1));
+        const canSetPricing = Boolean(Number(d.can_set_pricing ?? d.canSetPricing ?? 1));
+        const canSelectComps = Boolean(Number(d.can_select_competitions ?? d.canSelectCompetitions ?? 1));
+        const canSelectCats = Boolean(Number(d.can_select_categories ?? d.canSelectCategories ?? 1));
+
         return {
           id: doc.id,
           ...d,
+          canCreateEvents: canCreate,
+          canEditEvents: canEdit,
+          canPublishEvents: canPublish,
+          canSetPricing: canSetPricing,
+          canSelectCompetitions: canSelectComps,
+          canSelectCategories: canSelectCats,
+          permissions: {
+            can_create_events: canCreate,
+            can_edit_events: canEdit,
+            can_publish_events: canPublish,
+            can_set_pricing: canSetPricing,
+            can_select_competitions: canSelectComps,
+            can_select_categories: canSelectCats,
+          },
           muxStreamingApproved: Boolean(Number(d.mux_streaming_approved ?? d.muxStreamingApproved ?? 0)),
           muxChannel: channelMap.get(String(doc.id)) || null,
         };
@@ -8266,6 +8429,12 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         stripeAccountId: req.body.stripeAccountId || null,
         stripeOnboardingComplete: req.body.stripeOnboardingComplete ? 1 : 0,
         isActive: req.body.isActive !== undefined ? (req.body.isActive ? 1 : 0) : 1,
+        can_create_events: req.body.can_create_events !== undefined ? (req.body.can_create_events ? 1 : 0) : (req.body.canCreateEvents !== undefined ? (req.body.canCreateEvents ? 1 : 0) : 1),
+        can_edit_events: req.body.can_edit_events !== undefined ? (req.body.can_edit_events ? 1 : 0) : (req.body.canEditEvents !== undefined ? (req.body.canEditEvents ? 1 : 0) : 1),
+        can_publish_events: req.body.can_publish_events !== undefined ? (req.body.can_publish_events ? 1 : 0) : (req.body.canPublishEvents !== undefined ? (req.body.canPublishEvents ? 1 : 0) : 1),
+        can_set_pricing: req.body.can_set_pricing !== undefined ? (req.body.can_set_pricing ? 1 : 0) : (req.body.canSetPricing !== undefined ? (req.body.canSetPricing ? 1 : 0) : 1),
+        can_select_competitions: req.body.can_select_competitions !== undefined ? (req.body.can_select_competitions ? 1 : 0) : (req.body.canSelectCompetitions !== undefined ? (req.body.canSelectCompetitions ? 1 : 0) : 1),
+        can_select_categories: req.body.can_select_categories !== undefined ? (req.body.can_select_categories ? 1 : 0) : (req.body.canSelectCategories !== undefined ? (req.body.canSelectCategories ? 1 : 0) : 1),
         createdAt: new Date().toISOString()
       };
       await db.collection("clubs").doc(id).set(clubData);
@@ -8304,6 +8473,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       if (req.body.stripeAccountId !== undefined) updateData.stripeAccountId = req.body.stripeAccountId;
       if (req.body.stripeOnboardingComplete !== undefined) updateData.stripeOnboardingComplete = req.body.stripeOnboardingComplete ? 1 : 0;
       if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive ? 1 : 0;
+      if (req.body.can_create_events !== undefined) updateData.can_create_events = req.body.can_create_events ? 1 : 0;
+      if (req.body.canCreateEvents !== undefined) updateData.can_create_events = req.body.canCreateEvents ? 1 : 0;
+      if (req.body.can_edit_events !== undefined) updateData.can_edit_events = req.body.can_edit_events ? 1 : 0;
+      if (req.body.canEditEvents !== undefined) updateData.can_edit_events = req.body.canEditEvents ? 1 : 0;
+      if (req.body.can_publish_events !== undefined) updateData.can_publish_events = req.body.can_publish_events ? 1 : 0;
+      if (req.body.canPublishEvents !== undefined) updateData.can_publish_events = req.body.canPublishEvents ? 1 : 0;
+      if (req.body.can_set_pricing !== undefined) updateData.can_set_pricing = req.body.can_set_pricing ? 1 : 0;
+      if (req.body.canSetPricing !== undefined) updateData.can_set_pricing = req.body.canSetPricing ? 1 : 0;
+      if (req.body.can_select_competitions !== undefined) updateData.can_select_competitions = req.body.can_select_competitions ? 1 : 0;
+      if (req.body.canSelectCompetitions !== undefined) updateData.can_select_competitions = req.body.canSelectCompetitions ? 1 : 0;
+      if (req.body.can_select_categories !== undefined) updateData.can_select_categories = req.body.can_select_categories ? 1 : 0;
+      if (req.body.canSelectCategories !== undefined) updateData.can_select_categories = req.body.canSelectCategories ? 1 : 0;
 
       if (req.body.platformFeePercent !== undefined || req.body.clubSharePercent !== undefined) {
         const policies = await db.collection("revenue_policies").where("club_id", "==", String(id)).get();

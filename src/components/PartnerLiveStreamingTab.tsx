@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
@@ -24,12 +24,17 @@ import {
   FlaskConical,
   ExternalLink,
   Calendar,
+  Plus,
+  Sparkles,
 } from 'lucide-react';
+import { PartnerCreateEventModal } from './PartnerCreateEventModal';
 
 interface PartnerLiveStreamingTabProps {
   clubId?: string | null;
   initialMatchId?: string | null;
   onStatusChanged?: () => void;
+  clubInfo?: any;
+  onRefreshOverview?: () => void;
 }
 
 type SetupGuideTab = 'obs' | 'hardware' | 'mobile';
@@ -76,7 +81,25 @@ export function PartnerLiveStreamingTab({
   const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
   const [guideTab, setGuideTab] = useState<SetupGuideTab>('obs');
 
+  // Partner Event Creation State & Ref
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+  const broadcastCardRef = useRef<HTMLDivElement>(null);
+
   const authToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+  const handleEventCreated = async (newEventId: string) => {
+    setSelectedMatchId(newEventId);
+    await loadStreamingStatus();
+    setSelectedMatchId(newEventId);
+    setFeedback({
+      type: 'success',
+      message: 'Event created successfully! It is now preselected below — click "Prepare Event on Club Channel" to connect your live broadcast.',
+    });
+    onStatusChanged?.();
+    if (broadcastCardRef.current) {
+      broadcastCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   const loadStreamingStatus = useCallback(async () => {
     setLoading(true);
@@ -863,7 +886,38 @@ export function PartnerLiveStreamingTab({
 
           {/* RIGHT: Multi-Sport Event Binding & Active Broadcast Session Control */}
           <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-5">
+            {/* TASK 1: PARTNER CLUB EVENT CREATION */}
+            <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-slate-900/40 border border-amber-500/30 rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    <Sparkles className="w-3 h-3" /> Partner Self-Service
+                  </span>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mt-1.5 flex items-center gap-2">
+                    <span>Create Club Event</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Set up an event for {clubInfo?.name || 'your club'} across Football, Basketball, Tennis, Boxing or custom sports. Your reusable channel below will broadcast it live.
+                  </p>
+                </div>
+                {clubInfo?.permissions?.can_create_events !== false ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateEventModal(true)}
+                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 flex items-center gap-2 shrink-0 transition-transform hover:scale-105 active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Event</span>
+                  </button>
+                ) : (
+                  <span className="text-[11px] font-semibold text-slate-400 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    Admin Managed
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div ref={broadcastCardRef} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-5">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-amber-500" />
@@ -1157,6 +1211,18 @@ export function PartnerLiveStreamingTab({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Partner Create Event Modal */}
+      {showCreateEventModal && (
+        <PartnerCreateEventModal
+          isOpen={showCreateEventModal}
+          onClose={() => setShowCreateEventModal(false)}
+          clubId={String(clubId || clubInfo?.id || '')}
+          clubName={clubInfo?.name || 'Club'}
+          permissions={clubInfo?.permissions || {}}
+          onEventCreated={handleEventCreated}
+        />
       )}
     </div>
   );

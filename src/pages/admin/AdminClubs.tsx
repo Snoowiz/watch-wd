@@ -25,6 +25,26 @@ interface Club {
   contact_email?: string | null;
   muxStreamingApproved?: boolean;
   mux_streaming_approved?: boolean | number;
+  canCreateEvents?: boolean | number;
+  canEditEvents?: boolean | number;
+  canPublishEvents?: boolean | number;
+  canSetPricing?: boolean | number;
+  canSelectCompetitions?: boolean | number;
+  canSelectCategories?: boolean | number;
+  can_create_events?: boolean | number;
+  can_edit_events?: boolean | number;
+  can_publish_events?: boolean | number;
+  can_set_pricing?: boolean | number;
+  can_select_competitions?: boolean | number;
+  can_select_categories?: boolean | number;
+  permissions?: {
+    can_create_events?: boolean;
+    can_edit_events?: boolean;
+    can_publish_events?: boolean;
+    can_set_pricing?: boolean;
+    can_select_competitions?: boolean;
+    can_select_categories?: boolean;
+  };
   muxChannel?: {
     hasChannel: boolean;
     liveStatus?: string;
@@ -230,6 +250,12 @@ export function AdminClubs() {
   const [formActive, setFormActive] = useState(true);
   const [formPlatformFee, setFormPlatformFee] = useState(20);
   const [formClubShare, setFormClubShare] = useState(80);
+  const [formCanCreateEvents, setFormCanCreateEvents] = useState(true);
+  const [formCanEditEvents, setFormCanEditEvents] = useState(true);
+  const [formCanPublishEvents, setFormCanPublishEvents] = useState(true);
+  const [formCanSetPricing, setFormCanSetPricing] = useState(true);
+  const [formCanSelectCompetitions, setFormCanSelectCompetitions] = useState(true);
+  const [formCanSelectCategories, setFormCanSelectCategories] = useState(true);
 
   const token = localStorage.getItem('token');
 
@@ -515,6 +541,12 @@ export function AdminClubs() {
     setFormActive(true);
     setFormPlatformFee(20);
     setFormClubShare(80);
+    setFormCanCreateEvents(true);
+    setFormCanEditEvents(true);
+    setFormCanPublishEvents(true);
+    setFormCanSetPricing(true);
+    setFormCanSelectCompetitions(true);
+    setFormCanSelectCategories(true);
     setEditingClub(null);
     setShowForm(false);
   };
@@ -527,6 +559,14 @@ export function AdminClubs() {
     setFormStripeId(club.stripeAccountId || club.stripe_account_id || '');
     setFormStripeComplete(!!(club.stripeOnboardingComplete || club.stripe_onboarding_complete));
     setFormActive(!!(club.isActive ?? club.is_active ?? true));
+
+    const p = club.permissions || {};
+    setFormCanCreateEvents(p.can_create_events !== undefined ? p.can_create_events : (club.can_create_events !== undefined ? Boolean(Number(club.can_create_events)) : (club.canCreateEvents !== undefined ? Boolean(club.canCreateEvents) : true)));
+    setFormCanEditEvents(p.can_edit_events !== undefined ? p.can_edit_events : (club.can_edit_events !== undefined ? Boolean(Number(club.can_edit_events)) : (club.canEditEvents !== undefined ? Boolean(club.canEditEvents) : true)));
+    setFormCanPublishEvents(p.can_publish_events !== undefined ? p.can_publish_events : (club.can_publish_events !== undefined ? Boolean(Number(club.can_publish_events)) : (club.canPublishEvents !== undefined ? Boolean(club.canPublishEvents) : true)));
+    setFormCanSetPricing(p.can_set_pricing !== undefined ? p.can_set_pricing : (club.can_set_pricing !== undefined ? Boolean(Number(club.can_set_pricing)) : (club.canSetPricing !== undefined ? Boolean(club.canSetPricing) : true)));
+    setFormCanSelectCompetitions(p.can_select_competitions !== undefined ? p.can_select_competitions : (club.can_select_competitions !== undefined ? Boolean(Number(club.can_select_competitions)) : (club.canSelectCompetitions !== undefined ? Boolean(club.canSelectCompetitions) : true)));
+    setFormCanSelectCategories(p.can_select_categories !== undefined ? p.can_select_categories : (club.can_select_categories !== undefined ? Boolean(Number(club.can_select_categories)) : (club.canSelectCategories !== undefined ? Boolean(club.canSelectCategories) : true)));
 
     const policy = policies.find(p => String(p.clubId || p.club_id) === String(club.id));
     if (policy) {
@@ -563,6 +603,12 @@ export function AdminClubs() {
             isActive: formActive,
             platformFeePercent: formPlatformFee,
             clubSharePercent: formClubShare,
+            can_create_events: formCanCreateEvents ? 1 : 0,
+            can_edit_events: formCanEditEvents ? 1 : 0,
+            can_publish_events: formCanPublishEvents ? 1 : 0,
+            can_set_pricing: formCanSetPricing ? 1 : 0,
+            can_select_competitions: formCanSelectCompetitions ? 1 : 0,
+            can_select_categories: formCanSelectCategories ? 1 : 0,
           })
         });
         // Update or create revenue policy
@@ -601,6 +647,12 @@ export function AdminClubs() {
             isActive: formActive,
             platformFeePercent: formPlatformFee,
             clubSharePercent: formClubShare,
+            can_create_events: formCanCreateEvents ? 1 : 0,
+            can_edit_events: formCanEditEvents ? 1 : 0,
+            can_publish_events: formCanPublishEvents ? 1 : 0,
+            can_set_pricing: formCanSetPricing ? 1 : 0,
+            can_select_competitions: formCanSelectCompetitions ? 1 : 0,
+            can_select_categories: formCanSelectCategories ? 1 : 0,
           })
         });
       }
@@ -919,6 +971,99 @@ export function AdminClubs() {
               </label>
             </div>
 
+            {/* Partner Capabilities & Permissions */}
+            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-200 dark:border-slate-700/60 space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-violet-500" />
+                  <span>Partner Capabilities & Event Permissions</span>
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Control what this partner club can manage directly inside their Partner Live Streaming & Events portal.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:border-violet-400 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formCanCreateEvents}
+                    onChange={(e) => setFormCanCreateEvents(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-violet-600 focus:ring-violet-500 border-slate-300 dark:border-slate-600"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Create Events</span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">Can create multi-sport events self-service</span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:border-violet-400 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formCanEditEvents}
+                    onChange={(e) => setFormCanEditEvents(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-violet-600 focus:ring-violet-500 border-slate-300 dark:border-slate-600"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Edit Events</span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">Can update details of their club events</span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:border-violet-400 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formCanPublishEvents}
+                    onChange={(e) => setFormCanPublishEvents(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-violet-600 focus:ring-violet-500 border-slate-300 dark:border-slate-600"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Direct Publishing</span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">Publish immediately without draft review</span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:border-violet-400 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formCanSetPricing}
+                    onChange={(e) => setFormCanSetPricing(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-violet-600 focus:ring-violet-500 border-slate-300 dark:border-slate-600"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Set PPV Pricing</span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">Configure PPV prices vs free broadcasts</span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:border-violet-400 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formCanSelectCompetitions}
+                    onChange={(e) => setFormCanSelectCompetitions(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-violet-600 focus:ring-violet-500 border-slate-300 dark:border-slate-600"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Assign Competitions</span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">Link events to tournaments & leagues</span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer hover:border-violet-400 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formCanSelectCategories}
+                    onChange={(e) => setFormCanSelectCategories(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-violet-600 focus:ring-violet-500 border-slate-300 dark:border-slate-600"
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Assign Categories</span>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">Tag events with platform categories</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             {/* Actions */}
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
@@ -1126,7 +1271,43 @@ export function AdminClubs() {
                     )}
                   </div>
 
-                  {/* Actions */}
+                    {/* Club Permissions Badges */}
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 mr-1">Permissions:</span>
+                      {(() => {
+                        const p = club.permissions || {};
+                        const canCreate = p.can_create_events !== undefined ? p.can_create_events : (club.can_create_events !== undefined ? Boolean(Number(club.can_create_events)) : (club.canCreateEvents !== undefined ? Boolean(club.canCreateEvents) : true));
+                        const canEdit = p.can_edit_events !== undefined ? p.can_edit_events : (club.can_edit_events !== undefined ? Boolean(Number(club.can_edit_events)) : (club.canEditEvents !== undefined ? Boolean(club.canEditEvents) : true));
+                        const canPublish = p.can_publish_events !== undefined ? p.can_publish_events : (club.can_publish_events !== undefined ? Boolean(Number(club.can_publish_events)) : (club.canPublishEvents !== undefined ? Boolean(club.canPublishEvents) : true));
+                        const canPrice = p.can_set_pricing !== undefined ? p.can_set_pricing : (club.can_set_pricing !== undefined ? Boolean(Number(club.can_set_pricing)) : (club.canSetPricing !== undefined ? Boolean(club.canSetPricing) : true));
+                        const canComps = p.can_select_competitions !== undefined ? p.can_select_competitions : (club.can_select_competitions !== undefined ? Boolean(Number(club.can_select_competitions)) : (club.canSelectCompetitions !== undefined ? Boolean(club.canSelectCompetitions) : true));
+                        const canCats = p.can_select_categories !== undefined ? p.can_select_categories : (club.can_select_categories !== undefined ? Boolean(Number(club.can_select_categories)) : (club.canSelectCategories !== undefined ? Boolean(club.canSelectCategories) : true));
+
+                        const perms = [
+                          { label: 'Create Events', active: canCreate },
+                          { label: 'Edit Events', active: canEdit },
+                          { label: 'Publish Directly', active: canPublish },
+                          { label: 'Set PPV', active: canPrice },
+                          { label: 'Competitions', active: canComps },
+                          { label: 'Categories', active: canCats },
+                        ];
+
+                        return perms.map((item, idx) => (
+                          <span
+                            key={idx}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              item.active
+                                ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20'
+                                : 'bg-slate-100 dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-800 line-through'
+                            }`}
+                          >
+                            {item.label}
+                          </span>
+                        ));
+                      })()}
+                    </div>
+
+            {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"

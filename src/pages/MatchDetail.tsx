@@ -218,14 +218,20 @@ export function MatchDetail() {
   const isRevoked = match?.revoke_status === 'revoked' || match?.revoke_status === 'auto_deleted';
   const isDraft = match?.publish_status === 'draft' || match?.publish_status === 'deleted';
 
-  const isPartnerOwner = match ? (user?.role === 'partner' && !!user?.club_id && String(match.club_id || (match as any).clubId) === String(user.club_id)) : false;
+  const rawMatchClubId = match?.club_id || (match as any)?.clubId;
+  const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
+  const userClubId = user?.club_id || (user as any)?.clubId || null;
+
+  const isPartnerOwner = Boolean(
+    match && user?.role === 'partner' && (
+      (userClubId && matchClubId && String(matchClubId) === String(userClubId)) ||
+      (user.id && String((match as any).operator_id || (match as any).operatorId) === String(user.id))
+    )
+  );
   const isAdmin = user?.role === 'admin' || user?.role === 'operator';
 
   const userPlan = plans.find(p => String(p.id) === String(user?.planId));
   const isPlanValid = !!user?.planId && (!user.planExpiresAt || new Date(user.planExpiresAt) > new Date());
-  
-  const rawMatchClubId = match?.club_id || (match as any)?.clubId;
-  const matchClubId = rawMatchClubId && String(rawMatchClubId).trim() !== "" ? String(rawMatchClubId).trim() : null;
 
   let hasPlanAccess = false;
   if (match && match.access_type === 'plan') {

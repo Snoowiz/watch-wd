@@ -4,11 +4,12 @@ import {
   Building2, DollarSign, Calendar, TrendingUp, CreditCard, 
   Play, ExternalLink, ShieldCheck, AlertCircle, Clock, 
   ArrowUpRight, CheckCircle2, ChevronRight, RefreshCw, Loader2,
-  Tv, Eye, KeyRound, Copy, EyeOff, Radio, X
+  Tv, Eye, KeyRound, Copy, EyeOff, Radio, X, Plus, Sparkles
 } from 'lucide-react';
 import { useAuthStore } from '../../store';
 import { formatMatchStatus } from '../../utils/statusHelper';
 import { PartnerLiveStreamingTab } from '../../components/PartnerLiveStreamingTab';
+import { PartnerCreateEventModal } from '../../components/PartnerCreateEventModal';
 
 interface ClubInfo {
   id: string;
@@ -19,6 +20,7 @@ interface ClubInfo {
   stripeAccountId: string | null;
   stripeOnboardingComplete: boolean | number;
   muxStreamingApproved?: boolean | number;
+  permissions?: any;
 }
 
 interface BalanceInfo {
@@ -120,6 +122,7 @@ export function PartnerDashboard() {
   const [muxCredsError, setMuxCredsError] = useState<string | null>(null);
   const [loadingCreds, setLoadingCreds] = useState(false);
   const [revealKey, setRevealKey] = useState(false);
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
 
   const setActiveTab = (nextTab: 'overview' | 'streaming' | 'matches' | 'earnings' | 'payouts' | 'policy') => {
     setActiveTabState(nextTab);
@@ -638,13 +641,24 @@ export function PartnerDashboard() {
                 You have official partner broadcast access to watch, manage, and stream these events across all sports.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('streaming')}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm"
-            >
-              <Radio className="w-3.5 h-3.5" /> Open Live Streaming Console
-            </button>
+            <div className="flex items-center gap-2">
+              {((club as any)?.permissions?.can_create_events !== false) && (
+                <button
+                  type="button"
+                  onClick={() => setShowCreateEventModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-sm transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Create Event
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveTab('streaming')}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm"
+              >
+                <Radio className="w-3.5 h-3.5" /> Open Live Streaming Console
+              </button>
+            </div>
           </div>
 
           {matches.length === 0 ? (
@@ -987,6 +1001,22 @@ export function PartnerDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Create Event Modal */}
+      {showCreateEventModal && (
+        <PartnerCreateEventModal
+          isOpen={showCreateEventModal}
+          onClose={() => setShowCreateEventModal(false)}
+          clubId={String(effectiveClubId || club?.id || '')}
+          clubName={club?.name || 'Club'}
+          permissions={(club as any)?.permissions || {}}
+          onEventCreated={async (newEventId) => {
+            await fetchDashboardData(effectiveClubId || undefined);
+            setSelectedStreamEventId(newEventId);
+            setActiveTab('streaming');
+          }}
+        />
       )}
     </div>
   );
