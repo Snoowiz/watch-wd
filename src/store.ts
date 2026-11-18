@@ -546,6 +546,7 @@ export const DEFAULT_HOMEPAGE_BLOCKS: HomepageBlock[] = [
 interface HomepageSettings {
   featuresSectionEnabled: boolean;
   latestNewsEnabled: boolean;
+  eventTitlePosition?: 'below' | 'above';
 }
 
 export interface PerPageSEOConfig {

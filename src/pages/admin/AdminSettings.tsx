@@ -785,9 +785,14 @@ function AppearanceSettings() {
   const { homepageSettings, setHomepageSettings } = useSettingsStore();
   const [localSettings, setLocalSettings] = useState(homepageSettings || {
     featuresSectionEnabled: true,
-    latestNewsEnabled: true
+    latestNewsEnabled: true,
+    eventTitlePosition: 'below' as 'below' | 'above'
   });
   const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    if (homepageSettings) setLocalSettings(prev => ({ ...prev, ...homepageSettings }));
+  }, [homepageSettings]);
 
   const handleSave = () => {
     setHomepageSettings(localSettings);
@@ -835,7 +840,7 @@ function AppearanceSettings() {
           />
           <span className="ml-2 text-sm font-medium text-slate-700 dark:text-slate-300">Show Features Section</span>
         </label>
-        
+
         <label className="flex items-center cursor-pointer">
           <input
             type="checkbox"
@@ -848,6 +853,49 @@ function AppearanceSettings() {
           />
           <span className="ml-2 text-sm font-medium text-slate-700 dark:text-slate-300">Show Latest News Section</span>
         </label>
+      </div>
+
+      <div className="pt-4 border-t border-slate-100 dark:border-slate-700/60">
+        <div className="flex items-start gap-3">
+          <Play className="w-5 h-5 text-indigo-500 mt-0.5 shrink-0" />
+          <div className="flex-1 space-y-3">
+            <div>
+              <span className="block text-sm font-bold text-slate-900 dark:text-white">Event Title Position</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Controls where the event or match title appears on the public event detail page. Existing installations default to Below Player.
+              </span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <label className={`flex items-center gap-2.5 cursor-pointer p-3 rounded-xl border transition-all flex-1 select-none ${(localSettings.eventTitlePosition || 'below') !== 'above' ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50/40 dark:bg-indigo-500/10' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900/60'}`}>
+                <input
+                  type="radio"
+                  name="eventTitlePosition"
+                  checked={(localSettings.eventTitlePosition || 'below') !== 'above'}
+                  onChange={() => { setLocalSettings({ ...localSettings, eventTitlePosition: 'below' }); setIsSaved(false); }}
+                  className="text-indigo-500 focus:ring-indigo-500 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600"
+                />
+                <div>
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">Below Player</span>
+                  <span className="ml-1.5 text-xs text-indigo-500 font-semibold">(Default)</span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Player appears first, title follows beneath.</p>
+                </div>
+              </label>
+              <label className={`flex items-center gap-2.5 cursor-pointer p-3 rounded-xl border transition-all flex-1 select-none ${localSettings.eventTitlePosition === 'above' ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50/40 dark:bg-indigo-500/10' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900/60'}`}>
+                <input
+                  type="radio"
+                  name="eventTitlePosition"
+                  checked={localSettings.eventTitlePosition === 'above'}
+                  onChange={() => { setLocalSettings({ ...localSettings, eventTitlePosition: 'above' }); setIsSaved(false); }}
+                  className="text-indigo-500 focus:ring-indigo-500 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600"
+                />
+                <div>
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">Above Player</span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Title appears immediately before the video player.</p>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="flex justify-end pt-4">

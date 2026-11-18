@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import DOMPurify from 'dompurify';
-import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore, useClubStore, useCompetitionStore } from '../store';
-import { Lock, Play, PlayCircle, LogIn, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing, RefreshCw, Loader2, ShieldAlert, Shield, Sparkles, RotateCcw, Trophy, Building2 } from 'lucide-react';
+import { useAuthStore, useFeatureStore, useSettingsStore, useMatchStore, usePurchaseStore, useCategoryStore, useThemeStore, useSavedMatchesStore, useClubStore, useCompetitionStore, useCommentStore } from '../store';
+import { Lock, Play, PlayCircle, LogIn, AlertCircle, Code, CheckCircle, Calendar, Clock, Tag, Share2, Info, CreditCard, X, MessageSquare, UserPlus, UserCheck, Video as VideoIcon, Bookmark, Unlock, DollarSign, PoundSterling, Euro, Coins, Bell, BellRing, RefreshCw, Loader2, ShieldAlert, Shield, Sparkles, RotateCcw, Trophy, Building2, ThumbsUp, Heart, Flame, Link2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { MatchComments } from '../components/MatchComments';
 import { AdOverlay } from '../components/AdOverlay';
@@ -21,7 +21,7 @@ export function MatchDetail() {
 
   const { user, updateUser } = useAuthStore();
   const { isFeatureActive } = useFeatureStore();
-  const { currencySymbol, walletSettings } = useSettingsStore();
+  const { currencySymbol, walletSettings, homepageSettings } = useSettingsStore();
   const walletEnabled = walletSettings?.enabled !== false && isFeatureActive('wallet_system');
   const { matches, addToWatchHistory, restoreMatch, fetchMatchBySlugOrId } = useMatchStore();
   const [directMatch, setDirectMatch] = useState<any>(null);
@@ -71,6 +71,12 @@ export function MatchDetail() {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
   const [mobileVideoStarted, setMobileVideoStarted] = useState(false);
   const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [activeContentTab, setActiveContentTab] = useState<'comments' | 'related' | 'more-info'>('comments');
+  const [reactions, setReactions] = useState<{ like: number; love: number; fire: number; userReacted: string | null }>({ like: 0, love: 0, fire: 0, userReacted: null });
+
+  const { comments: allComments } = useCommentStore();
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -774,6 +780,37 @@ export function MatchDetail() {
     }
   };
 
+  useEffect(() => {
+    if (!match?.id) return;
+    try {
+      const stored = localStorage.getItem(`match_reactions_${match.id}`);
+      if (stored) setReactions(JSON.parse(stored));
+    } catch (_) {}
+  }, [match?.id]);
+
+  const toggleReaction = (type: 'like' | 'love' | 'fire') => {
+    if (!user) {
+      navigate('/login', { state: { from: `/matches/${match?.slug}` } });
+      return;
+    }
+    setReactions(prev => {
+      const isSameType = prev.userReacted === type;
+      const updated = { ...prev };
+      if (prev.userReacted && prev.userReacted !== type) {
+        updated[prev.userReacted as 'like' | 'love' | 'fire'] = Math.max(0, prev[prev.userReacted as 'like' | 'love' | 'fire'] - 1);
+      }
+      if (isSameType) {
+        updated[type] = Math.max(0, prev[type] - 1);
+        updated.userReacted = null;
+      } else {
+        updated[type] = prev[type] + 1;
+        updated.userReacted = type;
+      }
+      try { localStorage.setItem(`match_reactions_${match?.id}`, JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
+  };
+
   const isSaved = match ? savedMatches.includes(match.id) : false;
   
   const sortedMatches = [...matches].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -912,97 +949,69 @@ export function MatchDetail() {
   const contentTerm = isVideoOnly ? 'video' : 'match';
   const aboutHeading = isVideoOnly ? 'About this video' : 'About this match';
   const assignedClub = clubs.find(c => String(c.id) === String(matchClubId));
+  const compId = match.competition_id || (match as any).competitionId;
+  const assignedComp = compId ? competitions.find(c => String(c.id) === String(compId)) : null;
+  const titlePosition = homepageSettings?.eventTitlePosition || 'below';
+  const matchCommentCount = allComments.filter(c => String(c.matchId) === String(match.id)).length;
+
+  const titleBlock = (
+    <div className="pt-3 sm:pt-4 pb-1 min-w-0">
+      <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-tight tracking-tight break-words [overflow-wrap:anywhere]">
+        {match.title}
+      </h1>
+      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+        <span className={`px-2 py-0.5 rounded-md text-xs font-black uppercase tracking-widest shrink-0 ${
+          dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' :
+          dynamicStatus === 'highlights' ? 'bg-purple-600 text-white' :
+          (dynamicStatus === 'full_match' || dynamicStatus === 'completed') ? 'bg-slate-700 text-white' :
+          dynamicStatus === 'upcoming' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' :
+          'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+        }`}>
+          {formatMatchStatus(dynamicStatus, match.title)}
+        </span>
+        {assignedComp && (
+          <Link
+            to={`/matches?competition=${encodeURIComponent(assignedComp.slug || assignedComp.id)}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+          >
+            <Trophy className="w-3 h-3 shrink-0" />
+            <span className="truncate max-w-[180px] sm:max-w-xs">{assignedComp.name}</span>
+          </Link>
+        )}
+        {match.date ? (
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            {formatDateSafe(match.date, 'MMM d, yyyy · h:mm a')}
+          </span>
+        ) : (match as any).createdAt ? (
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            Published {formatDateSafe((match as any).createdAt, 'MMM d, yyyy')}
+          </span>
+        ) : null}
+        {timeRemaining && dynamicStatus === 'upcoming' && (
+          <div className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-500/30">
+            <Clock className="w-3 h-3 animate-pulse" />
+            {timeRemaining.days > 0 ? `${timeRemaining.days}d ` : ''}
+            {timeRemaining.hours.toString().padStart(2, '0')}h:{timeRemaining.minutes.toString().padStart(2, '0')}m:{timeRemaining.seconds.toString().padStart(2, '0')}s
+          </div>
+        )}
+        {timeRemaining && dynamicStatus === 'live' && (
+          <div className="flex items-center gap-1 text-red-600 dark:text-red-400 font-bold text-xs bg-red-50 dark:bg-red-500/10 px-2 py-0.5 rounded-lg border border-red-200 dark:border-red-500/30">
+            <Clock className="w-3 h-3 animate-pulse" />
+            LIVE {timeRemaining.minutes}'{timeRemaining.seconds.toString().padStart(2, '0')}s
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-6 sm:space-y-8 pb-24 min-w-0">
-      {/* 1, 2, 3: Header Section ABOVE the Video Player */}
-      <div className="flex flex-col items-start gap-2.5 text-left w-full min-w-0 pt-1 sm:pt-2">
-        <div className="flex items-start justify-between gap-3 sm:gap-4 w-full min-w-0">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 dark:text-white leading-tight tracking-tight text-left break-words [overflow-wrap:anywhere] min-w-0 flex-1">
-            {match.title}
-          </h1>
-        </div>
-        
-        {/* Metadata row: Status, Competition, Club, Date, Time */}
-        <div className="flex flex-wrap items-center justify-start gap-2.5 sm:gap-3 w-full min-w-0">
-          {/* Verified broadcast status badge */}
-          <span className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-widest shrink-0 ${
-            dynamicStatus === 'live' ? 'bg-red-500 text-white animate-pulse' :
-            dynamicStatus === 'highlights' ? 'bg-purple-600 text-white' :
-            (dynamicStatus === 'full_match' || dynamicStatus === 'completed') ? 'bg-slate-700 text-white' :
-            dynamicStatus === 'upcoming' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500' :
-            'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-          }`}>
-            {formatMatchStatus(dynamicStatus, match.title)}
-          </span>
+    <div className="w-full max-w-6xl mx-auto pb-24 min-w-0">
 
-          {/* Competition badge (verified) */}
-          {(() => {
-            const compId = match.competition_id || (match as any).competitionId;
-            const assignedComp = competitions.find(c => String(c.id) === String(compId));
-            if (!assignedComp) return null;
-            return (
-              <Link
-                to={`/matches?competition=${encodeURIComponent(assignedComp.slug || assignedComp.id)}`}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors shadow-sm max-w-full"
-                title={`Competition: ${assignedComp.name}`}
-              >
-                <Trophy className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate max-w-[200px] sm:max-w-xs">{assignedComp.name}</span>
-              </Link>
-            );
-          })()}
+      {/* Title - Above Player */}
+      {titlePosition === 'above' && titleBlock}
 
-          {/* Club badge */}
-          {assignedClub && (
-            <Link
-              to={`/matches?club=${encodeURIComponent(assignedClub.id)}`}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-colors shadow-sm max-w-full"
-              title={`Club / Organisation: ${assignedClub.name}`}
-            >
-              <Building2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate max-w-[200px] sm:max-w-xs">{assignedClub.name}</span>
-            </Link>
-          )}
-
-          {/* Date and Time or Published date */}
-          {match.date ? (
-            <>
-              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>{formatDateSafe(match.date, 'MMM d, yyyy')}</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
-                <Clock className="w-3.5 h-3.5" />
-                <span>{formatDateSafe(match.date, 'h:mm a')}</span>
-              </div>
-            </>
-          ) : (match as any).createdAt ? (
-            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-bold text-xs sm:text-sm">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Published {formatDateSafe((match as any).createdAt, 'MMM d, yyyy')}</span>
-            </div>
-          ) : null}
-
-          {/* Timers */}
-          {timeRemaining && dynamicStatus === 'upcoming' && (
-            <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold text-xs sm:text-sm bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-indigo-200 dark:border-indigo-500/30 transition-all">
-              <Clock className="w-3.5 h-3.5 animate-pulse" />
-              {timeRemaining.days > 0 ? `${timeRemaining.days}d ` : ''}
-              {timeRemaining.hours.toString().padStart(2, '0')}h : {timeRemaining.minutes.toString().padStart(2, '0')}m : {timeRemaining.seconds.toString().padStart(2, '0')}s
-            </div>
-          )}
-          {timeRemaining && dynamicStatus === 'live' && (
-            <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-xs sm:text-sm bg-red-50 dark:bg-red-500/10 px-3 py-1 rounded-lg sm:ml-auto border border-red-200 dark:border-red-500/30 transition-all">
-              <Clock className="w-3.5 h-3.5 animate-pulse" />
-              LIVE {timeRemaining.minutes}' ({timeRemaining.seconds.toString().padStart(2, '0')}s)
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 4. Existing Video Player Section */}
-      <div className="-mx-4 -mt-2 sm:mx-0 sm:mt-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800 w-[calc(100%+2rem)] sm:w-full">
+      {/* Video Player */}
+      <div className={`${titlePosition === 'above' ? 'mt-3' : 'mt-0'} -mx-4 sm:mx-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800 w-[calc(100%+2rem)] sm:w-full`}>
         <div className={`bg-black relative flex items-center justify-center overflow-hidden w-full ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
           <AdOverlay match={match} />
           {effectiveHasAccess ? (
@@ -1156,12 +1165,103 @@ export function MatchDetail() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8 min-w-0">
+      {/* Title - Below Player (default) */}
+      {titlePosition !== 'above' && titleBlock}
+
+      {/* Publisher + Engagement Row */}
+      <div className="flex items-center gap-2 mt-2 pb-3 border-b border-slate-200 dark:border-slate-700/60 flex-wrap">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {assignedClub ? (
+            <Link to={`/matches?club=${encodeURIComponent(assignedClub.id)}`} className="flex items-center gap-2 group min-w-0">
+              <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0">
+                <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+              </div>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-500 transition-colors">{assignedClub.name}</span>
+            </Link>
+          ) : match.creatorId ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0">
+                <VideoIcon className="w-3.5 h-3.5 text-indigo-500" />
+              </div>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">Channel {match.creatorId}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                <Play className="w-3.5 h-3.5 text-slate-400" />
+              </div>
+              <span className="text-sm font-bold text-slate-500 dark:text-slate-400 truncate">WatchWDS</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {(['like', 'love', 'fire'] as const).map(type => {
+            const IconMap = { like: ThumbsUp, love: Heart, fire: Flame };
+            const activeColors = {
+              like: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30',
+              love: 'text-pink-500 bg-pink-50 dark:bg-pink-500/10 border-pink-200 dark:border-pink-500/30',
+              fire: 'text-orange-500 bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/30',
+            };
+            const Icon = IconMap[type];
+            const isActive = reactions.userReacted === type;
+            const count = reactions[type];
+            return (
+              <button
+                key={type}
+                onClick={() => toggleReaction(type)}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold border transition-all ${
+                  isActive ? activeColors[type] : 'bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive && type === 'love' ? 'fill-current' : ''}`} />
+                {count > 0 && <span>{count}</span>}
+              </button>
+            );
+          })}
+
+          <button
+            onClick={handleToggleSave}
+            className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold border transition-all ${
+              isSaved
+                ? 'bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-500/30'
+                : 'bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+            title={isSaved ? 'Remove from Watch Later' : 'Save for Watch Later'}
+          >
+            <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-current' : ''}`} />
+          </button>
+
+          {match.status === 'upcoming' && (
+            <button
+              onClick={handleToggleNotify}
+              className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold border transition-all ${
+                isNotified
+                  ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30'
+                  : 'bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title={isNotified ? 'Turn off notifications' : 'Notify me when live'}
+            >
+              {isNotified ? <BellRing className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowShareSheet(true)}
+            className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold border bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+            title="Share"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6 sm:gap-8 mt-4 min-w-0">
         {/* Main Column */}
-        <div className="lg:col-span-2 space-y-5 sm:space-y-6 min-w-0">
+        <div className="lg:col-span-2 min-w-0 space-y-0">
           {/* 5. Access Information and Primary Action (when viewing is restricted) */}
           {!effectiveHasAccess && (
-            <div className="bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 sm:p-6 shadow-sm text-left">
+            <div className="mb-4 bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 sm:p-6 shadow-sm text-left">
               {isRevoked ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
@@ -1328,128 +1428,162 @@ export function MatchDetail() {
             </div>
           )}
 
-          {/* 6. Existing Save and Share Actions */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white dark:bg-slate-800/90 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-sm">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleToggleSave}
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all border ${
-                  isSaved
-                    ? 'bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-500/30'
-                    : 'bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title={isSaved ? "Remove from Watch Later" : "Save for Watch Later"}
-              >
-                <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
-                <span>{isSaved ? 'Saved' : 'Save'}</span>
-              </button>
-
-              <button
-                onClick={handleShareCopy}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
-                title="Share broadcast"
-              >
-                {isCopied ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
-                <span>{isCopied ? 'Link copied' : 'Share'}</span>
-              </button>
-            </div>
-
-            {match.status === 'upcoming' && (
-              <button
-                onClick={handleToggleNotify}
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all border ${
-                  isNotified
-                    ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30'
-                    : 'bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-                title={isNotified ? "Turn off notifications" : "Notify me when live"}
-              >
-                {isNotified ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                <span>{isNotified ? 'Notified' : 'Remind me'}</span>
-              </button>
-            )}
-          </div>
-          
-          {/* Creator Channel Block */}
-          {match.creatorId && (
-            <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 rounded-full flex items-center justify-center">
-                    <VideoIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                 </div>
-                 <div className="text-left">
-                    <p className="text-sm font-black text-slate-900 dark:text-white">Channel {match.creatorId}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Verified Creator</p>
-                 </div>
+          {/* Creator subscribe row (compact, only for creator matches) */}
+          {match.creatorId && user?.id !== match.creatorId && (
+            <div className="flex items-center justify-between bg-white dark:bg-slate-800/80 p-3 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/50 rounded-full flex items-center justify-center shrink-0">
+                  <VideoIcon className="w-4 h-4 text-indigo-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-slate-900 dark:text-white">Channel {match.creatorId}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Verified Creator</p>
+                </div>
               </div>
-              {user?.id !== match.creatorId && (
-                <button 
-                   onClick={handleToggleSubscription}
-                   className={`px-4 py-2 flex items-center gap-2 rounded-full font-bold text-sm transition-all ${
-                     isSubscribed 
-                       ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600' 
-                       : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 hover:opacity-90'
-                   }`}
-                >
-                   {isSubscribed ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                   {isSubscribed ? 'Subscribed' : 'Subscribe'}
-                </button>
-              )}
+              <button
+                onClick={handleToggleSubscription}
+                className={`px-3 py-1.5 flex items-center gap-1.5 rounded-full font-bold text-xs transition-all ${
+                  isSubscribed
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+                    : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 hover:opacity-90'
+                }`}
+              >
+                {isSubscribed ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+                {isSubscribed ? 'Subscribed' : 'Subscribe'}
+              </button>
             </div>
           )}
-          
-          {/* 7. Collapsible Information Section: About this match / About this video */}
-          <div 
-             className={`bg-slate-100 dark:bg-slate-800/80 rounded-xl p-5 sm:p-6 transition-all relative ${!isInfoExpanded ? "cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700" : ""}`}
-             onClick={() => !isInfoExpanded && setIsInfoExpanded(true)}
-          >
-             <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-3 text-left">
-               {aboutHeading}
-             </h2>
 
-             <div className={`relative ${!isInfoExpanded ? "max-h-24 overflow-hidden" : ""}`}>
-                {match.categories && match.categories.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {match.categories.map(catId => {
-                      const cat = categories.find(c => Number(c.id) === Number(catId));
-                      return cat ? (
-                        <Link 
-                          key={catId} 
-                          to={`/category/${cat.slug}`}
-                          className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-colors"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {cat.name || cat.slug}
-                        </Link>
-                      ) : null;
-                    })}
-                  </div>
-                )}
-                
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] text-left">
-                  <div 
-                    className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm"
-                    dangerouslySetInnerHTML={{ 
-                      __html: DOMPurify.sanitize(cleanEditorialDescription(match.content || match.description || 'No description provided.')) 
-                    }}
-                  />
-                </div>
-                
-                {!isInfoExpanded && (
-                  <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-slate-100 dark:from-slate-800/80 to-transparent flex items-end pointer-events-none" />
-                )}
-             </div>
-             <button 
-                className="font-bold text-slate-900 dark:text-white mt-2 text-sm hover:underline cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); setIsInfoExpanded(!isInfoExpanded); }}
-             >
-                {isInfoExpanded ? "Show less" : "Show more"}
-             </button>
+          {/* Content Tabs */}
+          <div className="flex border-b border-slate-200 dark:border-slate-700">
+            {(['comments', 'related', 'more-info'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveContentTab(tab)}
+                className={`flex-shrink-0 px-4 py-2.5 text-sm font-bold border-b-2 transition-colors ${
+                  activeContentTab === tab
+                    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                }`}
+              >
+                {tab === 'comments' ? `Comments (${matchCommentCount})` : tab === 'related' ? 'Related' : 'More Info'}
+              </button>
+            ))}
           </div>
 
-          {/* 8. Comments Section */}
-          <div className="mt-6 sm:mt-8">
-            <MatchComments match={match} hasAccess={hasAccess} />
+          {/* Tab Content */}
+          <div className="mt-3">
+            {activeContentTab === 'comments' && (
+              <MatchComments match={match} hasAccess={hasAccess} hideHeader inputPosition="top" />
+            )}
+
+            {activeContentTab === 'related' && (
+              <div className="space-y-3 py-1">
+                {relatedMatches.length === 0 ? (
+                  <p className="text-slate-500 dark:text-slate-400 text-sm text-center py-10">No related events found.</p>
+                ) : relatedMatches.map(m => (
+                  <Link key={m.id} to={`/matches/${m.slug}`} className="group block min-w-0">
+                    <div className="flex gap-3 bg-white dark:bg-slate-800 rounded-xl p-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border border-slate-100 dark:border-slate-700 shadow-sm">
+                      <div className="w-28 sm:w-36 aspect-video rounded-lg overflow-hidden relative shrink-0 bg-slate-900">
+                        <img src={m.thumbnail} alt={m.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer" />
+                        <div className="absolute top-1 left-1">
+                          <div className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest ${m.status === 'live' ? 'bg-red-500 text-white' : 'bg-yellow-500/90 text-slate-900'}`}>
+                            {formatMatchStatus(m.status, m.title)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-1 py-1 pr-1 min-w-0">
+                        <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white line-clamp-2 leading-tight group-hover:text-yellow-500 transition-colors mb-1">{m.title}</h4>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          <Calendar className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{m.date ? formatDateSafe(m.date, 'MMM d, yyyy') : 'Published'}</span>
+                        </div>
+                        {m.access_type === 'plan' ? (
+                          <div className="mt-1 text-[10px] font-black text-indigo-500 uppercase">Subscribe</div>
+                        ) : m.access === 'paid' ? (
+                          <div className="mt-1 text-[10px] font-black text-yellow-500 uppercase">{currencySymbol}{m.ppv_price || m.price}</div>
+                        ) : (
+                          <div className="mt-1 text-[10px] font-black text-green-500 uppercase">Free</div>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {activeContentTab === 'more-info' && (
+              <div className="space-y-5 py-1">
+                <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-4 sm:p-5">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">{aboutHeading}</h3>
+                  {match.categories && match.categories.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {match.categories.map(catId => {
+                        const cat = categories.find(c => Number(c.id) === Number(catId));
+                        return cat ? (
+                          <Link key={catId} to={`/category/${cat.slug}`} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition-colors">
+                            {cat.name || cat.slug}
+                          </Link>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                  <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] text-left">
+                    <div
+                      className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm"
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(cleanEditorialDescription(match.content || match.description || 'No description provided.')) }}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {assignedClub && (
+                    <div className="flex items-center gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                      <Building2 className="w-4 h-4 text-indigo-500 shrink-0" />
+                      <div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">Club</div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white">{assignedClub.name}</div>
+                      </div>
+                    </div>
+                  )}
+                  {assignedComp && (
+                    <div className="flex items-center gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                      <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
+                      <div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">Competition</div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white">{assignedComp.name}</div>
+                      </div>
+                    </div>
+                  )}
+                  {match.date && (
+                    <div className="flex items-center gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                      <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">Event Date</div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white">{formatDateSafe(match.date, 'MMM d, yyyy · h:mm a')}</div>
+                      </div>
+                    </div>
+                  )}
+                  {(match as any).createdAt && (
+                    <div className="flex items-center gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                      <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">Published</div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white">{formatDateSafe((match as any).createdAt, 'MMM d, yyyy')}</div>
+                      </div>
+                    </div>
+                  )}
+                  {accessCountdown && (
+                    <div className={`flex items-center gap-2.5 p-3 rounded-xl border sm:col-span-2 ${isUrgent ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}>
+                      <Clock className={`w-4 h-4 shrink-0 ${isUrgent ? 'text-red-500 animate-pulse' : 'text-amber-500'}`} />
+                      <div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">Access expires in</div>
+                        <div className={`text-sm font-bold ${isUrgent ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'}`}>{accessCountdown}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1583,6 +1717,54 @@ export function MatchDetail() {
           )}
         </div>
       </div>
+
+      {/* Share Sheet */}
+      {showShareSheet && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/70 backdrop-blur-sm" onClick={() => setShowShareSheet(false)}>
+          <div
+            className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl border-t sm:border border-slate-200 dark:border-slate-700 overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="text-base font-black text-slate-900 dark:text-white">Share</h3>
+              <button onClick={() => setShowShareSheet(false)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 grid grid-cols-4 gap-3">
+              {[
+                { label: 'Facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`, color: 'bg-blue-600', icon: '𝗙' },
+                { label: 'X', href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(match.title)}`, color: 'bg-black dark:bg-slate-900', icon: '𝕏' },
+                { label: 'WhatsApp', href: `https://wa.me/?text=${encodeURIComponent(match.title + ' ' + window.location.href)}`, color: 'bg-green-500', icon: '📱' },
+                { label: 'Telegram', href: `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(match.title)}`, color: 'bg-sky-500', icon: '✈️' },
+              ].map(platform => (
+                <a
+                  key={platform.label}
+                  href={platform.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-center gap-1.5"
+                  onClick={() => setShowShareSheet(false)}
+                >
+                  <div className={`w-12 h-12 ${platform.color} rounded-2xl flex items-center justify-center text-white text-lg font-black shadow-sm`}>
+                    {platform.icon}
+                  </div>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{platform.label}</span>
+                </a>
+              ))}
+            </div>
+            <div className="px-4 pb-5">
+              <button
+                onClick={() => { handleShareCopy(); setShowShareSheet(false); }}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 transition-colors"
+              >
+                {isCopied ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <Link2 className="w-4 h-4" />}
+                {isCopied ? 'Link copied!' : 'Copy Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal */}
       {showConfirmModal && (
