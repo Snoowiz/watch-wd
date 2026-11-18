@@ -64,6 +64,42 @@ export async function executeStripeWithFallback<T>(
     throw err;
   }
 }
+/** Discriminated-union result returned by verifyStripeWebhookRequest. */
+export type StripeWebhookVerifyResult =
+  | { ok: true; event: Stripe.Event }
+  | { ok: false; status: 400; error: string };
+
+/**
+ * Verifies a Stripe webhook request using the raw body captured by express.json `verify`.
+ * Exported so it can be tested independently of the full route handler.
+ *
+ * Precondition: `webhookSecret` must be non-empty; callers must return 503 before reaching
+ * this function when the secret is absent.
+ */
+export function verifyStripeWebhookRequest(params: {
+  rawBody: Buffer | undefined;
+  signature: string | string[] | undefined;
+  webhookSecret: string;
+  stripe: Stripe;
+}): StripeWebhookVerifyResult {
+  const { rawBody, signature, webhookSecret, stripe } = params;
+
+  if (!signature) {
+    return { ok: false, status: 400, error: 'Missing stripe-signature header.' };
+  }
+
+  if (!rawBody || rawBody.length === 0) {
+    return { ok: false, status: 400, error: 'Raw request body is unavailable; cannot verify webhook signature.' };
+  }
+
+  try {
+    const event = stripe.webhooks.constructEvent(rawBody, signature as string, webhookSecret);
+    return { ok: true, event };
+  } catch (err: any) {
+    return { ok: false, status: 400, error: `Webhook signature verification failed: ${err.message}` };
+  }
+}
+
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat, clearTableColumnsCache } from "./db/MySQLAdapter.js";
@@ -10419,33 +10455,37 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   });
 
   // === STRIPE WEBHOOK (for Connect PPV fulfillment) ===
-  // NOTE: This endpoint expects raw body. Since express.json() is already applied globally,
-  // we handle signature verification gracefully — in production, you'd register this route
-  // before express.json() or use express.raw() for this path specifically.
+  // rawBody is captured by the express.json `verify` callback above (line ~630).
   app.post("/api/webhooks/stripe", async (req: any, res) => {
     try {
       const gatewaySettings = await getPaymentGatewaySettings();
       const stripeSecretKey = gatewaySettings.stripe.secretKey;
       if (!stripeSecretKey) {
-        // No Stripe configured — acknowledge webhook anyway
+        // Stripe is not configured at all — acknowledge without processing.
         return res.json({ received: true });
       }
 
-      const stripe = getStripeClient(stripeSecretKey);
+      // Stripe IS configured: a webhook secret is mandatory to verify the payload.
       const webhookSecret = gatewaySettings.stripe.webhookSecret || process.env.STRIPE_WEBHOOK_SECRET;
-
-      let event = req.body;
-      if (webhookSecret) {
-        const sig = req.headers["stripe-signature"];
-        if (sig) {
-          try {
-            event = stripe.webhooks.constructEvent(req.rawBody || JSON.stringify(req.body), sig, webhookSecret);
-          } catch (err: any) {
-            console.error("Stripe Webhook Signature Verification Failed:", err.message);
-            return res.status(400).send(`Webhook Error: ${err.message}`);
-          }
-        }
+      if (!webhookSecret) {
+        console.error('[Stripe Webhook] Webhook secret is not configured. Refusing to process unverified payload. Add STRIPE_WEBHOOK_SECRET or configure it in Admin > Payment Settings.');
+        return res.status(503).json({ error: 'Stripe webhook secret is not configured.' });
       }
+
+      const stripe = getStripeClient(stripeSecretKey);
+      const verifyResult = verifyStripeWebhookRequest({
+        rawBody: req.rawBody,
+        signature: req.headers['stripe-signature'],
+        webhookSecret,
+        stripe,
+      });
+      if (!verifyResult.ok) {
+        const failed = verifyResult as { ok: false; status: 400; error: string };
+        console.error(`[Stripe Webhook] Rejected (HTTP ${failed.status}): ${failed.error}`);
+        return res.status(failed.status).json({ error: failed.error });
+      }
+      // All subsequent code must read from the verified event only — never from req.body.
+      const event = (verifyResult as { ok: true; event: Stripe.Event }).event;
 
       if (!event || !event.type) {
         return res.status(400).json({ error: "Invalid webhook payload" });
@@ -10492,17 +10532,38 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           return res.json({ received: true, already_processed: true });
         }
 
-        // Verify payment status
-        let verified = false;
+        // Retrieve the session from Stripe to verify payment status.
+        // If retrieval fails, return 500 so Stripe retries delivery rather than trusting the event body.
+        let fullSession: Stripe.Checkout.Session;
         try {
-          const fullSession = await stripe.checkout.sessions.retrieve(session.id || session.session_id);
-          if (fullSession.payment_status === "paid") verified = true;
-        } catch (verifyErr) {
-          // If the session ID doesn't exist (mock), check raw status
-          if (session.payment_status === "paid") verified = true;
+          fullSession = await stripe.checkout.sessions.retrieve(session.id);
+        } catch (verifyErr: any) {
+          console.error('[Stripe Webhook] Failed to retrieve session for verification:', verifyErr?.message);
+          return res.status(500).json({ error: 'Failed to retrieve session from Stripe. Delivery will be retried.' });
         }
 
-        if (!verified) return res.json({ received: true, verified: false });
+        // Confirm the retrieved session belongs to the transaction we loaded from the DB.
+        const retrievedTxnId = fullSession.metadata?.txn_id || fullSession.client_reference_id;
+        if (retrievedTxnId !== txnId) {
+          console.warn(`[Stripe Webhook] Session/transaction mismatch: session has "${retrievedTxnId}", expected "${txnId}". Ignoring delivery.`);
+          return res.json({ received: true, verified: false, reason: 'session_txn_mismatch' });
+        }
+
+        if (fullSession.payment_status !== 'paid') {
+          return res.json({ received: true, verified: false });
+        }
+
+        // Atomically claim the transaction (pending → processing) using a conditional SQL UPDATE.
+        // This prevents two concurrent webhook deliveries from both writing fulfilment rows.
+        // Note: the document-style DB adapter does not support conditional updates, so raw SQL is used here.
+        const claim = await execute(
+          "UPDATE `transactions` SET `status` = 'processing' WHERE `id` = ? AND `status` = 'pending'",
+          [txnId]
+        );
+        if (claim.affectedRows === 0) {
+          // Another concurrent delivery already claimed this transaction.
+          return res.json({ received: true, already_processed: true });
+        }
 
         // Fulfill the purchase
         const { type, amount, metadata } = txnData;

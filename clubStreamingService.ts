@@ -60,6 +60,25 @@ export function stripSecretsFromAuditDetails(details: any): Record<string, any> 
 }
 
 /**
+ * Fail-closed guard: returns an error descriptor when a signed playback policy is
+ * requested but Mux signing keys are not configured.  Used in both channel
+ * provisioning and event assignment so the check is consistent and testable.
+ */
+export function checkMuxSigningPolicy(
+  effectivePolicy: string,
+  isSigningConfigured: boolean,
+): { ok: true } | { ok: false; status: 400; error: string } {
+  if (effectivePolicy === 'signed' && !isSigningConfigured) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Signed Playback requires Mux Signing Keys (MUX_SIGNING_KEY_ID / MUX_SIGNING_PRIVATE_KEY). Configure signing keys in Admin Settings > Mux Streaming first.',
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Resolves the authorized club scope for partner vs admin actors.
  * Prevents partner users from spoofing another club via query/body `clubId`.
  */
@@ -335,8 +354,12 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
     }
 
     let policy = normalizePlaybackPolicy(params.playbackPolicy || cfg.defaultPlaybackPolicy);
-    if (policy === 'signed' && !cfg.isSigningConfigured) {
-      policy = 'public';
+    const policyCheck = checkMuxSigningPolicy(policy, cfg.isSigningConfigured);
+    if (!policyCheck.ok) {
+      const failed = policyCheck as { ok: false; status: 400; error: string };
+      const err: any = new Error(failed.error);
+      err.status = failed.status;
+      throw err;
     }
 
     const useTestMode = params.testMode !== undefined ? Boolean(params.testMode) : Boolean(cfg.defaultTestMode);
@@ -825,8 +848,10 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
       let effectivePolicy = normalizePlaybackPolicy(
         event.mux_playback_policy || (muxCfg.requireSignedForPaidEvents && isPaid ? 'signed' : channel.mux_playback_policy)
       );
-      if (effectivePolicy === 'signed' && !muxCfg.isSigningConfigured) {
-        effectivePolicy = 'public';
+      const policyCheck = checkMuxSigningPolicy(effectivePolicy, muxCfg.isSigningConfigured);
+      if (!policyCheck.ok) {
+        const failedPolicy = policyCheck as { ok: false; status: 400; error: string };
+        return res.status(failedPolicy.status).json({ error: failedPolicy.error });
       }
 
       let muxWatermarkSynced = false;
