@@ -1234,175 +1234,6 @@ export function MatchDetail() {
       <div className="grid lg:grid-cols-3 gap-6 sm:gap-8 mt-4 min-w-0">
         {/* Main Column */}
         <div className="lg:col-span-2 min-w-0 space-y-0">
-          {/* 5. Access Information and Primary Action (when viewing is restricted) */}
-          {!effectiveHasAccess && (
-            <div className="mb-4 bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 sm:p-6 shadow-sm text-left">
-              {isRevoked ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                    <ShieldAlert className="w-5 h-5 shrink-0" />
-                    <h2 className="text-lg sm:text-xl font-bold">Broadcast temporarily unavailable</h2>
-                  </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    This match has been temporarily taken down by administrators. Broadcast streaming and purchases are currently paused. Any previous purchases and watch entitlements remain securely protected.
-                  </p>
-                </div>
-              ) : isAccessExpired || isLocalExpired ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                    <Clock className="w-5 h-5 shrink-0" />
-                    <h2 className="text-lg sm:text-xl font-bold">Access expired</h2>
-                  </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Your time-limited pass for this {contentTerm} has expired{watchPurchase?.access_expires_at ? ` on ${formatDateSafe(watchPurchase.access_expires_at, 'MMM d, h:mm a')}` : ''}. You can repurchase an access pass or request an extension.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <button 
-                      onClick={handleUnlockClick}
-                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
-                    </button>
-                    {user && (
-                      <button 
-                        onClick={handleRequestAccess}
-                        disabled={requestLoading || requestSent}
-                        className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-4 py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2"
-                      >
-                        {requestLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Submitting...</span>
-                          </>
-                        ) : requestSent ? (
-                          <>
-                            <CheckCircle className="w-4 h-4 text-emerald-500" />
-                            <span>Request submitted</span>
-                          </>
-                        ) : (
-                          <>
-                            <Unlock className="w-4 h-4" />
-                            <span>Request extension</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : isFreeGated ? (
-                <div className="space-y-4">
-                  <div>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 mb-2">
-                      Free with an account
-                    </span>
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                      Watch this {contentTerm} for free
-                    </h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                      Create a free WatchWDS account or sign in to watch.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <button
-                      onClick={() => handleAuthGateRedirect('register')}
-                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-6 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                      <span>Create a free account</span>
-                    </button>
-                    <button
-                      onClick={() => handleAuthGateRedirect('login')}
-                      className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-6 py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <LogIn className="w-4 h-4" />
-                      <span>Sign in</span>
-                    </button>
-                  </div>
-                </div>
-              ) : match.access_type === 'plan' ? (
-                <div className="space-y-4">
-                  <div>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mb-2">
-                      Subscription required
-                    </span>
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                      {matchClubId ? 'Watch with a club subscription' : 'Watch with a subscription'}
-                    </h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                      {matchClubId && assignedClub 
-                        ? `This broadcast is included in an eligible club subscription for ${assignedClub.name}.`
-                        : 'This broadcast is included in an eligible WatchWDS subscription.'}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <button 
-                      onClick={handleUnlockClick}
-                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
-                    >
-                      <Unlock className="w-4 h-4" />
-                      <span>View eligible plans</span>
-                    </button>
-                    {!user && (
-                      <button 
-                        onClick={() => handleAuthGateRedirect('login')}
-                        className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-6 py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <LogIn className="w-4 h-4" />
-                        <span>Sign in</span>
-                      </button>
-                    )}
-                    {((match.ppv_price && Number(match.ppv_price) > 0) || (match.price && Number(match.price) > 0)) && (
-                      <button
-                        onClick={handleUnlockClick}
-                        className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-yellow-600 dark:hover:text-yellow-400 underline underline-offset-2 ml-1"
-                      >
-                        Or buy single {contentTerm} access for {currencySymbol}{match.ppv_price || match.price}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 mb-2">
-                      Pay-per-view
-                    </span>
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                      Watch this {contentTerm} for {currencySymbol}{match.ppv_price || match.price}
-                    </h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                      One-off payment. No subscription.
-                      {match.event_access_enabled && (
-                        <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          Includes {Math.round((Number(match.event_access_duration) || 4320) / 60)} hours of full playback access.
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <button 
-                      onClick={handleUnlockClick}
-                      className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-6 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer"
-                    >
-                      <Unlock className="w-4 h-4" />
-                      <span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
-                    </button>
-                    {!user && (
-                      <button 
-                        onClick={() => handleAuthGateRedirect('login')}
-                        className="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-6 py-3 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <LogIn className="w-4 h-4" />
-                        <span>Sign in</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Content Tabs */}
           <div className="flex border-b border-slate-200 dark:border-slate-700">
             {(['comments', 'related', 'more-info'] as const).map(tab => (
@@ -1610,6 +1441,106 @@ export function MatchDetail() {
               <span>{isCopied ? 'Link copied to clipboard' : 'Copy link'}</span>
             </button>
           </div>
+
+          {/* Access / Purchase Card */}
+          {!effectiveHasAccess && (
+            <div className="bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm text-left">
+              {isRevoked ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <ShieldAlert className="w-5 h-5 shrink-0" />
+                    <h2 className="text-base font-bold">Broadcast temporarily unavailable</h2>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    This match has been temporarily taken down by administrators. Any previous purchases remain protected.
+                  </p>
+                </div>
+              ) : isAccessExpired || isLocalExpired ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <Clock className="w-5 h-5 shrink-0" />
+                    <h2 className="text-base font-bold">Access expired</h2>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Your pass expired{watchPurchase?.access_expires_at ? ` on ${formatDateSafe(watchPurchase.access_expires_at, 'MMM d, h:mm a')}` : ''}. Repurchase or request an extension.
+                  </p>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button onClick={handleUnlockClick} className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer">
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
+                    </button>
+                    {user && (
+                      <button onClick={handleRequestAccess} disabled={requestLoading || requestSent} className="w-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-4 py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2">
+                        {requestLoading ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Submitting...</span></> : requestSent ? <><CheckCircle className="w-4 h-4 text-emerald-500" /><span>Request submitted</span></> : <><Unlock className="w-4 h-4" /><span>Request extension</span></>}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : isFreeGated ? (
+                <div className="space-y-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 mb-2">Free with an account</span>
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white">Watch this {contentTerm} for free</h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">Create a free account or sign in to watch.</p>
+                  </div>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button onClick={() => handleAuthGateRedirect('register')} className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer">
+                      <UserPlus className="w-4 h-4" /><span>Create a free account</span>
+                    </button>
+                    <button onClick={() => handleAuthGateRedirect('login')} className="w-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-4 py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer">
+                      <LogIn className="w-4 h-4" /><span>Sign in</span>
+                    </button>
+                  </div>
+                </div>
+              ) : match.access_type === 'plan' ? (
+                <div className="space-y-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 mb-2">Subscription required</span>
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white">{matchClubId ? 'Watch with a club subscription' : 'Watch with a subscription'}</h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      {matchClubId && assignedClub ? `Included in an eligible club subscription for ${assignedClub.name}.` : 'Included in an eligible WatchWDS subscription.'}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button onClick={handleUnlockClick} className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer">
+                      <Unlock className="w-4 h-4" /><span>View eligible plans</span>
+                    </button>
+                    {!user && (
+                      <button onClick={() => handleAuthGateRedirect('login')} className="w-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-4 py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer">
+                        <LogIn className="w-4 h-4" /><span>Sign in</span>
+                      </button>
+                    )}
+                    {((match.ppv_price && Number(match.ppv_price) > 0) || (match.price && Number(match.price) > 0)) && (
+                      <button onClick={handleUnlockClick} className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-yellow-600 dark:hover:text-yellow-400 underline underline-offset-2 text-center">
+                        Or buy single access for {currencySymbol}{match.ppv_price || match.price}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 mb-2">Pay per view</span>
+                    <h2 className="text-lg font-black text-slate-900 dark:text-white">Watch this {contentTerm} for {currencySymbol}{match.ppv_price || match.price}</h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      One-off payment. No subscription.
+                      {match.event_access_enabled && <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">Includes {Math.round((Number(match.event_access_duration) || 4320) / 60)} hours of full playback access.</span>}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button onClick={handleUnlockClick} className="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer">
+                      <Unlock className="w-4 h-4" /><span>Buy access for {currencySymbol}{match.ppv_price || match.price}</span>
+                    </button>
+                    {!user && (
+                      <button onClick={() => handleAuthGateRedirect('login')} className="w-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold px-4 py-2.5 rounded-xl transition text-sm flex items-center justify-center gap-2 cursor-pointer">
+                        <LogIn className="w-4 h-4" /><span>Sign in</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Related Broadcasts Section (Sidebar, renamed from "Up Next" to "More broadcasts") */}
           {relatedMatches.length > 0 && (
