@@ -373,7 +373,14 @@ export async function ensureIncrementalColumns() {
     "CREATE TABLE IF NOT EXISTS `broadcast_sessions` (`id` VARCHAR(100) PRIMARY KEY, `channel_id` VARCHAR(100) NOT NULL, `club_id` VARCHAR(100) NOT NULL, `match_id` VARCHAR(100) NOT NULL, `sport` VARCHAR(100) DEFAULT 'football', `competition_id` VARCHAR(100) DEFAULT NULL, `mux_live_stream_id` VARCHAR(150) NOT NULL, `mux_asset_id` VARCHAR(150) DEFAULT NULL, `mux_asset_playback_id` VARCHAR(150) DEFAULT NULL, `mux_playback_policy` VARCHAR(20) DEFAULT 'public', `status` VARCHAR(50) DEFAULT 'assigned', `mux_stream_status` VARCHAR(50) DEFAULT 'idle', `mux_error_message` TEXT DEFAULT NULL, `assigned_by` VARCHAR(100) DEFAULT NULL, `assigned_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `started_at` DATETIME DEFAULT NULL, `disconnected_at` DATETIME DEFAULT NULL, `ended_at` DATETIME DEFAULT NULL, `duration_seconds` INT DEFAULT 0, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_bs_channel` (`channel_id`), INDEX `idx_bs_club` (`club_id`), INDEX `idx_bs_match` (`match_id`), INDEX `idx_bs_live_stream` (`mux_live_stream_id`), INDEX `idx_bs_asset` (`mux_asset_id`), INDEX `idx_bs_status` (`status`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "CREATE TABLE IF NOT EXISTS `mux_webhook_events` (`event_id` VARCHAR(150) PRIMARY KEY, `event_type` VARCHAR(100) NOT NULL, `mux_object_id` VARCHAR(150) DEFAULT NULL, `payload_created_at` VARCHAR(64) DEFAULT NULL, `processed_status` VARCHAR(50) DEFAULT 'processed', `processed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "CREATE TABLE IF NOT EXISTS `mux_channel_audit_logs` (`id` VARCHAR(100) PRIMARY KEY, `channel_id` VARCHAR(100) DEFAULT NULL, `club_id` VARCHAR(100) NOT NULL, `actor_user_id` VARCHAR(100) DEFAULT NULL, `actor_role` VARCHAR(50) DEFAULT NULL, `action` VARCHAR(80) NOT NULL, `details` JSON DEFAULT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX `idx_mcal_club` (`club_id`), INDEX `idx_mcal_channel` (`channel_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "INSERT IGNORE INTO `features` (`id`, `key_name`, `label`, `enabled`) VALUES ('5', 'partner_mux_streaming', 'Partner Club Live Streaming (Mux)', 1)"
+    "INSERT IGNORE INTO `features` (`id`, `key_name`, `label`, `enabled`) VALUES ('5', 'partner_mux_streaming', 'Partner Club Live Streaming (Mux)', 1)",
+    // Post-broadcast review workflow (opt-in per club; off by default)
+    "ALTER TABLE `clubs` ADD COLUMN `auto_draft_after_broadcast` TINYINT(1) DEFAULT 0",
+    "ALTER TABLE `matches` ADD COLUMN `auto_drafted_after_broadcast` TINYINT(1) DEFAULT 0",
+    "ALTER TABLE `matches` ADD COLUMN `auto_drafted_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `pre_broadcast_publish_status` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `broadcast_sessions` ADD COLUMN `recording_completed_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `broadcast_sessions` ADD COLUMN `ended_by` VARCHAR(20) DEFAULT NULL"
   ];
 
   for (const sql of migrations) {
@@ -2007,6 +2014,7 @@ async function startServer() {
       const pStatus = match.publish_status || match.publishStatus;
       if ((rStatus && rStatus !== 'normal') || pStatus === 'draft' || pStatus === 'deleted') {
         let isStaff = false;
+        let isOwningPartner = false;
         const authHeader = req.headers.authorization;
         if (authHeader && authHeader.startsWith("Bearer ")) {
           try {
@@ -2014,9 +2022,18 @@ async function startServer() {
             if (decoded && (decoded.role === "admin" || decoded.role === "operator")) {
               isStaff = true;
             }
+            // Owning partner club may review its own Draft event (not revoked/deleted ones)
+            const matchClubId = match.club_id || match.clubId;
+            if (
+              decoded && decoded.role === "partner" && decoded.club_id && matchClubId &&
+              String(decoded.club_id) === String(matchClubId) &&
+              pStatus === 'draft' && !(rStatus && rStatus !== 'normal')
+            ) {
+              isOwningPartner = true;
+            }
           } catch (e) {}
         }
-        if (!isStaff) {
+        if (!isStaff && !isOwningPartner) {
           return res.status(404).json({ error: "Match not found" });
         }
       }
@@ -2043,6 +2060,20 @@ async function startServer() {
           isRevoked: true,
           hasAccess: false
         });
+      }
+
+      // Draft (unpublished) events are only playable by staff and the owning partner club.
+      // Mirrors the visibility rule of GET /api/matches/:id so Draft is hidden consistently.
+      const pubStatus = match.publish_status || match.publishStatus;
+      if (pubStatus === 'draft' || pubStatus === 'deleted') {
+        const isStaffViewer = userRole === 'admin' || userRole === 'operator';
+        const viewerClubId = req.user?.club_id || req.user?.clubId || null;
+        const draftMatchClubId = match.club_id || match.clubId || null;
+        const isOwningPartner = userRole === 'partner' && pubStatus === 'draft' && viewerClubId && draftMatchClubId &&
+          String(viewerClubId) === String(draftMatchClubId);
+        if (!isStaffViewer && !isOwningPartner) {
+          return res.status(404).json({ error: "match_unpublished", message: "This event is not currently published.", hasAccess: false });
+        }
       }
 
       let hasAccess = false;
@@ -9679,7 +9710,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           logo: club.logo,
           contactEmail: club.contact_email || club.contactEmail,
           stripeAccountId: club.stripe_account_id || club.stripeAccountId,
-          stripeOnboardingComplete: club.stripe_onboarding_complete || club.stripeOnboardingComplete
+          stripeOnboardingComplete: club.stripe_onboarding_complete || club.stripeOnboardingComplete,
+          canPublishEvents: club.can_publish_events !== undefined ? Boolean(Number(club.can_publish_events)) : true
         },
         balance: balanceData,
         matchesCount,

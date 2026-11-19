@@ -42,6 +42,33 @@ export interface ClubStreamingRouteDeps {
 
 const SENSITIVE_AUDIT_KEY_PATTERN = /(secret|token|key|password|private|credential)/i;
 const OPEN_SESSION_STATUSES = ['assigned', 'live', 'disconnected', 'ending'];
+/** Window in which an encoder restart re-opens a session that Mux auto-closed (idle after reconnect window). */
+const AUTO_REOPEN_WINDOW_MS = 15 * 60 * 1000;
+
+function truthyFlag(v: any): boolean {
+  return v === true || v === 1 || v === '1' || v === 'true';
+}
+
+/**
+ * Post-broadcast review: when a club has opted in and a live broadcast was explicitly ended by the
+ * club, move the Event to Draft so it is hidden from viewers until the club publishes it again.
+ * Returns the match field updates to apply, or null when nothing should change.
+ * Recording/replay fields are never touched — Draft only affects visibility.
+ */
+export function buildPostBroadcastDraftUpdates(match: any, club: any, wasLive: boolean): Record<string, any> | null {
+  if (!wasLive || !match || !club) return null;
+  if (!truthyFlag(club.auto_draft_after_broadcast ?? club.autoDraftAfterBroadcast)) return null;
+  const current = match.publish_status || match.publishStatus || 'published';
+  if (current === 'draft' || current === 'deleted') return null;
+  const rStatus = match.revoke_status || match.revokeStatus;
+  if (rStatus && rStatus !== 'normal') return null;
+  return {
+    publish_status: 'draft',
+    auto_drafted_after_broadcast: 1,
+    auto_drafted_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    pre_broadcast_publish_status: current,
+  };
+}
 
 export function stripSecretsFromAuditDetails(details: any): Record<string, any> | null {
   if (!details || typeof details !== 'object') return null;
@@ -537,15 +564,31 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
       const openSessions = channelRow ? await getOpenChannelSessions(channelRow.id) : [];
 
       const sessions = await query<any>(
-        `SELECT bs.*, m.title AS event_title, m.slug AS event_slug, m.sport AS event_sport,
-                m.status AS event_status, m.date AS event_date
+        `SELECT bs.*, ROUND(bs.duration_seconds / 60) AS duration_minutes,
+                m.title AS event_title, m.slug AS event_slug, m.sport AS event_sport,
+                m.status AS event_status, m.date AS event_date,
+                m.publish_status AS event_publish_status,
+                m.auto_drafted_after_broadcast AS event_auto_drafted
          FROM \`broadcast_sessions\` bs
          LEFT JOIN \`matches\` m ON m.id = bs.match_id
          WHERE bs.club_id = ?
          ORDER BY bs.assigned_at DESC
          LIMIT 25`,
         [clubId]
-      ).catch(() => []);
+      ).catch(() =>
+        // Fallback to the original column set if newer columns are unavailable
+        query<any>(
+          `SELECT bs.*, ROUND(bs.duration_seconds / 60) AS duration_minutes,
+                  m.title AS event_title, m.slug AS event_slug, m.sport AS event_sport,
+                  m.status AS event_status, m.date AS event_date
+           FROM \`broadcast_sessions\` bs
+           LEFT JOIN \`matches\` m ON m.id = bs.match_id
+           WHERE bs.club_id = ?
+           ORDER BY bs.assigned_at DESC
+           LIMIT 25`,
+          [clubId]
+        ).catch(() => [])
+      );
 
       const clubMatchesSnap = await db.collection('matches').where('club_id', '==', String(clubId)).get();
       const eligibleEvents = (clubMatchesSnap.docs || [])
@@ -564,6 +607,7 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
             accessType: m.access_type || m.access || 'free',
             muxAssetPlaybackId: m.mux_asset_playback_id || null,
             muxStreamStatus: m.mux_stream_status || null,
+            autoDraftedAfterBroadcast: truthyFlag(m.auto_drafted_after_broadcast),
             homeTeam: m.home_team || null,
             awayTeam: m.away_team || null,
             playerPair1: m.player_pair_1 || null,
@@ -593,6 +637,7 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
           name: club.name,
           isActive: Boolean(Number(club.is_active ?? 1)),
           muxStreamingApproved: clubApproved,
+          autoDraftAfterBroadcast: truthyFlag(club.auto_draft_after_broadcast),
           permissions: {
             can_create_events: club.can_create_events !== undefined ? Boolean(Number(club.can_create_events)) : (club.canCreateEvents !== undefined ? Boolean(club.canCreateEvents) : true),
             can_edit_events: club.can_edit_events !== undefined ? Boolean(Number(club.can_edit_events)) : (club.canEditEvents !== undefined ? Boolean(club.canEditEvents) : true),
@@ -966,8 +1011,12 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
       const finalStatus = wasLive ? 'completed' : 'cancelled';
 
       await getMuxPlatformSettings().catch(() => null);
+      let muxWarning: string | null = null;
       if (wasLive && getMuxConfig().isConfigured && req.body?.signalMuxComplete !== false) {
-        await completeMuxLiveStream(String(session.mux_live_stream_id)).catch(() => {});
+        await completeMuxLiveStream(String(session.mux_live_stream_id)).catch((err: any) => {
+          console.warn(`[Mux] complete live stream failed for session ${sessionId}:`, err?.message);
+          muxWarning = `Mux did not confirm the stream was closed (${err?.message || 'API error'}). Please stop your encoder (OBS/vMix) manually.`;
+        });
       }
 
       const startTimeMs = session.started_at ? new Date(session.started_at).getTime() : null;
@@ -977,6 +1026,8 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
         'UPDATE `broadcast_sessions` SET `status` = ?, `mux_stream_status` = ?, `ended_at` = NOW(), `duration_seconds` = GREATEST(`duration_seconds`, ?) WHERE `id` = ?',
         [finalStatus, 'idle', durationSec, sessionId]
       );
+      // Mark as explicitly ended by the club so an encoder restart never re-opens it
+      await execute('UPDATE `broadcast_sessions` SET `ended_by` = ? WHERE `id` = ?', ['partner', sessionId]).catch(() => {});
 
       await execute(
         'UPDATE `club_streaming_channels` SET `active_broadcast_session_id` = NULL, `active_match_id` = NULL, `channel_status` = CASE WHEN `channel_status` = \'disabled\' THEN \'disabled\' ELSE \'idle\' END WHERE `id` = ? AND `active_broadcast_session_id` = ?',
@@ -985,6 +1036,7 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
 
       // Cleanly detach ephemeral live channel playback ID from ended Event so future club broadcasts never play through past Events!
       const matchDoc = await db.collection('matches').doc(String(session.match_id)).get();
+      let autoDrafted = false;
       if (matchDoc.exists) {
         const m = matchDoc.data();
         const updates: Record<string, any> = {
@@ -993,6 +1045,17 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
         };
         if (wasLive && String(m?.status || '').toLowerCase() === 'live') {
           updates.status = 'full_match';
+        }
+        // Opt-in post-broadcast review: hide the Event (Draft) until the club re-publishes it
+        try {
+          const clubDoc = await db.collection('clubs').doc(String(clubId)).get();
+          const draftUpdates = buildPostBroadcastDraftUpdates(m, clubDoc.exists ? clubDoc.data() : null, wasLive);
+          if (draftUpdates) {
+            Object.assign(updates, draftUpdates);
+            autoDrafted = true;
+          }
+        } catch (draftErr: any) {
+          console.warn(`[Broadcast] auto-draft check failed for match ${session.match_id}:`, draftErr?.message);
         }
         await db.collection('matches').doc(String(session.match_id)).update(updates);
         cacheEngine.invalidateCollection('matches');
@@ -1003,10 +1066,100 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
         clubId,
         actorUser: req.user,
         action: wasLive ? 'session_completed' : 'event_unassigned',
-        details: { sessionId, matchId: session.match_id, finalStatus },
+        details: { sessionId, matchId: session.match_id, finalStatus, autoDrafted },
       });
 
-      return res.json({ success: true, status: finalStatus, sessionId });
+      return res.json({ success: true, status: finalStatus, sessionId, autoDrafted, muxWarning: muxWarning || undefined });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Partner setting: opt in/out of moving Events to Draft after an explicitly ended broadcast
+  app.put('/api/partner/streaming/settings', authenticate, async (req: any, res: any) => {
+    try {
+      if (!['partner', 'admin'].includes(String(req.user?.role || '').toLowerCase())) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const clubId = resolveAuthorizedClubId(req.user, req.body?.clubId);
+      if (!clubId) return res.status(400).json({ error: 'No partner club associated' });
+      if (typeof req.body?.autoDraftAfterBroadcast !== 'boolean') {
+        return res.status(400).json({ error: 'autoDraftAfterBroadcast (boolean) is required.' });
+      }
+      const clubDoc = await db.collection('clubs').doc(String(clubId)).get();
+      if (!clubDoc.exists) return res.status(404).json({ error: 'Club not found' });
+
+      const value = req.body.autoDraftAfterBroadcast ? 1 : 0;
+      await db.collection('clubs').doc(String(clubId)).update({ auto_draft_after_broadcast: value });
+      cacheEngine.invalidateCollection('clubs');
+
+      await recordAudit({
+        channelId: null,
+        clubId,
+        actorUser: req.user,
+        action: 'auto_draft_setting_changed',
+        details: { autoDraftAfterBroadcast: Boolean(value) },
+      }).catch(() => {});
+
+      return res.json({ success: true, autoDraftAfterBroadcast: Boolean(value) });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Partner: publish or move to Draft one of the club's own Events (respects can_publish_events)
+  app.post('/api/partner/events/:matchId/publish', authenticate, async (req: any, res: any) => {
+    try {
+      if (!['partner', 'admin'].includes(String(req.user?.role || '').toLowerCase())) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const clubId = resolveAuthorizedClubId(req.user, req.body?.clubId);
+      if (!clubId) return res.status(400).json({ error: 'No partner club associated' });
+      if (typeof req.body?.publish !== 'boolean') {
+        return res.status(400).json({ error: 'publish (boolean) is required.' });
+      }
+      const matchId = String(req.params.matchId || '').trim();
+      const matchDoc = await db.collection('matches').doc(matchId).get();
+      if (!matchDoc.exists) return res.status(404).json({ error: 'Event not found.' });
+      const match = matchDoc.data();
+      if (String(match.club_id || match.clubId || '') !== String(clubId)) {
+        return res.status(403).json({ error: 'Forbidden: This Event does not belong to your club.' });
+      }
+      const current = match.publish_status || match.publishStatus || 'published';
+      if (current === 'deleted') return res.status(400).json({ error: 'Deleted Events cannot be published.' });
+      const rStatus = match.revoke_status || match.revokeStatus;
+      if (req.body.publish && rStatus && rStatus !== 'normal') {
+        return res.status(400).json({ error: 'This Event has been taken down by administrators and cannot be published.' });
+      }
+
+      const clubDoc = await db.collection('clubs').doc(String(clubId)).get();
+      const club = clubDoc.exists ? clubDoc.data() : {};
+      const canPublish = club.can_publish_events !== undefined ? Boolean(Number(club.can_publish_events)) : true;
+      const isAdmin = String(req.user?.role || '').toLowerCase() === 'admin';
+      if (req.body.publish && !canPublish && !isAdmin) {
+        return res.status(403).json({ error: 'Your club is not permitted to publish Events. A platform administrator will review and publish it.' });
+      }
+
+      const updates: Record<string, any> = req.body.publish
+        ? {
+            publish_status: 'published',
+            auto_drafted_after_broadcast: 0,
+            auto_drafted_at: null,
+            pre_broadcast_publish_status: null,
+          }
+        : { publish_status: 'draft' };
+      await db.collection('matches').doc(matchId).update(updates);
+      cacheEngine.invalidateCollection('matches');
+
+      await recordAudit({
+        channelId: null,
+        clubId,
+        actorUser: req.user,
+        action: req.body.publish ? 'event_published' : 'event_unpublished',
+        details: { matchId, previous: current },
+      }).catch(() => {});
+
+      return res.json({ success: true, publishStatus: updates.publish_status });
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
     }
@@ -1364,6 +1517,46 @@ export function createClubChannelWebhookProcessor(deps: {
       if (recentCompleted && recentCompleted[0]) targetSession = recentCompleted[0];
     }
 
+    // 4. Encoder restarted after Mux auto-closed the session (idle after reconnect window):
+    //    re-open that same session if it was NOT explicitly ended by the club and ended recently.
+    if (!targetSession && channel && eventType === 'video.live_stream.active' && !channel.active_broadcast_session_id) {
+      const reopenRows = await query<any>(
+        "SELECT * FROM `broadcast_sessions` WHERE `channel_id` = ? AND `status` = 'completed' AND `ended_by` = 'mux_idle' ORDER BY `ended_at` DESC LIMIT 1",
+        [channel.id]
+      ).catch(() => []);
+      const candidate = reopenRows && reopenRows[0];
+      const endedMs = candidate?.ended_at ? new Date(candidate.ended_at).getTime() : NaN;
+      if (candidate && Number.isFinite(endedMs) && Date.now() - endedMs <= AUTO_REOPEN_WINDOW_MS) {
+        await execute(
+          "UPDATE `broadcast_sessions` SET `status` = 'disconnected', `ended_at` = NULL, `ended_by` = NULL WHERE `id` = ?",
+          [candidate.id]
+        ).catch(() => {});
+        await execute(
+          'UPDATE `club_streaming_channels` SET `active_broadcast_session_id` = ?, `active_match_id` = ? WHERE `id` = ? AND `active_broadcast_session_id` IS NULL',
+          [candidate.id, candidate.match_id, channel.id]
+        ).catch(() => {});
+        targetSession = { ...candidate, status: 'disconnected', __reopened: true };
+      }
+    }
+
+    // Mux finished writing the live recording asset: mark the replay as final
+    if (eventType === 'video.asset.live_stream_completed') {
+      if (targetSession) {
+        await execute(
+          'UPDATE `broadcast_sessions` SET `recording_completed_at` = COALESCE(`recording_completed_at`, NOW()) WHERE `id` = ?',
+          [targetSession.id]
+        ).catch(() => {});
+        return {
+          handled: true,
+          matchId: targetSession.match_id,
+          sessionId: targetSession.id,
+          channelId: channel?.id || targetSession.channel_id,
+          status: targetSession.status,
+        };
+      }
+      return { handled: false };
+    }
+
     if (!channel && !targetSession) {
       return { handled: false };
     }
@@ -1400,10 +1593,12 @@ export function createClubChannelWebhookProcessor(deps: {
       if (eventType === 'video.live_stream.active') {
         sessionNextStatus = 'live';
         matchUpdates.status = 'live';
+        if (targetSession.__reopened && targetSession.mux_asset_id) delete matchUpdates.mux_asset_id;
         if (channel?.mux_playback_id) matchUpdates.mux_playback_id = channel.mux_playback_id;
         await execute(
           "UPDATE `broadcast_sessions` SET `status` = 'live', `mux_stream_status` = 'active', `mux_asset_id` = COALESCE(?, `mux_asset_id`), `started_at` = COALESCE(`started_at`, NOW()) WHERE `id` = ?",
-          [parsed.assetId || null, targetSession.id]
+          // Re-opened session keeps its original recording asset (the restart creates a new Mux asset)
+          [targetSession.__reopened && targetSession.mux_asset_id ? null : (parsed.assetId || null), targetSession.id]
         ).catch(() => {});
       } else if (eventType === 'video.live_stream.connected' || eventType === 'video.live_stream.recording') {
         await execute(
@@ -1424,6 +1619,10 @@ export function createClubChannelWebhookProcessor(deps: {
           "UPDATE `broadcast_sessions` SET `status` = 'completed', `mux_stream_status` = 'idle', `ended_at` = NOW(), `duration_seconds` = GREATEST(`duration_seconds`, ?) WHERE `id` = ?",
           [durSec, targetSession.id]
         ).catch(() => {});
+        await execute(
+          "UPDATE `broadcast_sessions` SET `ended_by` = 'mux_idle' WHERE `id` = ?",
+          [targetSession.id]
+        ).catch(() => {});
         if (channel) {
           await execute(
             'UPDATE `club_streaming_channels` SET `active_broadcast_session_id` = NULL, `active_match_id` = NULL WHERE `id` = ? AND `active_broadcast_session_id` = ?',
@@ -1442,6 +1641,14 @@ export function createClubChannelWebhookProcessor(deps: {
         ).catch(() => {});
         // Never overwrite editorial match.status on late asset webhooks; only bind the isolated VOD playback ID
         delete matchUpdates.status;
+        // A restarted encoder produces a second Mux asset; keep the replay already bound to this Event
+        if (
+          parsed.assetId && targetSession.mux_asset_id && String(targetSession.mux_asset_id) !== String(parsed.assetId) &&
+          targetSession.mux_asset_playback_id
+        ) {
+          delete matchUpdates.mux_asset_id;
+          delete matchUpdates.mux_asset_playback_id;
+        }
       }
 
       if (targetSession.match_id && Object.keys(matchUpdates).length > 0) {
@@ -1450,6 +1657,7 @@ export function createClubChannelWebhookProcessor(deps: {
         if (mDoc.exists) {
           const curMatch = mDoc.data();
           if (
+            !targetSession.__reopened &&
             matchUpdates.status === 'live' &&
             ['full_match', 'completed', 'highlights'].includes(String(curMatch?.status || '').toLowerCase()) &&
             String(curMatch?.status_mode || '').toLowerCase() === 'manual'

@@ -430,8 +430,69 @@ export function PartnerLiveStreamingTab({
     }
   };
 
+  const [savingAutoDraft, setSavingAutoDraft] = useState(false);
+  const [publishingMatchId, setPublishingMatchId] = useState<string | null>(null);
+
+  const handleToggleAutoDraft = async (enabled: boolean) => {
+    setSavingAutoDraft(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/partner/streaming/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ clubId, autoDraftAfterBroadcast: enabled }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setFeedback({ type: 'error', message: data?.error || 'Could not update broadcast review setting.' });
+        return;
+      }
+      await loadStreamingStatus();
+    } catch {
+      setFeedback({ type: 'error', message: 'Network error updating broadcast review setting.' });
+    } finally {
+      setSavingAutoDraft(false);
+    }
+  };
+
+  const handlePublishEvent = async (matchId: string, publish: boolean) => {
+    setPublishingMatchId(matchId);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/partner/events/${encodeURIComponent(matchId)}/publish`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ clubId, publish }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setFeedback({ type: 'error', message: data?.error || 'Could not update Event visibility.' });
+        return;
+      }
+      setFeedback({
+        type: 'success',
+        message: publish ? 'Event published and visible to viewers.' : 'Event moved to Draft and hidden from viewers.',
+      });
+      await loadStreamingStatus();
+      onStatusChanged?.();
+    } catch {
+      setFeedback({ type: 'error', message: 'Network error updating Event visibility.' });
+    } finally {
+      setPublishingMatchId(null);
+    }
+  };
+
   const handleCompleteSession = async (sessionId: string) => {
-    if (!confirm('Mark this broadcast session as completed and signal Mux to close the active live feed? Replay VOD for this Event remains preserved on its Event page.')) {
+    const draftNote = payload?.club?.autoDraftAfterBroadcast
+      ? ' The Event will be moved to Draft (hidden from viewers) until you publish it.'
+      : '';
+    if (!confirm('Mark this broadcast session as completed and signal Mux to close the active live feed? Replay VOD for this Event remains preserved on its Event page.' + draftNote)) {
       return;
     }
     setCompletingSessionId(sessionId);
@@ -450,10 +511,16 @@ export function PartnerLiveStreamingTab({
         setFeedback({ type: 'error', message: data?.error || 'Could not finalize broadcast session.' });
         return;
       }
-      setFeedback({
-        type: 'success',
-        message: 'Broadcast completed! Your reusable channel is free for the next Event.',
-      });
+      if (data?.muxWarning) {
+        setFeedback({ type: 'error', message: `Broadcast session closed, but: ${data.muxWarning}` });
+      } else {
+        setFeedback({
+          type: 'success',
+          message: data?.autoDrafted
+            ? 'Broadcast completed! The Event has been moved to Draft and is hidden from viewers. Review it and click "Publish" when ready.'
+            : 'Broadcast completed! Your reusable channel is free for the next Event.',
+        });
+      }
       await loadStreamingStatus();
       onStatusChanged?.();
     } catch {
@@ -1032,6 +1099,23 @@ export function PartnerLiveStreamingTab({
                   Recent Broadcast Sessions ({sessions.length})
                 </h3>
               </div>
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300 dark:border-slate-600"
+                  checked={Boolean(clubInfo.autoDraftAfterBroadcast)}
+                  disabled={savingAutoDraft}
+                  onChange={(e) => handleToggleAutoDraft(e.target.checked)}
+                />
+                <span className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                  <strong className="block text-xs text-slate-900 dark:text-white">Review before publishing replays</strong>
+                  When you click <em>End Broadcast</em>, the Event is moved to Draft (hidden from viewers) so you can review it and publish when ready. The recording is kept.
+                  {clubInfo?.permissions?.can_publish_events === false && (
+                    <span className="block mt-1 text-amber-600 dark:text-amber-400">Your club cannot publish directly — an administrator will publish Draft Events.</span>
+                  )}
+                </span>
+                {savingAutoDraft && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500 shrink-0" />}
+              </label>
               {sessions.length === 0 ? (
                 <p className="text-xs text-slate-400">No broadcasts recorded on this channel yet.</p>
               ) : (
@@ -1052,12 +1136,32 @@ export function PartnerLiveStreamingTab({
                           <span className="uppercase">{s.event_sport || 'event'}</span>
                           {s.duration_minutes ? <span>• {s.duration_minutes} min</span> : null}
                           {s.mux_asset_playback_id ? (
-                            <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
-                              • Replay Saved
+                            s.status === 'completed' ? (
+                              <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                                • {s.recording_completed_at ? 'Replay Ready' : 'Replay Saved'}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-semibold">• Recording…</span>
+                            )
+                          ) : null}
+                          {s.event_publish_status === 'draft' ? (
+                            <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                              • {Number(s.event_auto_drafted) ? 'Draft – awaiting review' : 'Draft'}
                             </span>
                           ) : null}
                         </div>
                       </div>
+                      {s.event_publish_status === 'draft' && s.status === 'completed' && clubInfo?.permissions?.can_publish_events !== false && (
+                        <button
+                          type="button"
+                          disabled={publishingMatchId === String(s.match_id)}
+                          onClick={() => handlePublishEvent(String(s.match_id), true)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold shrink-0 disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {publishingMatchId === String(s.match_id) ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                          Publish
+                        </button>
+                      )}
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0 ${
                           s.status === 'live'

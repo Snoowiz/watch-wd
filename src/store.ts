@@ -1440,7 +1440,13 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     if (found) return found;
 
     try {
-      const res = await fetch(`/api/matches/${encodeURIComponent(clean)}`, { cache: 'no-store' });
+      // Send auth (if signed in) so staff / the owning club can open Draft events for review
+      let authToken: string | null = null;
+      try { authToken = localStorage.getItem('token'); } catch (_) {}
+      const res = await fetch(`/api/matches/${encodeURIComponent(clean)}`, {
+        cache: 'no-store',
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
       if (res.ok) {
         const match = await res.json();
         if (match && match.id) {

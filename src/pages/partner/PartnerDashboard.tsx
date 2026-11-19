@@ -256,6 +256,64 @@ export function PartnerDashboard() {
     fetchDashboardData();
   };
 
+  // --- Event visibility (Publish / Draft) ---
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const clubCanPublish = (club as any)?.canPublishEvents !== false;
+  const isDraftEvent = (m: any) => (m?.publish_status || m?.publishStatus) === 'draft';
+  const isAutoDrafted = (m: any) => Boolean(Number(m?.auto_drafted_after_broadcast || 0));
+
+  const handleSetPublished = async (m: any, publish: boolean) => {
+    if (!token) return;
+    setPublishingId(String(m.id));
+    setPublishError(null);
+    try {
+      const res = await fetch(`/api/partner/events/${encodeURIComponent(String(m.id))}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ publish, clubId: effectiveClubId || undefined }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setPublishError(data?.error || 'Could not update Event visibility.');
+        return;
+      }
+      setMatches(prev => prev.map(x => String(x.id) === String(m.id)
+        ? ({ ...x, publish_status: data?.publishStatus, ...(publish ? { auto_drafted_after_broadcast: 0 } : {}) } as any)
+        : x));
+    } catch {
+      setPublishError('Network error updating Event visibility.');
+    } finally {
+      setPublishingId(null);
+    }
+  };
+
+  const renderVisibilityControl = (m: any) => {
+    const draft = isDraftEvent(m);
+    const busy = publishingId === String(m.id);
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[10px] ${
+          draft ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+        }`}>
+          {draft ? (isAutoDrafted(m) ? 'Draft · Review' : 'Draft') : 'Published'}
+        </span>
+        {draft && clubCanPublish && (
+          <button type="button" disabled={busy} onClick={() => handleSetPublished(m, true)}
+            className="px-2 py-0.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold disabled:opacity-50">
+            {busy ? '…' : 'Publish'}
+          </button>
+        )}
+        {!draft && (
+          <button type="button" disabled={busy} onClick={() => handleSetPublished(m, false)}
+            className="px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-white text-[10px] font-bold disabled:opacity-50">
+            {busy ? '…' : 'Unpublish'}
+          </button>
+        )}
+      </span>
+    );
+  };
+
   const getMatchTitle = (m: MatchItem) => {
     if (m.title) return m.title;
     if (m.home_team && m.away_team) return `${m.home_team} vs ${m.away_team}`;
@@ -518,6 +576,11 @@ export function PartnerDashboard() {
                 </div>
               </div>
 
+              {publishError && (
+                <div className="mb-3 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                  {publishError}
+                </div>
+              )}
               {matches.length === 0 ? (
                 <div className="text-center py-10 text-slate-400 text-sm">
                   No matches currently assigned to your club.
@@ -537,6 +600,7 @@ export function PartnerDashboard() {
                           <span>•</span>
                           <span>PPV: £{Number(m.price || m.ppv_price || 0).toFixed(2)}</span>
                         </div>
+                        <div className="mt-1.5">{renderVisibilityControl(m)}</div>
                       </div>
 
                       <div className="text-right shrink-0">
@@ -665,6 +729,11 @@ export function PartnerDashboard() {
             <div className="text-center py-12 text-slate-400">No events found for your club.</div>
           ) : (
             <div className="overflow-x-auto">
+              {publishError && (
+                <div className="mb-3 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                  {publishError}
+                </div>
+              )}
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
@@ -699,6 +768,7 @@ export function PartnerDashboard() {
                         }`}>
                           {formatMatchStatus(m.status) || 'Scheduled'}
                         </span>
+                        <div className="mt-1.5">{renderVisibilityControl(m)}</div>
                       </td>
                       <td className="py-3.5 px-4 uppercase font-bold text-slate-600 dark:text-slate-300">
                         {m.access_type || m.access || 'PPV'}
