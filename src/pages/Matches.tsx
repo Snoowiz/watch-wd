@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  PlayCircle, Calendar, Clock, LayoutGrid, List as ListIcon, 
-  Bookmark, Search, X, Trophy, Building2, User, Filter, RotateCcw, 
+import {
+  PlayCircle, Calendar, Clock, LayoutGrid, List as ListIcon,
+  Bookmark, Search, X, Trophy, Building2, User, Filter, RotateCcw,
   Radio, Film, Sparkles
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { 
-  useSettingsStore, useMatchStore, useCategoryStore, useAuthStore, 
-  useSavedMatchesStore, useCompetitionStore, useClubStore, useSportStore 
+import {
+  useSettingsStore, useMatchStore, useCategoryStore, useAuthStore,
+  useSavedMatchesStore, useCompetitionStore, useClubStore, useSportStore
 } from '../store';
 import { formatMatchStatus, isInterview, isHighlights } from '../utils/statusHelper';
 import { CONFIGURED_SPORTS, getSportConfig, SportId, SPORTS_REGISTRY } from '../config/sports';
+import { SportFilterCarousel } from '../components/SportFilterCarousel';
 
 export function Matches() {
   const navigate = useNavigate();
@@ -367,58 +368,12 @@ export function Matches() {
         </div>
       </div>
 
-      {/* Prominent Sport Selector Bar */}
-      <div className="bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none p-1">
-          <button
-            onClick={() => handleSportChange('all')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
-              sportParam === 'all'
-                ? 'bg-yellow-500 text-slate-950 shadow-md shadow-yellow-500/20'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50'
-            }`}
-            id="sport-tab-all"
-          >
-            <Sparkles className="w-4 h-4" />
-            All sports
-          </button>
-
-          {activeSportsList.map(sport => {
-            const isSelected = sportParam === sport.id;
-            if (!sport.available) {
-              return (
-                <button
-                  key={sport.id}
-                  disabled
-                  title={sport.unavailableReason || 'Coming soon'}
-                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-400 dark:text-slate-500 bg-slate-100/50 dark:bg-slate-800/40 cursor-not-allowed opacity-60 flex items-center gap-2 whitespace-nowrap"
-                  id={`sport-tab-${sport.id}`}
-                >
-                  <span>{sport.name}</span>
-                  <span className="text-[10px] uppercase tracking-wider bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-md font-bold">
-                    Coming soon
-                  </span>
-                </button>
-              );
-            }
-
-            return (
-              <button
-                key={sport.id}
-                onClick={() => handleSportChange(sport.id)}
-                className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
-                  isSelected
-                    ? 'bg-yellow-500 text-slate-950 shadow-md shadow-yellow-500/20'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/50'
-                }`}
-                id={`sport-tab-${sport.id}`}
-              >
-                <span>{sport.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Sport Filter — carousel on desktop, 2-column grid on mobile */}
+      <SportFilterCarousel
+        sports={activeSportsList}
+        selectedSport={sportParam}
+        onSelectSport={handleSportChange}
+      />
 
       {/* Viewing Tabs: All, Live Now, Upcoming, Replays */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">

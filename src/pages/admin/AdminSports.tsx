@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Trophy, Plus, Search, Edit3, Trash2, CheckCircle2, XCircle, 
+import {
+  Trophy, Plus, Search, Edit3, Trash2, CheckCircle2, XCircle,
   Loader2, Save, X, Users, User, Shield, Clock, HelpCircle, AlertCircle
 } from 'lucide-react';
 import { useSportStore, Sport, useMatchStore, DEFAULT_PLATFORM_SPORTS } from '../../store';
 import { useUIStore } from '../../store/uiStore';
+import { SportIconPicker, getSportEmoji } from '../../components/SportIconPicker';
 
 export function AdminSports() {
   const { sports, isLoading, fetchSports, addSport, updateSport, deleteSport } = useSportStore();
@@ -21,6 +22,7 @@ export function AdminSports() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
+  const [icon, setIcon] = useState('');
   const [participantType, setParticipantType] = useState<'teams' | 'players_or_pairs' | 'combatants'>('teams');
   const [slot1Label, setSlot1Label] = useState('Home team');
   const [slot1Placeholder, setSlot1Placeholder] = useState('');
@@ -41,6 +43,7 @@ export function AdminSports() {
     setName('');
     setSlug('');
     setDescription('');
+    setIcon('');
     setParticipantType('teams');
     setSlot1Label('Home team');
     setSlot1Placeholder('e.g. Manchester Red');
@@ -58,6 +61,7 @@ export function AdminSports() {
     setName(sport.name);
     setSlug(sport.slug);
     setDescription(sport.description || '');
+    setIcon(sport.icon || '');
     setParticipantType(sport.participant_type || 'teams');
     setSlot1Label(sport.slot1_label || 'Home team');
     setSlot1Placeholder(sport.slot1_placeholder || '');
@@ -121,6 +125,7 @@ export function AdminSports() {
         name: name.trim(),
         slug: slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
         description: description.trim() || null,
+        icon: icon.trim() || null,
         participant_type: participantType,
         slot1_label: slot1Label.trim() || 'Home team',
         slot1_placeholder: slot1Placeholder.trim() || '',
@@ -359,8 +364,8 @@ export function AdminSports() {
                     <tr key={sport.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 flex items-center justify-center font-black">
-                            <Trophy className="w-5 h-5" />
+                          <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center text-2xl shrink-0 select-none">
+                            {getSportEmoji(sport)}
                           </div>
                           <div>
                             <div className="font-bold text-slate-900 dark:text-white text-sm">
@@ -532,6 +537,9 @@ export function AdminSports() {
                   className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500 resize-none"
                 />
               </div>
+
+              {/* Sport Icon Picker */}
+              <SportIconPicker value={icon} onChange={setIcon} />
 
               {/* Participant Model */}
               <div>
