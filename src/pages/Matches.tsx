@@ -22,7 +22,8 @@ export function Matches() {
   const { categories = [], fetchCategories } = useCategoryStore();
   const { currencySymbol } = useSettingsStore();
   const { savedMatches = [], saveMatch, unsaveMatch, fetchSavedMatches } = useSavedMatchesStore();
-  const { sports = [], fetchActiveSports } = useSportStore();
+  // Public page: only sports marked Active in Admin > Sports (from /api/sports)
+  const { activeSports: sports = [], fetchActiveSports } = useSportStore();
 
   useEffect(() => {
     fetchActiveSports();
@@ -31,21 +32,16 @@ export function Matches() {
   const activeSportsList = useMemo(() => {
     if (!sports || sports.length === 0) return CONFIGURED_SPORTS;
     const list = [];
-    const seen = new Set();
     for (const s of sports) {
+      const isActive = s.is_active === undefined || Number(s.is_active) === 1 || s.is_active === true;
+      if (!isActive) continue; // inactive sports are hidden entirely
       const reg = SPORTS_REGISTRY[s.id] || SPORTS_REGISTRY[s.slug];
-      const isActive = s.is_active === 1 || s.is_active === true;
       if (reg) {
-        list.push({ ...reg, available: isActive });
+        list.push({ ...reg, available: true });
       } else {
         const resolved = getSportConfig(s.id, sports);
-        if (resolved) list.push({ ...resolved, available: isActive });
+        if (resolved) list.push({ ...resolved, available: true });
       }
-      seen.add(s.id);
-      seen.add(s.slug);
-    }
-    for (const c of CONFIGURED_SPORTS) {
-      if (!seen.has(c.id) && !seen.has(c.slug)) list.push(c);
     }
     return list;
   }, [sports]);
