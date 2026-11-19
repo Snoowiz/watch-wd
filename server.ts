@@ -7468,12 +7468,34 @@ async function startServer() {
     }
   }
 
+  // Admin-defined display order for sports (sort_order ASC, then name). Additive column; falls back to name order.
+  let sportsSortColumnReady = false;
+  async function ensureSportsSortColumn() {
+    if (sportsSortColumnReady) return;
+    try {
+      const cols: any = await query("SHOW COLUMNS FROM `sports` LIKE 'sort_order'").catch(() => null);
+      if (cols && cols.length > 0) { sportsSortColumnReady = true; return; }
+      if (cols) {
+        await execute("ALTER TABLE `sports` ADD COLUMN `sort_order` INT DEFAULT 0").catch(() => {});
+        clearTableColumnsCache();
+        sportsSortColumnReady = true;
+      }
+    } catch (_) {}
+  }
+  async function listSportsOrdered(activeOnly: boolean): Promise<any[] | null> {
+    await ensureSportsSortColumn();
+    const where = activeOnly ? "WHERE is_active = 1" : "";
+    return query(`SELECT * FROM sports ${where} ORDER BY sort_order ASC, name ASC`)
+      .catch(() => query(`SELECT * FROM sports ${where} ORDER BY name ASC`))
+      .catch(() => null);
+  }
+
   app.get("/api/sports", async (_req, res) => {
     try {
-      let rows: any = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC").catch(() => null);
+      let rows: any = await listSportsOrdered(true);
       if (!rows || rows.length === 0) {
         await ensureAndSeedSportsTable();
-        rows = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC").catch(() => []);
+        rows = (await listSportsOrdered(true)) || [];
       }
       res.json(rows || []);
     } catch (e: any) {
@@ -7483,10 +7505,10 @@ async function startServer() {
 
   app.get("/api/admin/sports", authenticate, requireRole(["admin"]), async (_req, res) => {
     try {
-      let rows: any = await query("SELECT * FROM sports ORDER BY name ASC").catch(() => null);
+      let rows: any = await listSportsOrdered(false);
       if (!rows || rows.length === 0) {
         await ensureAndSeedSportsTable();
-        rows = await query("SELECT * FROM sports ORDER BY name ASC").catch(() => []);
+        rows = (await listSportsOrdered(false)) || [];
       }
       res.json(rows || []);
     } catch (e: any) {
@@ -7505,6 +7527,8 @@ async function startServer() {
 
       if (!name || !slug) return res.status(400).json({ error: "Name and slug are required" });
       const id = slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const existedRows: any = await query("SELECT id FROM sports WHERE id = ? LIMIT 1", [id]).catch(() => []);
+      const isNewSport = !existedRows || existedRows.length === 0;
 
       await execute(`
         INSERT INTO sports (
@@ -7530,6 +7554,15 @@ async function startServer() {
         time_label || 'Start time',
         requires_club ? 1 : 0
       ]);
+
+      // New sports go to the end of the admin-defined display order
+      if (isNewSport) {
+        try {
+          await ensureSportsSortColumn();
+          const maxRows: any = await query("SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM sports");
+          await execute("UPDATE sports SET sort_order = ? WHERE id = ?", [Number(maxRows?.[0]?.max_order || 0) + 1, id]);
+        } catch (_) {}
+      }
 
       cacheEngine.invalidateCollection("sports");
       res.json({ success: true, id, name, slug });
@@ -7573,6 +7606,22 @@ async function startServer() {
         id, id
       ]);
 
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Save admin-defined display order: body { ids: [sportId, ...] } in the desired order (first = shown first)
+  app.post("/api/admin/sports/reorder", authenticate, requireRole(["admin"]), async (req: any, res) => {
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x: any) => String(x)).filter(Boolean) : null;
+      if (!ids || ids.length === 0) return res.status(400).json({ error: "ids array is required" });
+      await ensureSportsSortColumn();
+      for (let i = 0; i < ids.length; i++) {
+        await execute("UPDATE sports SET sort_order = ? WHERE id = ?", [i + 1, ids[i]]);
+      }
       cacheEngine.invalidateCollection("sports");
       res.json({ success: true });
     } catch (e: any) {

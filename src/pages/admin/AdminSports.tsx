@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Trophy, Plus, Search, Edit3, Trash2, CheckCircle2, XCircle,
-  Loader2, Save, X, Users, User, Shield, Clock, HelpCircle, AlertCircle
+  Loader2, Save, X, Users, User, Shield, Clock, HelpCircle, AlertCircle, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { useSportStore, Sport, useMatchStore, DEFAULT_PLATFORM_SPORTS } from '../../store';
 import { useUIStore } from '../../store/uiStore';
@@ -210,6 +210,50 @@ export function AdminSports() {
     });
   }, [effectiveSports, searchQuery, filterActive]);
 
+  // --- Display order (first row = shown first on the website) ---
+  const [reordering, setReordering] = useState(false);
+  const [reorderError, setReorderError] = useState<string | null>(null);
+
+  const moveSport = async (sport: Sport, direction: 'up' | 'down') => {
+    const visibleIdx = filteredSports.findIndex(s => s.id === sport.id);
+    const neighbour = filteredSports[direction === 'up' ? visibleIdx - 1 : visibleIdx + 1];
+    if (visibleIdx < 0 || !neighbour) return;
+
+    // Swap the two sports within the full ordered list (keeps hidden/filtered sports in place)
+    const ids = effectiveSports.map(s => String(s.id));
+    const a = ids.indexOf(String(sport.id));
+    const b = ids.indexOf(String(neighbour.id));
+    if (a < 0 || b < 0) return;
+    [ids[a], ids[b]] = [ids[b], ids[a]];
+
+    // Update the list immediately; reload from the server only if saving fails
+    const byId = new Map(effectiveSports.map(s => [String(s.id), s]));
+    useSportStore.setState({
+      sports: ids.map((id, i) => ({ ...(byId.get(id) as Sport), sort_order: i + 1 } as Sport)),
+    });
+
+    setReordering(true);
+    setReorderError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/sports/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setReorderError(data?.error || 'Could not save the new order.');
+        await fetchSports();
+      }
+    } catch {
+      setReorderError('Network error saving the new order.');
+      await fetchSports();
+    } finally {
+      setReordering(false);
+    }
+  };
+
   const activeCount = effectiveSports.filter(s => s.is_active === 1 || s.is_active === true).length;
   const totalEventsLinked = Object.values(sportEventCounts).reduce((a, b) => a + b, 0);
 
@@ -326,6 +370,17 @@ export function AdminSports() {
         </div>
       </div>
 
+      <p className="text-xs text-slate-500 dark:text-slate-400 -mb-4 flex items-center gap-1.5">
+        <ArrowUp className="w-3.5 h-3.5" />
+        Use the arrows to set the display order — the first sport is shown first on the website.
+        {reordering && <Loader2 className="w-3.5 h-3.5 animate-spin text-yellow-500" />}
+      </p>
+      {reorderError && (
+        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium">
+          {reorderError}
+        </div>
+      )}
+
       {/* Sports Table */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
         {isLoading ? (
@@ -356,7 +411,7 @@ export function AdminSports() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                {filteredSports.map(sport => {
+                {filteredSports.map((sport, rowIdx) => {
                   const isActiveSport = sport.is_active === 1 || sport.is_active === true;
                   const eventCount = sportEventCounts[(sport.id || sport.slug).toLowerCase()] || 0;
 
@@ -443,6 +498,24 @@ export function AdminSports() {
 
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => moveSport(sport, 'up')}
+                            disabled={reordering || rowIdx === 0}
+                            className="p-2 text-slate-400 hover:text-blue-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up (shown earlier on the website)"
+                            aria-label={`Move ${sport.name} up`}
+                          >
+                            <ArrowUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => moveSport(sport, 'down')}
+                            disabled={reordering || rowIdx === filteredSports.length - 1}
+                            className="p-2 text-slate-400 hover:text-blue-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down (shown later on the website)"
+                            aria-label={`Move ${sport.name} down`}
+                          >
+                            <ArrowDown className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => openEditModal(sport)}
                             className="p-2 text-slate-400 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors"
