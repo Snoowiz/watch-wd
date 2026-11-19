@@ -7,6 +7,7 @@ import {
 import { SPORTS_REGISTRY, getSportConfig, SportConfig } from '../config/sports';
 import { useSportStore } from '../store';
 import { MediaPickerModal } from './MediaPickerModal';
+import { TypeaheadInput, TypeaheadOption } from './TypeaheadInput';
 
 export interface PartnerCreateEventModalProps {
   isOpen: boolean;
@@ -132,6 +133,52 @@ export function PartnerCreateEventModal({
       .catch(() => {})
       .finally(() => setLoadingPlans(false));
   }, [accessType, clubId]);
+
+  // --- Participant typeahead sources: platform clubs + names used in past matches ---
+  const [platformClubs, setPlatformClubs] = useState<any[]>([]);
+  const [pastMatches, setPastMatches] = useState<any[]>([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/clubs/active')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPlatformClubs(d); })
+      .catch(() => {});
+    fetch('/api/matches')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPastMatches(d); })
+      .catch(() => {});
+  }, [isOpen]);
+
+  const participantOptions: TypeaheadOption[] = useMemo(() => {
+    const seen = new Map<string, TypeaheadOption>();
+    const add = (name: any, opt: Partial<TypeaheadOption> = {}) => {
+      const label = typeof name === 'string' ? name.trim() : '';
+      if (!label) return;
+      const k = label.toLowerCase();
+      if (seen.has(k)) {
+        const prev = seen.get(k)!;
+        if (!prev.logo && opt.logo) prev.logo = opt.logo;
+        return;
+      }
+      seen.set(k, { key: k, label, ...opt });
+    };
+    // Registered clubs only make sense as suggestions for team sports
+    if (!isPairSport && !isCombatSport) {
+      platformClubs.forEach(c => add(c.name, { logo: c.logo, hint: 'Club' }));
+    }
+    const sportKey = String(sport).toLowerCase();
+    pastMatches
+      .filter(m => !m.sport || String(m.sport).toLowerCase() === sportKey)
+      .forEach(m => {
+        if (isPairSport) {
+          add(m.player_pair_1 ?? m.playerPair1); add(m.player_pair_2 ?? m.playerPair2);
+        } else {
+          add(m.home_team ?? m.homeTeam, { logo: m.home_logo ?? m.homeLogo });
+          add(m.away_team ?? m.awayTeam, { logo: m.away_logo ?? m.awayLogo });
+        }
+      });
+    return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [platformClubs, pastMatches, sport, isPairSport, isCombatSport]);
 
   // Filtered competitions for selected sport
   const eligibleCompetitions = useMemo(() => {
@@ -365,20 +412,22 @@ export function PartnerCreateEventModal({
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   {slot1Label} <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text" required value={slot1} onChange={e => setSlot1(e.target.value)}
+                <TypeaheadInput
+                  required value={slot1} onChange={setSlot1}
                   placeholder={slot1Placeholder}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-amber-500"
+                  options={participantOptions.filter(o => o.label.toLowerCase() !== slot2.trim().toLowerCase())}
+                  heading={isPairSport || isCombatSport ? 'Existing participants' : 'Existing clubs & teams'}
                 />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   {slot2Label} <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text" required value={slot2} onChange={e => setSlot2(e.target.value)}
+                <TypeaheadInput
+                  required value={slot2} onChange={setSlot2}
                   placeholder={slot2Placeholder}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-amber-500"
+                  options={participantOptions.filter(o => o.label.toLowerCase() !== slot1.trim().toLowerCase())}
+                  heading={isPairSport || isCombatSport ? 'Existing participants' : 'Existing clubs & teams'}
                 />
               </div>
             </div>
