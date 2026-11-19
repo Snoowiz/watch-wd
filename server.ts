@@ -8300,6 +8300,85 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     }
   });
 
+  // Club subscription plans (for partner event creation)
+  app.get("/api/clubs/:clubId/plans", authenticate, async (req: any, res) => {
+    try {
+      const { clubId } = req.params;
+      const userClubId = String(req.user?.club_id || req.user?.clubId || '');
+      if (req.user?.role !== 'admin' && userClubId !== String(clubId)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const plansSnap = await db.collection("plans").get();
+      const plans = plansSnap.docs
+        .map((d: any) => ({ id: d.id, ...d.data() }))
+        .filter((p: any) => {
+          const scope = p.plan_scope || p.planScope || 'platform';
+          const pid = p.club_id || p.clubId || null;
+          return scope === 'club' && pid && String(pid) === String(clubId) && Number(p.is_active ?? 1) !== 0;
+        })
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name || '',
+          price: Number(p.price) || 0,
+          duration_days: Number(p.duration_days) || 30,
+          description: p.description || '',
+        }));
+      res.json(plans);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Club custom competitions — ensure schema columns exist once
+  async function ensureCustomCompColumns() {
+    await execute(`ALTER TABLE \`competitions\` ADD COLUMN \`club_id\` VARCHAR(100) DEFAULT NULL`).catch(() => {});
+    await execute(`ALTER TABLE \`competitions\` ADD COLUMN \`is_custom\` TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+  }
+
+  app.get("/api/clubs/:clubId/custom-competitions", authenticate, async (req: any, res) => {
+    try {
+      const { clubId } = req.params;
+      const userClubId = String(req.user?.club_id || req.user?.clubId || '');
+      if (req.user?.role !== 'admin' && userClubId !== String(clubId)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      await ensureCustomCompColumns();
+      const rows = await query(`
+        SELECT id, name, slug, COALESCE(sport,'football') as sport, season
+        FROM \`competitions\`
+        WHERE club_id = ? AND is_custom = 1 AND (is_active = 1 OR is_active IS NULL)
+        ORDER BY name ASC
+      `, [String(clubId)]).catch(() => []);
+      res.json(rows || []);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/clubs/:clubId/custom-competitions", authenticate, async (req: any, res) => {
+    try {
+      const { clubId } = req.params;
+      const userClubId = String(req.user?.club_id || req.user?.clubId || '');
+      if (req.user?.role !== 'admin' && userClubId !== String(clubId)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      const name = String(req.body.name || '').trim();
+      if (!name) return res.status(400).json({ error: 'Competition name is required.' });
+      const sport = String(req.body.sport || 'football').toLowerCase();
+      await ensureCustomCompColumns();
+      const id = `custom_${clubId}_${Date.now()}`;
+      const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const slug = `${baseSlug}-${Date.now()}`;
+      await execute(`
+        INSERT INTO \`competitions\` (id, name, slug, sport, is_active, club_id, is_custom)
+        VALUES (?, ?, ?, ?, 1, ?, 1)
+      `, [id, name, slug, sport, String(clubId)]);
+      res.json({ id, name, slug, sport, club_id: clubId, is_custom: 1 });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/api/admin/competitions", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       const id = Date.now().toString();
