@@ -2576,6 +2576,17 @@ async function startServer() {
         matchData.club_id = String(partnerClubId);
         matchData.stream_provider = 'mux';
 
+        // Partners may only create events for sports that are Active in Admin > Sports
+        if (matchData.sport) {
+          const sportRows: any = await query(
+            "SELECT is_active FROM sports WHERE id = ? OR slug = ? LIMIT 1",
+            [String(matchData.sport), String(matchData.sport)]
+          ).catch(() => null);
+          if (sportRows && sportRows[0] && Number(sportRows[0].is_active) !== 1) {
+            return res.status(400).json({ error: "This sport is currently unavailable. Please choose another sport." });
+          }
+        }
+
         if (!canSetPricing) {
           matchData.access = 'free';
           matchData.access_type = 'free';

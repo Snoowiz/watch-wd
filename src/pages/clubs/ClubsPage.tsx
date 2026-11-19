@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Building2, Search, Video, ArrowRight, ShieldCheck, Sparkles, Filter, X } from 'lucide-react';
-import { useMatchStore } from '../../store';
+import { useMatchStore, useSportStore } from '../../store';
 
 interface Club {
   id: string;
@@ -16,6 +16,16 @@ export function ClubsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState<string>('all');
+  // Hide the Football filter if Football is set Inactive in Admin > Sports
+  const { activeSports = [], fetchActiveSports } = useSportStore();
+  useEffect(() => { fetchActiveSports(); }, [fetchActiveSports]);
+  const footballActive = activeSports.some(s =>
+    (String(s.id).toLowerCase() === 'football' || String(s.slug).toLowerCase() === 'football') &&
+    (s.is_active === undefined || s.is_active === true || Number(s.is_active) === 1)
+  );
+  useEffect(() => {
+    if (!footballActive && selectedSport === 'football') setSelectedSport('all');
+  }, [footballActive, selectedSport]);
   const { matches = [], fetchMatches } = useMatchStore();
 
   useEffect(() => {
@@ -113,7 +123,7 @@ export function ClubsPage() {
           <Sparkles className="w-3.5 h-3.5" />
           All sports
         </button>
-        <button
+        {footballActive && <button
           onClick={() => setSelectedSport('football')}
           className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
             selectedSport === 'football'
@@ -122,7 +132,7 @@ export function ClubsPage() {
           }`}
         >
           Football
-        </button>
+        </button>}
       </div>
 
       {/* Club Grid */}

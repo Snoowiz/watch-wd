@@ -11,8 +11,16 @@ export function CompetitionsPage() {
     fetchActiveCompetitions 
   } = useCompetitionStore();
   
-  const { sports: storeSports, fetchSports } = useSportStore();
-  const effectiveSports = storeSports.length > 0 ? storeSports : DEFAULT_PLATFORM_SPORTS;
+  // Only sports marked Active in Admin > Sports (public /api/sports, in admin display order)
+  const { activeSports: storeSports = [], fetchActiveSports: fetchSports } = useSportStore();
+  const effectiveSports = useMemo(() => {
+    const base = storeSports.length > 0 ? storeSports : DEFAULT_PLATFORM_SPORTS;
+    return base.filter(s => s.is_active === undefined || s.is_active === true || Number(s.is_active) === 1);
+  }, [storeSports]);
+  const activeSportKeys = useMemo(
+    () => new Set(effectiveSports.flatMap(s => [String(s.id || '').toLowerCase(), String(s.slug || '').toLowerCase()]).filter(Boolean)),
+    [effectiveSports]
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState<string>('all');
@@ -36,8 +44,10 @@ export function CompetitionsPage() {
 
     // Filter active items (or default active)
     const list = primary.filter(c => c.is_active === 1 || c.is_active === true || c.is_active === undefined);
-    return list.length > 0 ? list : DEFAULT_PLATFORM_COMPETITIONS;
-  }, [activeCompetitions, storeCompetitions]);
+    const base = list.length > 0 ? list : DEFAULT_PLATFORM_COMPETITIONS;
+    // Hide competitions belonging to inactive sports
+    return base.filter(c => activeSportKeys.has(String(c.sport || 'football').toLowerCase()));
+  }, [activeCompetitions, storeCompetitions, activeSportKeys]);
 
   // Compute how many active published matches each competition has
   const compMatchCounts = useMemo(() => {

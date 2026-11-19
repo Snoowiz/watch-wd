@@ -8,6 +8,7 @@ import { SPORTS_REGISTRY, getSportConfig, SportConfig } from '../config/sports';
 import { useSportStore } from '../store';
 import { MediaPickerModal } from './MediaPickerModal';
 import { TypeaheadInput, TypeaheadOption } from './TypeaheadInput';
+import { getSportEmoji } from './SportIconPicker';
 
 export interface PartnerCreateEventModalProps {
   isOpen: boolean;
@@ -33,11 +34,12 @@ export function PartnerCreateEventModal({
   permissions = {},
   onEventCreated
 }: PartnerCreateEventModalProps) {
-  const { sports = [], fetchSports } = useSportStore();
+  // Only sports marked Active in Admin > Sports (public /api/sports, in admin display order)
+  const { activeSports: sports = [], fetchActiveSports } = useSportStore();
 
   useEffect(() => {
-    fetchSports?.();
-  }, [fetchSports]);
+    fetchActiveSports?.();
+  }, [fetchActiveSports]);
 
   const canPublish = permissions.can_publish_events ?? true;
   const canSetPricing = permissions.can_set_pricing ?? true;
@@ -214,6 +216,25 @@ export function PartnerCreateEventModal({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const availableSports = useMemo(() => {
+    const builtInIcons: Record<string, string> = { football: '⚽', basketball: '🏀', tennis: '🎾', boxing: '🥊' };
+    return (sports as any[])
+      .filter(s => s.is_active === undefined || s.is_active === true || Number(s.is_active) === 1)
+      .map(s => {
+        const id = String(s.id || s.slug);
+        // DB default icon is a word like "Trophy" (not an emoji) — ignore plain-word icons
+        const dbIcon = s.icon && !/^[A-Za-z\s-]+$/.test(String(s.icon)) ? String(s.icon) : null;
+        return { id, name: s.name, icon: builtInIcons[id] || getSportEmoji({ id, slug: s.slug, icon: dbIcon }) };
+      });
+  }, [sports]);
+
+  // If the selected sport is not active (e.g. default Football was deactivated), pick the first active one
+  useEffect(() => {
+    if (availableSports.length > 0 && !availableSports.some(s => s.id === sport)) {
+      setSport(availableSports[0].id);
+    }
+  }, [availableSports, sport]);
+
   // Auto-fill slot1 with clubName for team sports
   useEffect(() => {
     if (!isPairSport && !isCombatSport && clubName && !slot1) {
@@ -232,17 +253,6 @@ export function PartnerCreateEventModal({
 
   if (!isOpen) return null;
 
-  const availableSports = [
-    { id: 'football', name: 'Football', icon: '⚽' },
-    { id: 'basketball', name: 'Basketball', icon: '🏀' },
-    { id: 'tennis', name: 'Tennis', icon: '🎾' },
-    { id: 'boxing', name: 'Boxing & MMA', icon: '🥊' },
-    ...sports.filter((s: any) => !['football', 'basketball', 'tennis', 'boxing'].includes(s.id)).map((s: any) => ({
-      id: s.id || s.slug,
-      name: s.name,
-      icon: '🏆'
-    }))
-  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
