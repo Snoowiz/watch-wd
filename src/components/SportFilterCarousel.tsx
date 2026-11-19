@@ -77,7 +77,7 @@ export function SportFilterCarousel({ sports, selectedSport, onSelectSport }: Sp
         disabled={disabled}
         title={titleAttr}
         onClick={() => !didDrag.current && !disabled && onSelectSport(id)}
-        className={`shrink-0 flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm font-bold transition-all whitespace-nowrap select-none ${
+        className={`flex-1 basis-0 min-w-fit justify-center flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm font-bold transition-all whitespace-nowrap select-none ${
           isSelected
             ? 'bg-yellow-500 border-yellow-500 text-slate-950 shadow-md shadow-yellow-500/25'
             : disabled
@@ -115,7 +115,7 @@ export function SportFilterCarousel({ sports, selectedSport, onSelectSport }: Sp
   };
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm p-3">
+    <div>
       {/* Desktop: carousel */}
       <div className="hidden sm:flex items-center gap-2">
         {canScrollLeft && (
