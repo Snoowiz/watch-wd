@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useMatchStore, useCategoryStore, useSettingsStore, Match, useAdStore, useMediaStore, useSportStore, MuxWatermarkConfig } from '../../store';
 import { WatermarkOverlay, DEFAULT_WATERMARK_CONFIG, parseWatermarkConfig } from '../../components/WatermarkOverlay';
 import { MuxWatermarkEditor } from '../../components/MuxWatermarkEditor';
+import { EventGeoRestrictions } from '../../components/admin/EventGeoRestrictions';
 import { getSportConfig, SPORTS_REGISTRY } from '../../config/sports';
 import { useUIStore } from '../../store/uiStore';
 import { 
@@ -1962,6 +1963,8 @@ export function NewMatch({ initialSport, initialSportCategoryId }: { initialSpor
               </div>
 
               {/* Stream Embed Live Preview Card */}
+              <EventGeoRestrictions eventId={activeEventId} />
+
               <div className="bg-white/90 dark:bg-[#0f172a]/75 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-6 space-y-4 shadow-sm transition-all min-w-0 max-w-full overflow-hidden">
                 <div className="flex items-center gap-2.5 text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/80 pb-4">
                   <Video className="w-5 h-5" style={{ color: primaryColor }} />

@@ -12,6 +12,7 @@ import { requestNotificationPermission, subscribeToMatch, setupMessageListener, 
 import { formatStreamHtml, loadMuxPlayerIfNeeded, isMediaMarkup } from '../utils/embedHelper';
 import { formatMatchStatus, isInterview, isHighlights, isVideoOnlyContent, cleanEditorialDescription } from '../utils/statusHelper';
 import { MatchStreamPlayer } from '../components/MatchStreamPlayer';
+import { GeoRestrictionNotice, useGeoStatus } from '../components/GeoRestrictionNotice';
 
 export function MatchDetail() {
   const { slug } = useParams();
@@ -308,6 +309,9 @@ export function MatchDetail() {
   const isFreeGated = isFree && !user;
   const hasAccess = !!(match ? (user ? (hasValidPurchase || isFree || hasPlanAccess || isPartnerOwner || isAdmin) : false) : false);
   const effectiveHasAccess = hasAccess && (!isRevoked || isAdmin);
+  // Display only: the server independently refuses playback to restricted viewers
+  const { geo, setGeo } = useGeoStatus(match?.id);
+  const geoBlocked = Boolean(geo?.restricted);
   const hasEmbedCode = (user && match) ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
   const embedCodePurchase = (user && match) ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
 
@@ -435,7 +439,7 @@ export function MatchDetail() {
     let refreshTimer: number | null = null;
 
     const loadAuthorizedStream = async () => {
-      if (!match || !effectiveHasAccess) {
+      if (!match || !effectiveHasAccess || geoBlocked) {
         if (!cancelled) {
           setStreamData(null);
           setStreamSigningError(false);
@@ -454,6 +458,16 @@ export function MatchDetail() {
         });
 
         if (cancelled) return;
+
+        if (res.status === 451 || res.status === 503) {
+          const geoData = await res.clone().json().catch(() => null);
+          if (cancelled) return;
+          if (geoData?.geoRestricted) {
+            setStreamData(null);
+            setGeo({ restricted: true, reason: geoData.reason, endsAt: geoData.endsAt || null });
+            return;
+          }
+        }
 
         if (res.status === 401 || res.status === 403) {
           const data = await res.json().catch(() => null);
@@ -509,7 +523,7 @@ export function MatchDetail() {
         window.clearTimeout(refreshTimer);
       }
     };
-  }, [match?.id, effectiveHasAccess]);
+  }, [match?.id, effectiveHasAccess, geoBlocked, setGeo]);
 
   // Match-level event access duration window (applies to Free, Plan/Subscription, and PPV matches)
   const matchEventExpiresAt = useMemo(() => {
@@ -970,7 +984,9 @@ export function MatchDetail() {
       <div className={`${titlePosition === 'above' ? 'mt-3' : 'mt-0'} -mx-4 sm:mx-0 bg-slate-900 sm:rounded-xl overflow-hidden shadow-2xl relative border-y sm:border border-slate-800 w-[calc(100%+2rem)] sm:w-full`}>
         <div className={`bg-black relative flex items-center justify-center overflow-hidden w-full ${effectiveHasAccess ? 'aspect-video' : 'min-h-[280px] sm:min-h-0 aspect-auto sm:aspect-video'}`}>
           <AdOverlay match={match} />
-          {effectiveHasAccess ? (
+          {geoBlocked ? (
+            <GeoRestrictionNotice status={geo!} thumbnail={match.thumbnail} />
+          ) : effectiveHasAccess ? (
             (() => {
               const activeMuxStatus = streamData?.mux_stream_status ?? match?.mux_stream_status ?? null;
               const activeProvider = streamData?.stream_provider ?? match?.stream_provider ?? null;

@@ -27,6 +27,7 @@ import {
   normalizeWatermarkConfig,
 } from './db/persistentConfig.js';
 import { verifyFirebaseIdToken } from './db/firebaseAdmin.js';
+import { hasEnforceableGeo } from './geoRestrictionService.js';
 
 export interface ClubStreamingRouteDeps {
   app: any;
@@ -897,6 +898,16 @@ export function registerClubStreamingRoutes(deps: ClubStreamingRouteDeps) {
       if (!policyCheck.ok) {
         const failedPolicy = policyCheck as { ok: false; status: 400; error: string };
         return res.status(failedPolicy.status).json({ error: failedPolicy.error });
+      }
+
+      // The club channel supplies the playback ID, so both it and the Event must be signed.
+      if (
+        (effectivePolicy !== 'signed' || normalizePlaybackPolicy(channel.mux_playback_policy) !== 'signed') &&
+        (await hasEnforceableGeo(query, matchId))
+      ) {
+        return res.status(409).json({
+          error: 'This Event has geographic restrictions and needs a club channel with Signed Playback. Contact a WatchWDS administrator.',
+        });
       }
 
       let muxWatermarkSynced = false;

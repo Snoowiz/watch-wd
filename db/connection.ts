@@ -50,6 +50,25 @@ export async function execute(sql: string, params?: any[]): Promise<mysql.Result
 }
 
 /**
+ * Run statements on one connection, committing all or none.
+ */
+export async function transaction(
+  fn: (execute: (sql: string, params?: any[]) => Promise<any>) => Promise<void>
+): Promise<void> {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await fn((sql, params) => conn.execute(sql, params));
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * Test the database connection.
  */
 export async function testConnection(): Promise<boolean> {

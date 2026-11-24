@@ -103,7 +103,7 @@ export function verifyStripeWebhookRequest(params: {
 import { SEED_TEMPLATES, defaultBranding } from "./seedTemplates";
 import { cacheEngine } from "./src/utils/cacheManager.js";
 import { MySQLAdapter, adminCompat, clearTableColumnsCache } from "./db/MySQLAdapter.js";
-import { testConnection, query, execute } from "./db/connection.js";
+import { testConnection, query, execute, transaction } from "./db/connection.js";
 import {
   getPaymentGatewaySettings,
   savePaymentGatewaySettings,
@@ -136,6 +136,8 @@ import {
   validateMuxWatermarkUrl,
   normalizePlaybackPolicy,
   signMuxPlaybackTokens,
+  getMuxAsset,
+  getMuxPlaybackIdPolicy,
   verifyMuxWebhookSignature,
   parseMuxWebhookEvent,
   resolveEffectiveWatermarkConfig,
@@ -150,6 +152,14 @@ import {
   sanitizeChannelForClient,
   verifyStepUpReauthToken,
 } from "./clubStreamingService.js";
+import {
+  GEO_DOWNGRADE_ERROR,
+  GEO_MIGRATIONS,
+  createGeoPlaybackGate,
+  getLocalGeoRequirements,
+  hasEnforceableGeo,
+  registerGeoRestrictionRoutes,
+} from "./geoRestrictionService.js";
 import {
   getClientIp,
   parseBrowserInfo,
@@ -380,7 +390,8 @@ export async function ensureIncrementalColumns() {
     "ALTER TABLE `matches` ADD COLUMN `auto_drafted_at` DATETIME DEFAULT NULL",
     "ALTER TABLE `matches` ADD COLUMN `pre_broadcast_publish_status` VARCHAR(50) DEFAULT NULL",
     "ALTER TABLE `broadcast_sessions` ADD COLUMN `recording_completed_at` DATETIME DEFAULT NULL",
-    "ALTER TABLE `broadcast_sessions` ADD COLUMN `ended_by` VARCHAR(20) DEFAULT NULL"
+    "ALTER TABLE `broadcast_sessions` ADD COLUMN `ended_by` VARCHAR(20) DEFAULT NULL",
+    ...GEO_MIGRATIONS
   ];
 
   for (const sql of migrations) {
@@ -544,6 +555,9 @@ async function warmCriticalCaches() {
       const snapshot = await db.collection(coll).get();
       const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       
+      // Public caches bypass the route handlers: never seed them with raw Event rows (playback IDs, drafts)
+      if (coll === 'matches') continue;
+
       // Warm Database Cache layer
       cacheEngine.set('database', `db::${coll}::all`, docs, 180000);
 
@@ -2041,6 +2055,14 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Geographic restrictions: single gate for every path that issues playback access
+  const geoPlaybackGate = createGeoPlaybackGate({ query, getMuxConfig, getPlaybackIdPolicy: getMuxPlaybackIdPolicy });
+  registerGeoRestrictionRoutes({
+    app, db, query, transaction, authenticate, requireRole, getMuxConfig,
+    loadMuxSettings: getMuxPlatformSettings,
+    muxApi: { getLiveStream: getMuxLiveStream, getAsset: getMuxAsset },
+  });
+
   app.post("/api/matches/:id/stream", optionalAuthenticate, async (req: any, res) => {
     try {
       const matchId = req.params.id;
@@ -2234,6 +2256,13 @@ async function startServer() {
       }
 
       const muxSettings = await getMuxPlatformSettings().catch(() => null);
+
+      const geo = await geoPlaybackGate(match, req);
+      if (geo.denied) {
+        res.setHeader("Cache-Control", "no-store, private");
+        return res.status(geo.denied.status).json(geo.denied.body);
+      }
+
       const effectiveWatermark = resolveEffectiveWatermarkConfig(
         match,
         muxSettings?.defaultWatermark || getMuxConfig().defaultWatermark || null
@@ -2248,6 +2277,10 @@ async function startServer() {
         if (Number.isFinite(remainingSec) && remainingSec > 0) {
           tokenTtlSeconds = Math.max(300, Math.min(7200, remainingSec));
         }
+      }
+
+      if (geo.maxTokenSeconds !== null) {
+        tokenTtlSeconds = Math.min(tokenTtlSeconds, geo.maxTokenSeconds);
       }
 
       const resolvedStream = resolveMatchStreamResponse(match, {
@@ -2685,6 +2718,15 @@ async function startServer() {
         }
       }
 
+      // An Event with geographic restrictions must not lose its playback protection
+      if (await hasEnforceableGeo(query, req.params.id)) {
+        const geoDoc = await db.collection("matches").doc(req.params.id).get();
+        const before = geoDoc.exists ? geoDoc.data() : {};
+        const already = new Set(getLocalGeoRequirements(before, getMuxConfig()).map((r) => r.code));
+        const weakened = getLocalGeoRequirements({ ...before, ...matchData }, getMuxConfig()).some((r) => !already.has(r.code));
+        if (weakened) return res.status(409).json({ error: GEO_DOWNGRADE_ERROR });
+      }
+
       await db.collection("matches").doc(req.params.id).update(matchData);
 
       // If match status changed to live, activate event access timers for pre-purchases
@@ -2758,6 +2800,7 @@ async function startServer() {
 
       // Remove non-financial saved_matches bookmarks for this match
       await execute("DELETE FROM `saved_matches` WHERE `match_id` = ?", [String(matchId)]).catch(() => {});
+      await execute("DELETE FROM `event_geo_exclusions` WHERE `match_id` = ?", [String(matchId)]).catch(() => {});
 
       // NOTE: This operation intentionally deletes ONLY the matches catalog row and non-financial bookmarks.
       // All historical financial records (club_earnings, club_balances, payouts, transactions, purchases)
@@ -3098,6 +3141,10 @@ async function startServer() {
         });
       }
 
+      if (playbackPolicy !== 'signed' && (await hasEnforceableGeo(query, matchId))) {
+        return res.status(409).json({ error: GEO_DOWNGRADE_ERROR });
+      }
+
       const incomingWm = req.body?.watermarkConfig !== undefined
         ? req.body.watermarkConfig
         : (match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null);
@@ -3226,6 +3273,9 @@ async function startServer() {
         return res.status(404).json({ error: "Event not found" });
       }
       const match = matchDoc.data();
+      if (targetPolicy !== 'signed' && (await hasEnforceableGeo(query, matchId))) {
+        return res.status(409).json({ error: GEO_DOWNGRADE_ERROR });
+      }
       await getMuxPlatformSettings().catch(() => null);
       const cfg = getMuxConfig();
 
@@ -3364,7 +3414,12 @@ async function startServer() {
           : (playbackId || assetPlaybackId);
         if (previewTargetPb) {
           try {
-            previewPlaybackToken = signMuxPlaybackTokens(previewTargetPb, { expirationSeconds: 900 }).playback_token;
+            const geo = await geoPlaybackGate({ ...match, id: matchId }, req);
+            if (!geo.denied) {
+              previewPlaybackToken = signMuxPlaybackTokens(previewTargetPb, {
+                expirationSeconds: Math.min(900, geo.maxTokenSeconds ?? 900),
+              }).playback_token;
+            }
           } catch (_) {}
         }
       }
@@ -3736,7 +3791,7 @@ async function startServer() {
       if(matchIds.length === 0) return res.json([]);
       // Use IN query for MySQL
       const matchSnap = await db.collection("matches").where("id", "in", matchIds.slice(0, 30)).get();
-      res.json(matchSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      res.json(matchSnap.docs.map(d => sanitizeMatchForPublic({ id: d.id, ...d.data() })));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

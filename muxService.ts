@@ -651,6 +651,16 @@ export async function deleteMuxAssetPlaybackId(
 }
 
 /**
+ * Policy of a single playback ID (`GET /video/v1/playback-ids/:id`).
+ */
+export async function getMuxPlaybackIdPolicy(playbackId: string): Promise<string> {
+  const data = await muxApiRequest<{ policy?: string }>(`/playback-ids/${encodeURIComponent(playbackId)}`, {
+    method: 'GET',
+  });
+  return String(data?.policy || 'unknown');
+}
+
+/**
  * Creates a 2048-bit RSA Signing Key via `POST /system/v1/signing-keys`.
  * Mux returns the private key ONLY once at creation time.
  */
