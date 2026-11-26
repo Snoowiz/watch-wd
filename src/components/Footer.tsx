@@ -101,6 +101,13 @@ export function Footer() {
             {/* Always shown, independent of the admin footer menu */}
             {footerLinks.length > 0 && <span aria-hidden="true">&bull;</span>}
             <Link
+              to="/help"
+              className="hover:text-yellow-500 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500"
+            >
+              Help
+            </Link>
+            <span aria-hidden="true">&bull;</span>
+            <Link
               to="/privacy/preferences"
               className="hover:text-yellow-500 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500"
             >

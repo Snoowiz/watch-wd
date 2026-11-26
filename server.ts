@@ -120,6 +120,7 @@ import {
 } from "./db/persistentConfig.js";
 import { verifyFirebaseIdToken, getFirebaseAdmin } from "./db/firebaseAdmin.js";
 import { registerSettingsReadRoutes } from "./settingsAccess.js";
+import { registerHelpArticleRoutes } from "./helpArticles.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
 import {
   getMuxConfig,
@@ -7789,6 +7790,9 @@ async function startServer() {
   // === SETTINGS API (Dynamic Config) ===
   // Public reads: allowlisted keys only, secret-like fields stripped. Admin reads: admin only.
   registerSettingsReadRoutes({ app, getSecureDocument, authenticate, requireRole });
+
+  // === HELP ARTICLES (knowledge_base): public read, admin edit ===
+  registerHelpArticleRoutes({ app, db, authenticate, requireRole });
 
   app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {

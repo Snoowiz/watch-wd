@@ -5,7 +5,7 @@ import {
   Users, Settings, Video, Shield, Activity, Plus, Search, Moon, Sun, Bell,
   Calendar, TrendingUp, DollarSign, Euro, PoundSterling, BarChart2, MessageSquare, Briefcase,
   MapPin, CheckCircle, Clock, LogOut, LayoutDashboard, Menu, X, Sliders, Eye, User, Newspaper, Image, Mail, Gift, CreditCard, Zap,
-  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid, Palette, Trophy, ChevronDown
+  UserPlus, Award, PlayCircle, Ban, Trash2, Building2, Globe, LayoutGrid, Palette, Trophy, ChevronDown, HelpCircle
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -41,6 +41,7 @@ import { CacheManagement } from './admin/CacheManagement';
 import { AdminSEO } from './admin/AdminSEO';
 import { AdminPayoutSettings } from './admin/AdminPayoutSettings';
 import { AdminFeedback } from './admin/AdminFeedback';
+import { AdminHelpArticles } from './admin/AdminHelpArticles';
 import { AdminHomepageBuilder } from './admin/AdminHomepageBuilder';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { Image as ImageIcon } from 'lucide-react';
@@ -185,6 +186,7 @@ export function AdminDashboard() {
       ]
     },
     { path: '/admin/feedback', icon: MessageSquare, label: 'User Feedback' },
+    { path: '/admin/help', icon: HelpCircle, label: 'Help Articles' },
     { path: '/admin/seo', icon: Globe, label: 'SEO Manager' },
     { path: '/admin/media', icon: ImageIcon, label: 'Media' },
     ...(blogEnabled ? [{ path: '/admin/blog', icon: Newspaper, label: 'Blog' }] : []),
@@ -557,6 +559,7 @@ export function AdminDashboard() {
               <Route path="/studio" element={<StudioManagement />} />
               <Route path="/seo" element={<AdminSEO />} />
               <Route path="/feedback" element={<AdminFeedback />} />
+              <Route path="/help" element={<AdminHelpArticles />} />
               <Route path="/cache" element={<CacheManagement />} />
             </Routes>
           </div>
