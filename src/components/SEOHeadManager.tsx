@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSettingsStore } from '../store';
+import { useConsent } from '../utils/useConsent';
+import { isConsentGranted } from '../utils/consent';
 
 export function SEOHeadManager() {
   const location = useLocation();
   const { seoSettings, perPageSeo, platformName: storedPlatformName } = useSettingsStore();
   const platformName = storedPlatformName || 'WatchWDS';
+  const { record } = useConsent();
 
   useEffect(() => {
     if (!seoSettings) return;
@@ -125,46 +128,49 @@ export function SEOHeadManager() {
       };
       orgSchemaScript.textContent = JSON.stringify(orgSchema);
     }
+  }, [location.pathname, seoSettings, perPageSeo, platformName]);
 
-    // Analytics: GA
-    if (seoSettings.googleAnalyticsId) {
-      let gaScript = document.getElementById('ga-script');
-      if (!gaScript) {
-        gaScript = document.createElement('script');
-        gaScript.id = 'ga-script';
-        gaScript.setAttribute('async', '');
-        gaScript.setAttribute('src', `https://www.googletagmanager.com/gtag/js?id=${seoSettings.googleAnalyticsId}`);
-        document.head.appendChild(gaScript);
+  // Analytics (GA / GTM) load only on the client and only after the visitor has opted in
+  // to analytics. Nothing loads while undecided or after Reject. Withdrawal reloads the page
+  // (see utils/consent.ts) so scripts already running stop.
+  useEffect(() => {
+    if (!seoSettings || !isConsentGranted(record, 'analytics')) return;
+    const isSafeId = (id?: string) => !!id && /^[A-Za-z0-9_-]+$/.test(id);
 
-        const gaInit = document.createElement('script');
-        gaInit.id = 'ga-init-script';
-        gaInit.innerHTML = `
+    const gaId = seoSettings.googleAnalyticsId?.trim();
+    if (isSafeId(gaId) && !document.getElementById('ga-script')) {
+      const gaScript = document.createElement('script');
+      gaScript.id = 'ga-script';
+      gaScript.async = true;
+      gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId!)}`;
+      document.head.appendChild(gaScript);
+
+      const gaInit = document.createElement('script');
+      gaInit.id = 'ga-init-script';
+      gaInit.text = `
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
-          gtag('config', '${seoSettings.googleAnalyticsId}');
+          gtag('config', '${gaId}');
         `;
-        document.head.appendChild(gaInit);
-      }
+      document.head.appendChild(gaInit);
     }
 
-    // Analytics: GTM
-    if (seoSettings.googleTagManagerId) {
-      let gtmScript = document.getElementById('gtm-script');
-      if (!gtmScript) {
-        gtmScript = document.createElement('script');
-        gtmScript.id = 'gtm-script';
-        gtmScript.innerHTML = `
+    // GTM is treated as analytics. Tags configured inside the GTM container are outside code control.
+    const gtmId = seoSettings.googleTagManagerId?.trim();
+    if (isSafeId(gtmId) && !document.getElementById('gtm-script')) {
+      const gtmScript = document.createElement('script');
+      gtmScript.id = 'gtm-script';
+      gtmScript.text = `
           (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
           new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
           j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-          'https://www.googletagmanager.com/gtag/id='+i+dl;f.parentNode.insertBefore(j,f);
-          })(window,document,'script','dataLayer','${seoSettings.googleTagManagerId}');
+          'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+          })(window,document,'script','dataLayer','${gtmId}');
         `;
-        document.head.appendChild(gtmScript);
-      }
+      document.head.appendChild(gtmScript);
     }
-  }, [location.pathname, seoSettings, perPageSeo, platformName]);
+  }, [seoSettings, record]);
 
   return null;
 }
