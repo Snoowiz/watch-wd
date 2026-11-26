@@ -311,7 +311,8 @@ export function MatchDetail() {
   const effectiveHasAccess = hasAccess && (!isRevoked || isAdmin);
   // Display only: the server independently refuses playback to restricted viewers
   const { geo, setGeo } = useGeoStatus(match?.id);
-  const geoBlocked = Boolean(geo?.restricted);
+  const geoNoPurchase = Boolean(geo?.restricted || geo?.purchaseRestricted);
+  const geoBlocked = Boolean(geo?.restricted || (geo?.purchaseRestricted && !effectiveHasAccess && !isFree));
   const hasEmbedCode = (user && match) ? purchases.some(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : false;
   const embedCodePurchase = (user && match) ? purchases.find(p => p.matchId === match.id && p.userId === user.id && p.type === 'embed') : null;
 
@@ -884,7 +885,7 @@ export function MatchDetail() {
 
   // Second match guard removed — already handled above after all hooks
   const handleUnlockClick = () => {
-    if (!match) return;
+    if (!match || geoNoPurchase) return;
     if (!user) {
       navigate('/login', { state: { from: `/matches/${match.slug}` } });
       return;
@@ -897,7 +898,7 @@ export function MatchDetail() {
   };
 
   const confirmUnlock = async () => {
-    if (!match || !user || isProcessingPurchase) return;
+    if (!match || !user || isProcessingPurchase || geoNoPurchase) return;
     
     const priceToPay = match.ppv_price || match.price;
     setCheckoutData({
@@ -914,7 +915,7 @@ export function MatchDetail() {
       navigate('/login', { state: { from: `/matches/${match?.slug}` } });
       return;
     }
-    if (isProcessingPurchase) return;
+    if (isProcessingPurchase || geoNoPurchase) return;
     
     setCheckoutData({
       amount: match.embedPrice,
@@ -948,7 +949,9 @@ export function MatchDetail() {
     );
   }
 
-  if (!match || (isDraft && !isAdmin)) {
+  // The owning club may review its own Draft (the server enforces the same rule)
+  const canReviewDraft = isAdmin || (isPartnerOwner && match?.publish_status === 'draft');
+  if (!match || (isDraft && !canReviewDraft)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <AlertCircle className="w-16 h-16 text-slate-400 mb-4" />
@@ -1416,7 +1419,8 @@ export function MatchDetail() {
                   </p>
                   <button 
                     onClick={handleBuyEmbed}
-                    className="w-full bg-white text-indigo-600 hover:bg-indigo-50 font-bold py-3 rounded-xl transition-colors shadow-lg cursor-pointer"
+                    disabled={geoNoPurchase}
+                    className="disabled:opacity-50 disabled:cursor-not-allowed w-full bg-white text-indigo-600 hover:bg-indigo-50 font-bold py-3 rounded-xl transition-colors shadow-lg cursor-pointer"
                   >
                     Buy Embed Code
                   </button>
@@ -1426,7 +1430,7 @@ export function MatchDetail() {
           )}
 
           {/* Access / Purchase Card */}
-          {!effectiveHasAccess && (
+          {!effectiveHasAccess && !geoBlocked && (
             <div className="bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm text-left">
               {isRevoked ? (
                 <div className="space-y-3">

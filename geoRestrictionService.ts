@@ -266,6 +266,45 @@ export function createGeoPlaybackGate(deps: {
   };
 }
 
+const ENDED_STATUSES = ['completed', 'full_match', 'highlights'];
+const PURCHASE_MESSAGES: Record<string, string> = {
+  country_excluded: 'This event is not available in your location, so it cannot be purchased.',
+  location_unverified: 'We could not confirm your location, so this event cannot be purchased. Turn off any VPN or Tor and try again.',
+  event_window: 'This event will not be available in your location during its broadcast, so it cannot be purchased.',
+  protection_unavailable: 'This event is temporarily unavailable for purchase. Please try again shortly.',
+};
+
+/**
+ * Why this viewer may not buy the event, or null. Blocks a sale when playback is refused now, or when an
+ * exclusion overlaps the scheduled broadcast (so nobody pays for a match they will be unable to watch live).
+ */
+export function evaluateGeoPurchase(match: any, list: GeoExclusion[], country: string | null, now: number): string | null {
+  const decision = evaluateGeo(list, country, now);
+  if (decision.restricted) return decision.reason;
+  if (ENDED_STATUSES.includes(String(match?.status || '').toLowerCase())) return null;
+
+  const upcoming = list.filter((e) => (!country || e.countryCode === country) && geoState(e, now) === 'upcoming');
+  if (upcoming.length === 0) return null;
+  const start = new Date(match?.date || match?.start_time || NaN).getTime();
+  if (!Number.isFinite(start)) return 'event_window'; // unscheduled: cannot rule out an overlap
+  const end = start + (Number(match?.duration) || 120) * 60_000;
+  return upcoming.some((e) => e.startsAt! < end && e.endsAt! > start) ? 'event_window' : null;
+}
+
+/** Call before creating a payment or deducting a balance. Never call when fulfilling money already taken. */
+export function createGeoPurchaseGate(deps: { query: Query; getMuxConfig: () => GeoMuxConfig; now?: () => number }) {
+  const clock = deps.now || Date.now;
+  return async function geoPurchaseGate(match: any, req: any): Promise<{ status: number; body: Record<string, any> } | null> {
+    const list = await loadGeoExclusions(deps.query, match.id);
+    const now = clock();
+    if (!isEnforceable(list, now)) return null;
+    const reason =
+      evaluateGeoPurchase(match, list, resolveTrustedCountry(req), now) ||
+      (getLocalGeoRequirements(match, deps.getMuxConfig()).length > 0 ? 'protection_unavailable' : null);
+    return reason ? { status: 451, body: { error: PURCHASE_MESSAGES[reason], geoRestricted: true, reason } } : null;
+  };
+}
+
 /** For guarding changes that would weaken an event with active or upcoming exclusions. */
 export async function hasEnforceableGeo(query: Query, matchId: any): Promise<boolean> {
   return isEnforceable(await loadGeoExclusions(query, matchId), Date.now());
@@ -353,10 +392,16 @@ export function registerGeoRestrictionRoutes(deps: {
   app.get('/api/matches/:id/geo-status', async (req: any, res: any) => {
     res.setHeader('Cache-Control', 'no-store, private');
     try {
-      const d = evaluateGeo(await loadGeoExclusions(query, req.params.id), resolveTrustedCountry(req), Date.now());
+      const list = await loadGeoExclusions(query, req.params.id);
+      const country = resolveTrustedCountry(req);
+      const now = Date.now();
+      const d = evaluateGeo(list, country, now);
+      const match = isEnforceable(list, now) ? await getMatch(req.params.id) : null;
+      const purchaseReason = match ? evaluateGeoPurchase(match, list, country, now) : null;
       return res.json({
         restricted: d.restricted,
-        reason: d.reason,
+        purchaseRestricted: Boolean(purchaseReason),
+        reason: d.reason || purchaseReason,
         endsAt: d.endsAt ? new Date(d.endsAt).toISOString() : null,
       });
     } catch {

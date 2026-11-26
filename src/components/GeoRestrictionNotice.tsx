@@ -3,6 +3,7 @@ import { Globe } from 'lucide-react';
 
 export interface GeoStatus {
   restricted: boolean;
+  purchaseRestricted?: boolean;
   reason: string | null;
   endsAt: string | null;
 }
@@ -41,6 +42,8 @@ export function GeoRestrictionNotice({ status, thumbnail }: { status: GeoStatus;
   const message =
     status.reason === 'location_unverified'
       ? 'We could not confirm your location. If you use a VPN or Tor, turn it off and reload.'
+      : status.reason === 'event_window'
+        ? 'This event will not be available in your location during its broadcast, so it cannot be purchased.'
       : status.reason === 'protection_unavailable'
         ? 'Playback is temporarily unavailable. Please try again shortly.'
         : status.endsAt

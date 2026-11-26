@@ -37,6 +37,21 @@ The edge (Cloudflare with IP Geolocation plus a request-header Transform Rule, o
 both headers on every request. Do not expose the secret to browsers. The admin saving must reach the site through that
 edge, which proves it works.
 
+### Setup on Hostinger
+
+As of 24 Nov 2026 watchwds.com uses Hostinger DNS and Hostinger's CDN (`Server: hcdn`), not Cloudflare. This feature needs
+an edge that can add both headers. With Cloudflare (country header and request-header rules):
+
+1. Add the domain to Cloudflare. Compare every imported DNS record with hPanel, **especially email (MX, SPF, DKIM)**.
+2. In hPanel turn off the Hostinger CDN, then replace the nameservers with Cloudflare's two. Keep the old ones noted for rollback.
+3. Set SSL/TLS to **Full (strict)** and confirm the site, login, Stripe webhooks and Mux webhooks still work.
+4. Network: turn on IP Geolocation. This sends `CF-IPCountry`.
+5. Rules > Transform Rules > Modify Request Header, all requests: **Set static** `x-wds-edge-secret` to the secret.
+6. On the server set `GEO_COUNTRY_HEADER=cf-ipcountry` and `GEO_EDGE_SECRET` to the same secret, then restart.
+7. Open an event as admin. "Geographic availability" must no longer list the country source.
+
+Menu names may differ. `/api/*` must not be cached by the edge.
+
 `X-Forwarded-For` and the existing `ip-api.com` lookup are not used: the first can be forged here, the second is
 unencrypted, rate-limited and fails open.
 
@@ -51,7 +66,11 @@ unencrypted, rate-limited and fails open.
   IDs on the event's current stream and recording.
 - `GB` does not include Jersey (`JE`), Guernsey (`GG`), Isle of Man (`IM`) or Gibraltar (`GI`).
 - No UK blackout is applied automatically; only manual exclusions exist.
-- Purchases are not blocked. Restricted viewers see the notice but can still buy. This is a product decision to make.
+- Pay-per-view and embed purchases are refused (HTTP 451) when the buyer is excluded or unverified now, or when an
+  exclusion overlaps the scheduled broadcast (event date plus duration, default 120 minutes). Payments already taken
+  are always fulfilled. Subscriptions and wallet top-ups are not tied to one event and are not blocked; the event page
+  hides its own buy buttons.
+- Access tokens are deliberately not shortened for restricted events: renewing them may reload the player mid-match.
 - Editing one exclusion re-saves the whole list, so the last admin to save wins.
 - A change of playback policy made directly in the Mux dashboard is caught by the per-ID check at playback, but a
   *new* public ID added there to a restricted stream is not seen until the next readiness check.

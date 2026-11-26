@@ -156,6 +156,7 @@ import {
   GEO_DOWNGRADE_ERROR,
   GEO_MIGRATIONS,
   createGeoPlaybackGate,
+  createGeoPurchaseGate,
   getLocalGeoRequirements,
   hasEnforceableGeo,
   registerGeoRestrictionRoutes,
@@ -2057,6 +2058,7 @@ async function startServer() {
 
   // Geographic restrictions: single gate for every path that issues playback access
   const geoPlaybackGate = createGeoPlaybackGate({ query, getMuxConfig, getPlaybackIdPolicy: getMuxPlaybackIdPolicy });
+  const geoPurchaseGate = createGeoPurchaseGate({ query, getMuxConfig });
   registerGeoRestrictionRoutes({
     app, db, query, transaction, authenticate, requireRole, getMuxConfig,
     loadMuxSettings: getMuxPlatformSettings,
@@ -5654,6 +5656,15 @@ async function startServer() {
       let connectedAccountId: string | null = null;
       let platformFeePercent = 20;
 
+      // Subscriptions are not tied to one Event; every other purchase naming an Event is location-checked
+      if (type !== "plan" && metadata?.matchId) {
+        const geoDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
+        if (geoDoc.exists) {
+          const geoDenied = await geoPurchaseGate({ ...geoDoc.data(), id: String(metadata.matchId) }, req);
+          if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
+        }
+      }
+
       if (type === "watch" && metadata?.matchId) {
         const matchDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
         if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
@@ -6428,6 +6439,8 @@ async function startServer() {
         return res.status(404).json({ error: "Match not found" });
       }
       const matchData = matchDoc.data() || {};
+      const geoDenied = await geoPurchaseGate({ ...matchData, id: String(match_id) }, req);
+      if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
       const deductAmount = Number(matchData.price ?? matchData.ppv_price ?? 0);
 
       // Prevent duplicate purchase for the same match if currently active
@@ -6518,6 +6531,8 @@ async function startServer() {
         return res.status(404).json({ error: "Match not found" });
       }
       const matchData = matchDoc.data() || {};
+      const geoDenied = await geoPurchaseGate({ ...matchData, id: String(match_id) }, req);
+      if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
       const deductAmount = Number(matchData.embedPrice ?? (Number(matchData.price || 0) * 10));
       
       // Prevent duplicate embed purchase for the same match
@@ -10287,6 +10302,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const matchDoc = await db.collection("matches").doc(String(matchId)).get();
       if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
       const match = matchDoc.data();
+      const geoDenied = await geoPurchaseGate({ ...match, id: String(matchId) }, req);
+      if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
 
       if (match.access === 'free' || match.access_type !== 'ppv') {
         return res.status(400).json({ error: "This match is not a PPV event" });

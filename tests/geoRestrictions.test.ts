@@ -3,7 +3,7 @@ import fs from 'fs';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  createGeoPlaybackGate, evaluateGeo, geoState, getGeoRequirements, loadGeoExclusions, parseGeoExclusions,
+  createGeoPlaybackGate, createGeoPurchaseGate, evaluateGeo, evaluateGeoPurchase, geoState, getGeoRequirements, loadGeoExclusions, parseGeoExclusions,
   registerGeoRestrictionRoutes, resolveTrustedCountry, type GeoExclusion,
 } from '../geoRestrictionService.js';
 
@@ -154,6 +154,35 @@ describe('playback gate', () => {
   });
 });
 
+describe('purchases', () => {
+  const at = (from: number) => ({ ...signedMatch, status: 'upcoming', date: new Date(NOW + from * MIN).toISOString(), duration: 120 });
+  const gate = (list: GeoExclusion[]) => createGeoPurchaseGate({ query: async () => toDb(list), getMuxConfig: () => ready, now: () => NOW });
+
+  it('does not affect unrestricted or expired events, whatever the source', async () => {
+    expect(await gate([])({ id: '1', stream_provider: 'youtube' }, { headers: {} })).toBeNull();
+    expect(await gate([timed('GB', -60, -30)])({ id: '1', stream_provider: 'youtube' }, { headers: {} })).toBeNull();
+  });
+  it('refuses excluded and unverified buyers, and allows others', async () => {
+    const g = gate([permanent('GB')]);
+    expect(await g(at(600), reqFrom('GB'))).toMatchObject({ status: 451, body: { reason: 'country_excluded', geoRestricted: true } });
+    expect((await g(at(600), reqFrom('US', 'forged')))?.body.reason).toBe('location_unverified');
+    expect(await g(at(600), reqFrom('US'))).toBeNull();
+  });
+  it('refuses a sale when a scheduled exclusion overlaps the broadcast only', () => {
+    const during = [timed('GB', 600, 660)];
+    expect(evaluateGeoPurchase(at(590), during, 'GB', NOW)).toBe('event_window');
+    expect(evaluateGeoPurchase(at(590), during, 'US', NOW)).toBeNull();
+    expect(evaluateGeoPurchase(at(590), during, null, NOW)).toBe('event_window');
+    expect(evaluateGeoPurchase(at(660), during, 'GB', NOW)).toBeNull(); // ends at kick-off
+    expect(evaluateGeoPurchase(at(480), during, 'GB', NOW)).toBeNull(); // starts at full time
+    expect(evaluateGeoPurchase({ ...at(590), status: 'full_match' }, during, 'GB', NOW)).toBeNull();
+    expect(evaluateGeoPurchase({ status: 'upcoming' }, during, 'GB', NOW)).toBe('event_window');
+  });
+  it('refuses a sale while playback protection is broken', async () => {
+    expect((await gate([permanent('GB')])({ ...at(600), mux_playback_policy: 'public' }, reqFrom('US')))?.body.reason).toBe('protection_unavailable');
+  });
+});
+
 describe('infrastructure requirements', () => {
   const api = (policy: string) => ({
     getLiveStream: async () => ({ playback_ids: [{ policy: 'signed' }, { policy }] }),
@@ -250,12 +279,12 @@ describe('routes', () => {
   it('gives viewers a status without exposing the list', async () => {
     const { app } = setup({ rows: toDb([permanent('GB'), permanent('FR')]) });
     const res = await request(app).get('/api/matches/7/geo-status').set('cf-ipcountry', 'GB').set('x-wds-edge-secret', SECRET);
-    expect(res.body).toEqual({ restricted: true, reason: 'country_excluded', endsAt: null });
+    expect(res.body).toEqual({ restricted: true, purchaseRestricted: true, reason: 'country_excluded', endsAt: null });
     expect(res.headers['cache-control']).toContain('no-store');
   });
 });
 
-// server.ts starts a server on import, so its wiring is checked at source level.
+// Routes live inside startServer() and are not exported, so their wiring is checked at source level.
 describe('server wiring', () => {
   const src = fs.readFileSync('server.ts', 'utf8');
   const between = (a: string, b: string) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a) + a.length));
@@ -272,6 +301,26 @@ describe('server wiring', () => {
     const s = between('app.get("/api/matches/:id/mux/status"', 'app.get("/api/matches/:id/mux/credentials"');
     expect(s.indexOf('geoPlaybackGate(')).toBeLessThan(s.indexOf('signMuxPlaybackTokens('));
     expect(s).toContain('geoPlaybackGate(');
+  });
+  it('checks location before taking money on every event purchase route', () => {
+    const before = (route: string, charge: string) => {
+      const s = src.slice(src.indexOf(`app.post("${route}"`));
+      const gateAt = s.indexOf('geoPurchaseGate(');
+      expect(gateAt, route).toBeGreaterThan(0);
+      expect(gateAt, route).toBeLessThan(s.indexOf(charge));
+      expect(s.slice(0, gateAt).match(/app\.post\(/g), route).toHaveLength(1);
+    };
+    before('/api/checkout/gateway/initialize', 'checkout.sessions.create');
+    before('/api/checkout/gateway/connect-ppv', 'checkout.sessions.create');
+    before('/api/checkout/ppv', 'update({ balance');
+    before('/api/checkout/embed', 'update({ balance');
+  });
+  it('never blocks fulfilment of money already taken', () => {
+    const body = (route: string) => src.slice(src.indexOf(`app.post("${route}"`), src.indexOf('\n  app.', src.indexOf(`app.post("${route}"`) + 10));
+    for (const r of ['/api/checkout/gateway/verify', '/api/webhooks/stripe']) {
+      expect(body(r).length).toBeGreaterThan(500);
+      expect(body(r)).not.toContain('geoPurchaseGate');
+    }
   });
   it('keeps the event page endpoint free of geo checks', () => {
     expect(between('app.get("/api/matches/:id", async', '// Geographic restrictions: single gate')).not.toMatch(/geo/i);
