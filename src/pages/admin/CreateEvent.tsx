@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, X, ShieldAlert } from 'lucide-react';
 import { useCategoryStore, useSportStore } from '../../store';
-import { CONFIGURED_SPORTS, SportConfig, getSportConfig, SPORTS_REGISTRY } from '../../config/sports';
+import { SportConfig, getSportConfig, SPORTS_REGISTRY } from '../../config/sports';
 import { NewMatch } from './NewMatch';
 
 /**
  * Sport-first entry point for new events.
  * 
  * Presents an accessible "Select sport" dialog derived dynamically from
- * sports management and CONFIGURED_SPORTS.
+ * the sports marked Active in Admin > Sports (inactive sports are never offered).
  * Once a sport is selected, the unified event details editor opens with the
  * sport preselected and required categories mapped.
  * 
@@ -18,16 +18,19 @@ import { NewMatch } from './NewMatch';
 export function CreateEvent() {
   const navigate = useNavigate();
   const { categories, fetchCategories } = useCategoryStore();
-  const { sports = [], fetchActiveSports } = useSportStore();
+  // Only sports marked Active in Admin > Sports (public /api/sports, in admin display order)
+  const { activeSports: sports = [], fetchActiveSports } = useSportStore();
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const [selectedSport, setSelectedSport] = useState<SportConfig | null>(null);
   const [resolvedCategoryId, setResolvedCategoryId] = useState<number | undefined>(undefined);
   const [showSwitchWarning, setShowSwitchWarning] = useState<boolean>(false);
+  // The store starts with built-in defaults; wait for the server's active list before showing choices.
+  const [sportsLoaded, setSportsLoaded] = useState(false);
 
   useEffect(() => {
     fetchCategories();
-    fetchActiveSports();
+    Promise.resolve(fetchActiveSports()).finally(() => setSportsLoaded(true));
   }, [fetchCategories, fetchActiveSports]);
 
   useEffect(() => {
@@ -38,17 +41,17 @@ export function CreateEvent() {
 
   // Combine static registry with dynamic sports from DB
   const availableSportsList: SportConfig[] = useMemo(() => {
-    if (!sports || sports.length === 0) {
-      return CONFIGURED_SPORTS;
+    if (!sportsLoaded || !sports || sports.length === 0) {
+      return [];
     }
 
     const list: SportConfig[] = [];
-    const seen = new Set<string>();
 
-    // Dynamic sports from database
+    // Active sports only. Built-in sports missing from this list were set Inactive and must not be re-added.
     for (const s of sports) {
       const reg = SPORTS_REGISTRY[s.id] || SPORTS_REGISTRY[s.slug];
-      const isActive = s.is_active === 1 || s.is_active === true;
+      const isActive = s.is_active === undefined || s.is_active === null || s.is_active === 1 || s.is_active === true;
+      if (!isActive) continue;
       if (reg) {
         list.push({
           ...reg,
@@ -63,19 +66,10 @@ export function CreateEvent() {
           });
         }
       }
-      seen.add(s.id);
-      seen.add(s.slug);
-    }
-
-    // Add any configured sports not yet in dynamic list
-    for (const c of CONFIGURED_SPORTS) {
-      if (!seen.has(c.id) && !seen.has(c.slug)) {
-        list.push(c);
-      }
     }
 
     return list;
-  }, [sports]);
+  }, [sports, sportsLoaded]);
 
   const handleSelectSport = (sport: SportConfig) => {
     if (!sport.available) return;
@@ -209,6 +203,11 @@ export function CreateEvent() {
 
         {/* Sport Options List */}
         <div className="space-y-3">
+          {availableSportsList.length === 0 && (
+            <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
+              {sportsLoaded ? 'No active sports. Activate one in Admin > Sports.' : 'Loading sports…'}
+            </p>
+          )}
           {availableSportsList.map((sport) => {
             const isAvailable = sport.available;
             return (
