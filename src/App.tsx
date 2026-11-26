@@ -47,6 +47,7 @@ import { ResetPassword } from './pages/ResetPassword';
 import { About } from './pages/About';
 import { TermsOfUse } from './pages/TermsOfUse';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
+import { CookiePreferences } from './pages/CookiePreferences';
 import { LogoutModal } from './components/LogoutModal';
 import { SearchPage } from './pages/SearchPage';
 import { SEOHeadManager } from './components/SEOHeadManager';
@@ -310,6 +311,7 @@ export default function App() {
                   <Route path="/about" element={<About />} />
                   <Route path="/terms" element={<TermsOfUse />} />
                   <Route path="/privacy" element={<PrivacyPolicy />} />
+                  <Route path="/privacy/preferences" element={<CookiePreferences />} />
                   <Route path="/creator/studio" element={<StudioDashboard />} />
                   <Route path="/401" element={<Unauthorized />} />
                   <Route path="/403" element={<Forbidden />} />

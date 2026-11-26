@@ -391,7 +391,7 @@ async function migrate() {
       { id: 'kb2', title: 'How to watch premium matches?', content: 'Premium matches require a Pay-Per-View unlock or an active subscription plan. Make sure you have enough balance in your wallet, and click the \'Unlock Match\' button on the match page.', tags: '["match","watch","premium","ppv"]', category: 'Streaming guide' },
       { id: 'kb3', title: 'How to become a creator on WatchWDS?', content: 'Go to your Profile settings, click on \'Become Creator\', fill out your channel name and description, and submit. An admin will review your application soon.', tags: '["creator","become creator","channel","apply"]', category: 'Creators' },
       { id: 'kb4', title: 'How do I reset my password?', content: 'If you forgot your password, go to the Login page, click \'Forgot Password?\', enter your registered email address, and follow the password reset link sent to your inbox.', tags: '["password","reset","forgot password","login"]', category: 'Account Safety' },
-      { id: 'kb5', title: 'What is the refund policy?', content: 'All transactions on WatchWDS are final. Points unlocked for Pay-Per-View matches or active subscriptions cannot be refunded.', tags: '["refund","policy","billing","cancel"]', category: 'Billing & Wallet' },
+      { id: 'kb5', title: 'What is the refund policy?', content: 'For questions about refunds or a payment, please contact our support team.', tags: '["refund","policy","billing","cancel"]', category: 'Billing & Wallet' },
     ];
 
     for (const kb of kbArticles) {
@@ -410,7 +410,7 @@ async function migrate() {
   if (existingSettings[0].count === 0) {
     const defaultSettings = [
       { key_name: 'branding', value: JSON.stringify({ platformName: 'WatchWDS', favicon: '/favicon.ico', preloaderEnabled: true }) },
-      { key_name: 'pages', value: JSON.stringify({ about: '<h1>About WatchWDS</h1><p>WatchWDS brings you the best of local and grassroots sports streaming.</p>', terms: '<h1>Terms of Use</h1><p>By using WatchWDS, you agree to comply with these terms.</p>', privacy: '<h1>Privacy Policy</h1><p>At WatchWDS, your privacy is our top priority.</p>' }) },
+      { key_name: 'pages', value: JSON.stringify({ about: '<h1>About WatchWDS</h1><p>WatchWDS brings you the best of local and grassroots sports streaming.</p>', terms: '<h1>Terms of Use</h1><p>This page is being updated.</p>', privacy: '<h1>Privacy Policy</h1><p>This page is being updated.</p>' }) },
       { key_name: 'social', value: JSON.stringify({ facebook: '', twitter: '', linkedin: '', youtube: '', instagram: '', tiktok: '', rss: '' }) },
       { key_name: 'cookies', value: JSON.stringify({ enabled: true, message: 'We use cookies to enhance your browsing experience.', acceptText: 'Accept All', rejectText: 'Reject All' }) },
       { key_name: 'google_auth', value: JSON.stringify({ enabled: false, clientId: '', clientSecret: '', redirectUri: '' }) },

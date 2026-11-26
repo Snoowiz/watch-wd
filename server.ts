@@ -119,6 +119,7 @@ import {
   maskSecret,
 } from "./db/persistentConfig.js";
 import { verifyFirebaseIdToken, getFirebaseAdmin } from "./db/firebaseAdmin.js";
+import { registerSettingsReadRoutes } from "./settingsAccess.js";
 import { createMatchRouter } from "./api/v1/routes/matches.js";
 import {
   getMuxConfig,
@@ -1987,7 +1988,7 @@ async function startServer() {
           {
             id: "kb5",
             title: "What is the refund policy?",
-            content: "All transactions on WatchWDS are final. Points unlocked for Pay-Per-View matches or active subscriptions cannot be refunded to your standard financial accounts, owing to support of direct local sports creators.",
+            content: "For questions about refunds or a payment, please contact our support team.",
             tags: ["refund", "policy", "billing", "cancel"],
             category: "Billing & Wallet",
             createdAt: new Date().toISOString()
@@ -7770,40 +7771,9 @@ async function startServer() {
     }
   });
 
-  // === SETTINGS API (Dynamic Config - Public Read, Admin Write) ===
-  app.get("/api/settings/:key", async (req, res) => {
-    try {
-      const data = await getSecureDocument("settings", req.params.key);
-      if (req.params.key === "site_colors") {
-        return res.json({
-          primaryColor: "#3B82F6",
-          secondaryColor: "#10B981",
-          buttonTextColor: "#FFFFFF",
-          ...(data || {})
-        });
-      }
-      res.json(data || {});
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.get("/api/admin/settings/:key", async (req, res) => {
-    try {
-      const data = await getSecureDocument("settings", req.params.key);
-      if (req.params.key === "site_colors") {
-        return res.json({
-          primaryColor: "#3B82F6",
-          secondaryColor: "#10B981",
-          buttonTextColor: "#FFFFFF",
-          ...(data || {})
-        });
-      }
-      res.json(data || {});
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+  // === SETTINGS API (Dynamic Config) ===
+  // Public reads: allowlisted keys only, secret-like fields stripped. Admin reads: admin only.
+  registerSettingsReadRoutes({ app, getSecureDocument, authenticate, requireRole });
 
   app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
@@ -12024,21 +11994,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
 
         `<script type="application/ld+json">${JSON.stringify(orgSchema)}</script>`,
         pageConfig?.jsonLdSchema ? `<script type="application/ld+json">${pageConfig.jsonLdSchema}</script>` : '',
-
-        seo.googleAnalyticsId ? `
-<script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(seo.googleAnalyticsId)}"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', '${escapeHtml(seo.googleAnalyticsId)}');
-</script>` : '',
-        seo.googleTagManagerId ? `
-<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','${escapeHtml(seo.googleTagManagerId)}');</script>` : ''
+        // Google Analytics / GTM are NOT injected here: they need consent, so the client
+        // loads them only after the visitor opts in (src/utils/consent.ts + SEOHeadManager).
       ].filter(Boolean).join('\n  ');
 
       let output = html.replace(/<title>.*?<\/title>/i, `<title>${escapeHtml(title)}</title>`);

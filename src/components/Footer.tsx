@@ -98,6 +98,14 @@ export function Footer() {
                 </Link>
               </React.Fragment>
             ))}
+            {/* Always shown, independent of the admin footer menu */}
+            {footerLinks.length > 0 && <span aria-hidden="true">&bull;</span>}
+            <Link
+              to="/privacy/preferences"
+              className="hover:text-yellow-500 transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500"
+            >
+              Cookie preferences
+            </Link>
           </div>
 
           <div className="flex md:hidden items-center gap-1 sm:gap-2 flex-wrap justify-center">
