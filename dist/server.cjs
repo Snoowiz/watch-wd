@@ -46,7 +46,7 @@ var import_fs3 = __toESM(require("fs"), 1);
 var import_bcryptjs2 = __toESM(require("bcryptjs"), 1);
 var import_nodemailer = __toESM(require("nodemailer"), 1);
 var import_stripe = __toESM(require("stripe"), 1);
-var import_crypto5 = __toESM(require("crypto"), 1);
+var import_crypto6 = __toESM(require("crypto"), 1);
 var import_dotenv2 = __toESM(require("dotenv"), 1);
 var import_helmet = __toESM(require("helmet"), 1);
 var import_dns = __toESM(require("dns"), 1);
@@ -1017,6 +1017,20 @@ async function query(sql, params) {
 async function execute(sql, params) {
   const [result] = await pool.execute(sql, params);
   return result;
+}
+async function transaction(fn) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await fn((sql, params) => conn.execute(sql, params));
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback().catch(() => {
+    });
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 // db/MySQLAdapter.ts
@@ -2276,6 +2290,182 @@ async function verifyFirebaseIdToken(token) {
   }
 }
 
+// settingsAccess.ts
+var PUBLIC_SETTINGS_KEYS = /* @__PURE__ */ new Set([
+  "blog",
+  "branding",
+  "cookies",
+  "currency",
+  "event_access_defaults",
+  "firebase_config",
+  "homepage",
+  "navigation_menus",
+  "pages",
+  "seo",
+  "site_colors",
+  "social",
+  "wallet"
+]);
+var SECRET_FIELD_PATTERN = /secret|private|passw(or)?d|token|service_?account|credential/i;
+function isSecretLikeField(name) {
+  return SECRET_FIELD_PATTERN.test(name);
+}
+function stripSecretFields(value) {
+  if (Array.isArray(value)) return value.map((v) => stripSecretFields(v));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (isSecretLikeField(k)) continue;
+      out[k] = stripSecretFields(v);
+    }
+    return out;
+  }
+  return value;
+}
+var SITE_COLOR_DEFAULTS = {
+  primaryColor: "#3B82F6",
+  secondaryColor: "#10B981",
+  buttonTextColor: "#FFFFFF"
+};
+function withDefaults(key, data) {
+  if (key === "site_colors") return { ...SITE_COLOR_DEFAULTS, ...data || {} };
+  return data || {};
+}
+function registerSettingsReadRoutes(deps) {
+  const { app, getSecureDocument: getSecureDocument2, authenticate: authenticate2, requireRole: requireRole2 } = deps;
+  app.get("/api/settings/:key", async (req, res) => {
+    const key = String(req.params.key || "");
+    if (!PUBLIC_SETTINGS_KEYS.has(key)) return res.status(404).json({ error: "Not found" });
+    try {
+      const data = await getSecureDocument2("settings", key);
+      res.json(stripSecretFields(withDefaults(key, data)));
+    } catch {
+      res.status(500).json({ error: "Failed to load settings" });
+    }
+  });
+  app.get("/api/admin/settings/:key", authenticate2, requireRole2(["admin"]), async (req, res) => {
+    try {
+      const data = await getSecureDocument2("settings", req.params.key);
+      res.json(withDefaults(req.params.key, data));
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+}
+
+// helpArticles.ts
+var HELP_LIMITS = { title: 500, category: 255, content: 5e4, tags: 20, tag: 50 };
+function normaliseTags(raw) {
+  let v = raw;
+  if (typeof v === "string") {
+    const s = v;
+    try {
+      v = JSON.parse(s);
+    } catch {
+      v = s.split(",");
+    }
+  }
+  if (!Array.isArray(v)) return [];
+  return v.map((t) => String(t ?? "").trim()).filter(Boolean);
+}
+function toHelpArticle(id, d) {
+  const created = d?.created_at ?? d?.createdAt ?? null;
+  return {
+    id: String(id),
+    title: String(d?.title ?? ""),
+    content: String(d?.content ?? ""),
+    category: String(d?.category ?? ""),
+    tags: normaliseTags(d?.tags),
+    createdAt: created ? String(created instanceof Date ? created.toISOString() : created) : null
+  };
+}
+function validateHelpInput(body) {
+  const title = String(body?.title ?? "").trim();
+  const content = String(body?.content ?? "").trim();
+  const category = String(body?.category ?? "").trim();
+  const tags = normaliseTags(body?.tags);
+  if (!title) return { ok: false, error: "Title is required" };
+  if (!content) return { ok: false, error: "Content is required" };
+  if (title.length > HELP_LIMITS.title) return { ok: false, error: `Title must be at most ${HELP_LIMITS.title} characters` };
+  if (category.length > HELP_LIMITS.category) return { ok: false, error: `Category must be at most ${HELP_LIMITS.category} characters` };
+  if (content.length > HELP_LIMITS.content) return { ok: false, error: `Content must be at most ${HELP_LIMITS.content} characters` };
+  if (tags.length > HELP_LIMITS.tags) return { ok: false, error: `At most ${HELP_LIMITS.tags} tags` };
+  if (tags.some((t) => t.length > HELP_LIMITS.tag)) return { ok: false, error: `Each tag must be at most ${HELP_LIMITS.tag} characters` };
+  return { ok: true, value: { title, content, category, tags } };
+}
+function sortHelpArticles(list) {
+  return [...list].sort((a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title));
+}
+function newHelpArticleId() {
+  return `kb_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+function registerHelpArticleRoutes(deps) {
+  const { app, db: db2, authenticate: authenticate2, requireRole: requireRole2 } = deps;
+  const coll = () => db2.collection("knowledge_base");
+  const isValidId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,50}$/.test(id);
+  const admin2 = [authenticate2, requireRole2(["admin"])];
+  const listAll = async () => sortHelpArticles((await coll().get()).docs.map((d) => toHelpArticle(d.id, d.data())));
+  app.get("/api/help/articles", async (_req, res) => {
+    try {
+      res.json({ articles: await listAll() });
+    } catch {
+      res.status(500).json({ error: "Failed to load help articles" });
+    }
+  });
+  app.get("/api/help/articles/:id", async (req, res) => {
+    if (!isValidId(req.params.id)) return res.status(404).json({ error: "Not found" });
+    try {
+      const doc = await coll().doc(req.params.id).get();
+      if (!doc.exists) return res.status(404).json({ error: "Not found" });
+      res.json(toHelpArticle(req.params.id, doc.data()));
+    } catch {
+      res.status(500).json({ error: "Failed to load help article" });
+    }
+  });
+  app.get("/api/admin/help/articles", ...admin2, async (_req, res) => {
+    try {
+      res.json({ articles: await listAll() });
+    } catch (e) {
+      res.status(500).json({ error: e?.message || "Failed to load help articles" });
+    }
+  });
+  app.post("/api/admin/help/articles", ...admin2, async (req, res) => {
+    const v = validateHelpInput(req.body);
+    if (v.ok === false) return res.status(400).json({ error: v.error });
+    try {
+      const id = newHelpArticleId();
+      await coll().doc(id).set({ id, ...v.value, tags: JSON.stringify(v.value.tags), created_at: /* @__PURE__ */ new Date() });
+      res.status(201).json({ id, ...v.value });
+    } catch (e) {
+      res.status(500).json({ error: e?.message || "Failed to create help article" });
+    }
+  });
+  app.put("/api/admin/help/articles/:id", ...admin2, async (req, res) => {
+    if (!isValidId(req.params.id)) return res.status(404).json({ error: "Not found" });
+    const v = validateHelpInput(req.body);
+    if (v.ok === false) return res.status(400).json({ error: v.error });
+    try {
+      const ref = coll().doc(req.params.id);
+      if (!(await ref.get()).exists) return res.status(404).json({ error: "Not found" });
+      await ref.set({ id: req.params.id, ...v.value, tags: JSON.stringify(v.value.tags) });
+      res.json({ id: req.params.id, ...v.value });
+    } catch (e) {
+      res.status(500).json({ error: e?.message || "Failed to update help article" });
+    }
+  });
+  app.delete("/api/admin/help/articles/:id", ...admin2, async (req, res) => {
+    if (!isValidId(req.params.id)) return res.status(404).json({ error: "Not found" });
+    try {
+      const ref = coll().doc(req.params.id);
+      if (!(await ref.get()).exists) return res.status(404).json({ error: "Not found" });
+      await ref.delete();
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: e?.message || "Failed to delete help article" });
+    }
+  });
+}
+
 // api/v1/routes/matches.ts
 var import_express = require("express");
 var import_zod2 = require("zod");
@@ -2821,6 +3011,11 @@ async function completeMuxLiveStream(liveStreamId) {
     method: "PUT"
   });
 }
+async function getMuxAsset(assetId) {
+  return muxApiRequest(`/assets/${encodeURIComponent(assetId)}`, {
+    method: "GET"
+  });
+}
 async function updateMuxLiveStreamWatermark(liveStreamId, params) {
   const policy = normalizePlaybackPolicy(params.playbackPolicy);
   const newAssetSettings = {
@@ -2856,6 +3051,12 @@ async function deleteMuxAssetPlaybackId(assetId, playbackId) {
     `/assets/${encodeURIComponent(assetId)}/playback-ids/${encodeURIComponent(playbackId)}`,
     { method: "DELETE" }
   );
+}
+async function getMuxPlaybackIdPolicy(playbackId) {
+  const data = await muxApiRequest(`/playback-ids/${encodeURIComponent(playbackId)}`, {
+    method: "GET"
+  });
+  return String(data?.policy || "unknown");
 }
 async function createMuxSigningKey() {
   const data = await muxApiRequest("/signing-keys", {
@@ -3245,11 +3446,325 @@ function resolveMatchStreamResponse(match, options) {
 }
 
 // clubStreamingService.ts
-var import_crypto3 = __toESM(require("crypto"), 1);
+var import_crypto4 = __toESM(require("crypto"), 1);
 var import_bcryptjs = __toESM(require("bcryptjs"), 1);
 var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"), 1);
+
+// geoRestrictionService.ts
+var import_crypto3 = __toESM(require("crypto"), 1);
+
+// src/config/countries.ts
+var ISO_COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW".split(" ");
+var CODE_SET = new Set(ISO_COUNTRY_CODES);
+var isIsoCountryCode = (code) => CODE_SET.has(code);
+
+// geoRestrictionService.ts
+var GEO_MAX_EXCLUSIONS = 500;
+var MIN_TOKEN_SECONDS = 60;
+function parseGeoExclusions(raw) {
+  const fail = (error) => ({ exclusions: [], error });
+  if (!Array.isArray(raw)) return fail("exclusions must be an array.");
+  if (raw.length > GEO_MAX_EXCLUSIONS) return fail(`No more than ${GEO_MAX_EXCLUSIONS} exclusions are allowed.`);
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+  const seen = /* @__PURE__ */ new Set();
+  const exclusions = [];
+  for (const item of raw) {
+    const countryCode = String(item?.countryCode ?? "").trim().toUpperCase();
+    if (!isIsoCountryCode(countryCode)) return fail(`"${countryCode}" is not a valid ISO country code.`);
+    let startsAt = null;
+    let endsAt = null;
+    if (item.mode === "timed") {
+      for (const v of [item.startsAt, item.endsAt]) {
+        if (typeof v !== "string" || !iso.test(v) || !Number.isFinite(Date.parse(v))) {
+          return fail(`${countryCode}: timed exclusions need a start and end with a time zone.`);
+        }
+      }
+      startsAt = Date.parse(item.startsAt);
+      endsAt = Date.parse(item.endsAt);
+      if (endsAt <= startsAt) return fail(`${countryCode}: the end must be after the start.`);
+    } else if (item.mode !== "permanent") {
+      return fail(`${countryCode}: mode must be "permanent" or "timed".`);
+    }
+    const key = `${countryCode}:${startsAt}:${endsAt}`;
+    if (seen.has(key)) return fail(`${countryCode}: duplicate exclusion.`);
+    seen.add(key);
+    exclusions.push({ countryCode, mode: item.mode, startsAt, endsAt });
+  }
+  return { exclusions, error: null };
+}
+function geoState(e, now) {
+  if (e.mode === "permanent") return "active";
+  if (now < e.startsAt) return "upcoming";
+  return now < e.endsAt ? "active" : "expired";
+}
+var isEnforceable = (list, now) => list.some((e) => geoState(e, now) !== "expired");
+function evaluateGeo(list, country, now) {
+  const relevant = country ? list.filter((e) => e.countryCode === country) : list;
+  const starts = relevant.filter((e) => geoState(e, now) === "upcoming").map((e) => e.startsAt);
+  const nextStartAt = starts.length ? Math.min(...starts) : null;
+  const startsImminently = nextStartAt !== null && nextStartAt - now < MIN_TOKEN_SECONDS * 1e3;
+  if (!startsImminently && !relevant.some((e) => geoState(e, now) === "active")) {
+    return { restricted: false, reason: null, endsAt: null, nextStartAt };
+  }
+  if (!country) return { restricted: true, reason: "location_unverified", endsAt: null, nextStartAt };
+  if (relevant.some((e) => e.mode === "permanent")) {
+    return { restricted: true, reason: "country_excluded", endsAt: null, nextStartAt };
+  }
+  let end = relevant.some((e) => geoState(e, now) === "active") ? now : nextStartAt;
+  for (const e of [...relevant].sort((a, b) => a.startsAt - b.startsAt)) {
+    if (e.startsAt <= end && e.endsAt > end) end = e.endsAt;
+  }
+  return { restricted: true, reason: "country_excluded", endsAt: end, nextStartAt };
+}
+function getGeoEdgeConfig(env = process.env) {
+  const countryHeader = String(env.GEO_COUNTRY_HEADER || "").trim().toLowerCase();
+  const secretHeader = String(env.GEO_EDGE_SECRET_HEADER || "x-wds-edge-secret").trim().toLowerCase();
+  const secret = String(env.GEO_EDGE_SECRET || "");
+  return { countryHeader, secretHeader, secret, isConfigured: Boolean(countryHeader && secret.length >= 32) };
+}
+function resolveTrustedCountry(req, env = process.env) {
+  const cfg = getGeoEdgeConfig(env);
+  if (!cfg.isConfigured) return null;
+  const digest = (v) => import_crypto3.default.createHash("sha256").update(v).digest();
+  const supplied = req?.headers?.[cfg.secretHeader];
+  if (typeof supplied !== "string" || !import_crypto3.default.timingSafeEqual(digest(supplied), digest(cfg.secret))) return null;
+  const header = req.headers[cfg.countryHeader];
+  const code = typeof header === "string" ? header.trim().toUpperCase() : "";
+  return isIsoCountryCode(code) ? code : null;
+}
+var GEO_MIGRATIONS = [
+  "CREATE TABLE IF NOT EXISTS `event_geo_exclusions` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `match_id` VARCHAR(100) NOT NULL, `country_code` CHAR(2) NOT NULL, `mode` VARCHAR(10) NOT NULL, `starts_at_ms` BIGINT DEFAULT NULL, `ends_at_ms` BIGINT DEFAULT NULL, `created_by` VARCHAR(100) DEFAULT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX `idx_ege_match` (`match_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+];
+async function loadGeoExclusions(query2, matchId) {
+  let rows;
+  try {
+    rows = await query2(
+      "SELECT `country_code`, `mode`, `starts_at_ms`, `ends_at_ms` FROM `event_geo_exclusions` WHERE `match_id` = ? ORDER BY `id`",
+      [String(matchId)]
+    );
+  } catch (err) {
+    if (err?.errno === 1146 || err?.code === "ER_NO_SUCH_TABLE") return [];
+    throw err;
+  }
+  return rows.map((r) => ({
+    countryCode: String(r.country_code).toUpperCase(),
+    mode: r.mode === "timed" ? "timed" : "permanent",
+    startsAt: r.starts_at_ms == null ? null : Number(r.starts_at_ms),
+    endsAt: r.ends_at_ms == null ? null : Number(r.ends_at_ms)
+  }));
+}
+function getLocalGeoRequirements(match, mux) {
+  const out = [];
+  if (!mux.isSigningConfigured) {
+    out.push({ code: "mux_signing_keys", message: "Add Mux Signing Keys in Admin Settings > Mux Streaming." });
+  }
+  if (String(match?.stream_provider || "").toLowerCase() !== "mux") {
+    out.push({ code: "mux_provider", message: "Set the event stream source to Mux and save it. YouTube and custom embeds cannot be geo-protected." });
+  }
+  if (String(match?.mux_playback_policy || "").toLowerCase() !== "signed") {
+    out.push({ code: "mux_signed_policy", message: "Switch this event to Signed Playback and save it." });
+  }
+  const markup = /<iframe|<video|<mux-|stream\.mux\.com|youtu\.?be/i;
+  if (match?.video_url || match?.embed_code || match?.playback_id || markup.test(String(match?.description || "")) || markup.test(String(match?.content || ""))) {
+    out.push({ code: "alternate_source", message: "Remove other video links or embeds from this event; they would bypass the restriction." });
+  }
+  return out;
+}
+async function getGeoRequirements(match, mux, api, req) {
+  const out = getLocalGeoRequirements(match, mux);
+  if (!getGeoEdgeConfig().isConfigured) {
+    out.push({ code: "country_source", message: "Set GEO_COUNTRY_HEADER and GEO_EDGE_SECRET (32+ characters) on the server. See docs/geo-restrictions.md." });
+  } else if (!resolveTrustedCountry(req)) {
+    out.push({ code: "country_source_unverified", message: "Your own request arrived without a verified country. Check that the edge/CDN adds the country and secret headers." });
+  }
+  if (!mux.isConfigured) {
+    out.push({ code: "mux_credentials", message: "Add the Mux API token in Admin Settings > Mux Streaming." });
+    return out;
+  }
+  const check = async (what, get) => {
+    try {
+      const ids = (await get())?.playback_ids || [];
+      if (ids.some((p) => p?.policy !== "signed")) {
+        out.push({ code: "public_playback_id", message: `The Mux ${what} still has a non-signed playback ID. Re-apply Signed Playback or remove that ID in Mux.` });
+      }
+    } catch {
+      out.push({ code: "mux_unverified", message: `Could not verify the Mux ${what}. Try again.` });
+    }
+  };
+  if (match?.mux_live_stream_id) await check("live stream", () => api.getLiveStream(String(match.mux_live_stream_id)));
+  if (match?.mux_asset_id) await check("recording", () => api.getAsset(String(match.mux_asset_id)));
+  return out;
+}
+function createGeoPlaybackGate(deps) {
+  const clock = deps.now || Date.now;
+  const policyCache = /* @__PURE__ */ new Map();
+  const deny = (status, error, reason, endsAt) => ({
+    denied: {
+      status,
+      body: { error, geoRestricted: true, reason, endsAt: endsAt ? new Date(endsAt).toISOString() : null, hasAccess: false }
+    },
+    maxTokenSeconds: null
+  });
+  return async function geoPlaybackGate(match, req) {
+    const list = await loadGeoExclusions(deps.query, match.id);
+    const now = clock();
+    if (!isEnforceable(list, now)) return { denied: null, maxTokenSeconds: null };
+    const decision = evaluateGeo(list, resolveTrustedCountry(req), now);
+    if (decision.restricted) return deny(451, "geo_restricted", decision.reason, decision.endsAt);
+    const notReady = () => deny(503, "geo_protection_unavailable", "protection_unavailable", null);
+    if (getLocalGeoRequirements(match, deps.getMuxConfig()).length > 0) return notReady();
+    const anyActive = list.some((e) => geoState(e, now) === "active");
+    for (const id of new Set([match.mux_playback_id, match.mux_asset_playback_id].filter(Boolean).map(String))) {
+      let policy = policyCache.get(id);
+      if (!policy) {
+        try {
+          policy = await deps.getPlaybackIdPolicy(id);
+        } catch {
+          if (anyActive) return notReady();
+          continue;
+        }
+        if (policyCache.size > 5e3) policyCache.clear();
+        policyCache.set(id, policy);
+      }
+      if (policy !== "signed") return notReady();
+    }
+    return {
+      denied: null,
+      maxTokenSeconds: decision.nextStartAt === null ? null : Math.floor((decision.nextStartAt - now) / 1e3)
+    };
+  };
+}
+var ENDED_STATUSES = ["completed", "full_match", "highlights"];
+var PURCHASE_MESSAGES = {
+  country_excluded: "This event is not available in your location, so it cannot be purchased.",
+  location_unverified: "We could not confirm your location, so this event cannot be purchased. Turn off any VPN or Tor and try again.",
+  event_window: "This event will not be available in your location during its broadcast, so it cannot be purchased.",
+  protection_unavailable: "This event is temporarily unavailable for purchase. Please try again shortly."
+};
+function evaluateGeoPurchase(match, list, country, now) {
+  const decision = evaluateGeo(list, country, now);
+  if (decision.restricted) return decision.reason;
+  if (ENDED_STATUSES.includes(String(match?.status || "").toLowerCase())) return null;
+  const upcoming = list.filter((e) => (!country || e.countryCode === country) && geoState(e, now) === "upcoming");
+  if (upcoming.length === 0) return null;
+  const start = new Date(match?.date || match?.start_time || NaN).getTime();
+  if (!Number.isFinite(start)) return "event_window";
+  const end = start + (Number(match?.duration) || 120) * 6e4;
+  return upcoming.some((e) => e.startsAt < end && e.endsAt > start) ? "event_window" : null;
+}
+function createGeoPurchaseGate(deps) {
+  const clock = deps.now || Date.now;
+  return async function geoPurchaseGate(match, req) {
+    const list = await loadGeoExclusions(deps.query, match.id);
+    const now = clock();
+    if (!isEnforceable(list, now)) return null;
+    const reason = evaluateGeoPurchase(match, list, resolveTrustedCountry(req), now) || (getLocalGeoRequirements(match, deps.getMuxConfig()).length > 0 ? "protection_unavailable" : null);
+    return reason ? { status: 451, body: { error: PURCHASE_MESSAGES[reason], geoRestricted: true, reason } } : null;
+  };
+}
+async function hasEnforceableGeo(query2, matchId) {
+  return isEnforceable(await loadGeoExclusions(query2, matchId), Date.now());
+}
+var GEO_DOWNGRADE_ERROR = "This event has geographic restrictions, so it must keep signed Mux playback with no other video source. An admin must remove the restrictions first.";
+function registerGeoRestrictionRoutes(deps) {
+  const { app, db: db2, query: query2, transaction: transaction2, authenticate: authenticate2, requireRole: requireRole2 } = deps;
+  const getMatch = async (id) => {
+    const doc = await db2.collection("matches").doc(String(id)).get();
+    return doc.exists ? { ...doc.data(), id: String(id) } : null;
+  };
+  const present = (list) => list.map((e) => ({
+    countryCode: e.countryCode,
+    mode: e.mode,
+    startsAt: e.startsAt === null ? null : new Date(e.startsAt).toISOString(),
+    endsAt: e.endsAt === null ? null : new Date(e.endsAt).toISOString(),
+    state: geoState(e, Date.now())
+  }));
+  const requirements = async (match, req) => {
+    await deps.loadMuxSettings().catch(() => null);
+    return getGeoRequirements(match, deps.getMuxConfig(), deps.muxApi, req);
+  };
+  app.get("/api/admin/matches/:id/geo-restrictions", authenticate2, requireRole2(["admin"]), async (req, res) => {
+    try {
+      const match = await getMatch(req.params.id);
+      if (!match) return res.status(404).json({ error: "Event not found" });
+      res.setHeader("Cache-Control", "no-store, private");
+      return res.json({
+        exclusions: present(await loadGeoExclusions(query2, match.id)),
+        requirements: await requirements(match, req)
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  app.put("/api/admin/matches/:id/geo-restrictions", authenticate2, requireRole2(["admin"]), async (req, res) => {
+    try {
+      const parsed = parseGeoExclusions(req.body?.exclusions);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      const match = await getMatch(req.params.id);
+      if (!match) return res.status(404).json({ error: "Event not found" });
+      if (isEnforceable(parsed.exclusions, Date.now())) {
+        const missing = await requirements(match, req);
+        if (missing.length > 0) {
+          return res.status(409).json({ error: "Required playback infrastructure is not ready. Nothing was saved.", requirements: missing });
+        }
+      }
+      await transaction2(async (execute2) => {
+        await execute2("DELETE FROM `event_geo_exclusions` WHERE `match_id` = ?", [match.id]);
+        for (const e of parsed.exclusions) {
+          await execute2(
+            "INSERT INTO `event_geo_exclusions` (`match_id`, `country_code`, `mode`, `starts_at_ms`, `ends_at_ms`, `created_by`) VALUES (?, ?, ?, ?, ?, ?)",
+            [match.id, e.countryCode, e.mode, e.startsAt, e.endsAt, req.user?.id ? String(req.user.id) : null]
+          );
+        }
+      });
+      console.log(`[Geo] Admin ${req.user?.id} set ${parsed.exclusions.length} exclusion(s) on event ${match.id}`);
+      return res.json({ success: true, exclusions: present(parsed.exclusions) });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/matches/:id/geo-status", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, private");
+    try {
+      const list = await loadGeoExclusions(query2, req.params.id);
+      const country = resolveTrustedCountry(req);
+      const now = Date.now();
+      const d = evaluateGeo(list, country, now);
+      const match = isEnforceable(list, now) ? await getMatch(req.params.id) : null;
+      const purchaseReason = match ? evaluateGeoPurchase(match, list, country, now) : null;
+      return res.json({
+        restricted: d.restricted,
+        purchaseRestricted: Boolean(purchaseReason),
+        reason: d.reason || purchaseReason,
+        endsAt: d.endsAt ? new Date(d.endsAt).toISOString() : null
+      });
+    } catch {
+      return res.status(500).json({ error: "Could not check availability." });
+    }
+  });
+}
+
+// clubStreamingService.ts
 var SENSITIVE_AUDIT_KEY_PATTERN = /(secret|token|key|password|private|credential)/i;
 var OPEN_SESSION_STATUSES = ["assigned", "live", "disconnected", "ending"];
+var AUTO_REOPEN_WINDOW_MS = 15 * 60 * 1e3;
+function truthyFlag(v) {
+  return v === true || v === 1 || v === "1" || v === "true";
+}
+function buildPostBroadcastDraftUpdates(match, club, wasLive) {
+  if (!wasLive || !match || !club) return null;
+  if (!truthyFlag(club.auto_draft_after_broadcast ?? club.autoDraftAfterBroadcast)) return null;
+  const current = match.publish_status || match.publishStatus || "published";
+  if (current === "draft" || current === "deleted") return null;
+  const rStatus = match.revoke_status || match.revokeStatus;
+  if (rStatus && rStatus !== "normal") return null;
+  return {
+    publish_status: "draft",
+    auto_drafted_after_broadcast: 1,
+    auto_drafted_at: (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "),
+    pre_broadcast_publish_status: current
+  };
+}
 function stripSecretsFromAuditDetails(details) {
   if (!details || typeof details !== "object") return null;
   const out = {};
@@ -3296,7 +3811,7 @@ function issueStepUpReauthToken(params, jwtSecret, ttlSeconds = 300) {
       userId: String(params.userId),
       role: String(params.role),
       clubId: params.clubId ? String(params.clubId) : null,
-      jti: import_crypto3.default.randomBytes(8).toString("hex")
+      jti: import_crypto4.default.randomBytes(8).toString("hex")
     },
     jwtSecret,
     { expiresIn: ttlSeconds }
@@ -3436,7 +3951,7 @@ function registerClubStreamingRoutes(deps) {
   };
   const recordAudit = async (params) => {
     try {
-      const id = "maud_" + Date.now().toString(36) + "_" + import_crypto3.default.randomBytes(4).toString("hex");
+      const id = "maud_" + Date.now().toString(36) + "_" + import_crypto4.default.randomBytes(4).toString("hex");
       const safeDetails = stripSecretsFromAuditDetails(params.details);
       await execute2(
         "INSERT INTO `mux_channel_audit_logs` (`id`, `channel_id`, `club_id`, `actor_user_id`, `actor_role`, `action`, `details`) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -3505,7 +4020,7 @@ function registerClubStreamingRoutes(deps) {
       overlayConfig,
       testMode: useTestMode
     });
-    const channelId = "ch_" + Date.now().toString(36) + "_" + import_crypto3.default.randomBytes(4).toString("hex");
+    const channelId = "ch_" + Date.now().toString(36) + "_" + import_crypto4.default.randomBytes(4).toString("hex");
     const encryptedKey = encryptStreamKey(muxCreated.streamKey);
     const last4 = getStreamKeyLast4(muxCreated.streamKey);
     try {
@@ -3641,15 +4156,33 @@ function registerClubStreamingRoutes(deps) {
       const channelRow = await getClubChannelRow(clubId);
       const openSessions = channelRow ? await getOpenChannelSessions(channelRow.id) : [];
       const sessions = await query2(
-        `SELECT bs.*, m.title AS event_title, m.slug AS event_slug, m.sport AS event_sport,
-                m.status AS event_status, m.date AS event_date
+        `SELECT bs.*, ROUND(bs.duration_seconds / 60) AS duration_minutes,
+                m.title AS event_title, m.slug AS event_slug, m.sport AS event_sport,
+                m.status AS event_status, m.date AS event_date,
+                m.publish_status AS event_publish_status,
+                m.auto_drafted_after_broadcast AS event_auto_drafted
          FROM \`broadcast_sessions\` bs
          LEFT JOIN \`matches\` m ON m.id = bs.match_id
          WHERE bs.club_id = ?
          ORDER BY bs.assigned_at DESC
          LIMIT 25`,
         [clubId]
-      ).catch(() => []);
+      ).catch(
+        () => (
+          // Fallback to the original column set if newer columns are unavailable
+          query2(
+            `SELECT bs.*, ROUND(bs.duration_seconds / 60) AS duration_minutes,
+                  m.title AS event_title, m.slug AS event_slug, m.sport AS event_sport,
+                  m.status AS event_status, m.date AS event_date
+           FROM \`broadcast_sessions\` bs
+           LEFT JOIN \`matches\` m ON m.id = bs.match_id
+           WHERE bs.club_id = ?
+           ORDER BY bs.assigned_at DESC
+           LIMIT 25`,
+            [clubId]
+          ).catch(() => [])
+        )
+      );
       const clubMatchesSnap = await db2.collection("matches").where("club_id", "==", String(clubId)).get();
       const eligibleEvents = (clubMatchesSnap.docs || []).map((d) => {
         const m = d.data();
@@ -3666,6 +4199,7 @@ function registerClubStreamingRoutes(deps) {
           accessType: m.access_type || m.access || "free",
           muxAssetPlaybackId: m.mux_asset_playback_id || null,
           muxStreamStatus: m.mux_stream_status || null,
+          autoDraftedAfterBroadcast: truthyFlag(m.auto_drafted_after_broadcast),
           homeTeam: m.home_team || null,
           awayTeam: m.away_team || null,
           playerPair1: m.player_pair_1 || null,
@@ -3692,6 +4226,7 @@ function registerClubStreamingRoutes(deps) {
           name: club.name,
           isActive: Boolean(Number(club.is_active ?? 1)),
           muxStreamingApproved: clubApproved,
+          autoDraftAfterBroadcast: truthyFlag(club.auto_draft_after_broadcast),
           permissions: {
             can_create_events: club.can_create_events !== void 0 ? Boolean(Number(club.can_create_events)) : club.canCreateEvents !== void 0 ? Boolean(club.canCreateEvents) : true,
             can_edit_events: club.can_edit_events !== void 0 ? Boolean(Number(club.can_edit_events)) : club.canEditEvents !== void 0 ? Boolean(club.canEditEvents) : true,
@@ -3920,6 +4455,11 @@ function registerClubStreamingRoutes(deps) {
         const failedPolicy = policyCheck;
         return res.status(failedPolicy.status).json({ error: failedPolicy.error });
       }
+      if ((effectivePolicy !== "signed" || normalizePlaybackPolicy(channel.mux_playback_policy) !== "signed") && await hasEnforceableGeo(query2, matchId)) {
+        return res.status(409).json({
+          error: "This Event has geographic restrictions and needs a club channel with Signed Playback. Contact a WatchWDS administrator."
+        });
+      }
       let muxWatermarkSynced = false;
       let muxWatermarkWarning = null;
       if (muxCfg.isConfigured && channel.mux_live_stream_id) {
@@ -3949,7 +4489,7 @@ function registerClubStreamingRoutes(deps) {
           muxWatermarkWarning = `Watermark configuration could not be synced to Mux (${wmErr?.message || "API error"}). Live player overlay will continue to display on the website.`;
         }
       }
-      const sessionId = "bs_" + Date.now().toString(36) + "_" + import_crypto3.default.randomBytes(4).toString("hex");
+      const sessionId = "bs_" + Date.now().toString(36) + "_" + import_crypto4.default.randomBytes(4).toString("hex");
       const sport = String(event.sport || "football").trim();
       const compId = event.competition_id || event.competitionId || null;
       await execute2(
@@ -4022,8 +4562,11 @@ function registerClubStreamingRoutes(deps) {
       const wasLive = ["live", "connected", "recording", "disconnected"].includes(String(session.status || "").toLowerCase());
       const finalStatus = wasLive ? "completed" : "cancelled";
       await getMuxPlatformSettings().catch(() => null);
+      let muxWarning = null;
       if (wasLive && getMuxConfig().isConfigured && req.body?.signalMuxComplete !== false) {
-        await completeMuxLiveStream(String(session.mux_live_stream_id)).catch(() => {
+        await completeMuxLiveStream(String(session.mux_live_stream_id)).catch((err) => {
+          console.warn(`[Mux] complete live stream failed for session ${sessionId}:`, err?.message);
+          muxWarning = `Mux did not confirm the stream was closed (${err?.message || "API error"}). Please stop your encoder (OBS/vMix) manually.`;
         });
       }
       const startTimeMs = session.started_at ? new Date(session.started_at).getTime() : null;
@@ -4032,11 +4575,14 @@ function registerClubStreamingRoutes(deps) {
         "UPDATE `broadcast_sessions` SET `status` = ?, `mux_stream_status` = ?, `ended_at` = NOW(), `duration_seconds` = GREATEST(`duration_seconds`, ?) WHERE `id` = ?",
         [finalStatus, "idle", durationSec, sessionId]
       );
+      await execute2("UPDATE `broadcast_sessions` SET `ended_by` = ? WHERE `id` = ?", ["partner", sessionId]).catch(() => {
+      });
       await execute2(
         "UPDATE `club_streaming_channels` SET `active_broadcast_session_id` = NULL, `active_match_id` = NULL, `channel_status` = CASE WHEN `channel_status` = 'disabled' THEN 'disabled' ELSE 'idle' END WHERE `id` = ? AND `active_broadcast_session_id` = ?",
         [session.channel_id, sessionId]
       );
       const matchDoc = await db2.collection("matches").doc(String(session.match_id)).get();
+      let autoDrafted = false;
       if (matchDoc.exists) {
         const m = matchDoc.data();
         const updates = {
@@ -4046,6 +4592,16 @@ function registerClubStreamingRoutes(deps) {
         if (wasLive && String(m?.status || "").toLowerCase() === "live") {
           updates.status = "full_match";
         }
+        try {
+          const clubDoc = await db2.collection("clubs").doc(String(clubId)).get();
+          const draftUpdates = buildPostBroadcastDraftUpdates(m, clubDoc.exists ? clubDoc.data() : null, wasLive);
+          if (draftUpdates) {
+            Object.assign(updates, draftUpdates);
+            autoDrafted = true;
+          }
+        } catch (draftErr) {
+          console.warn(`[Broadcast] auto-draft check failed for match ${session.match_id}:`, draftErr?.message);
+        }
         await db2.collection("matches").doc(String(session.match_id)).update(updates);
         cacheEngine2.invalidateCollection("matches");
       }
@@ -4054,9 +4610,88 @@ function registerClubStreamingRoutes(deps) {
         clubId,
         actorUser: req.user,
         action: wasLive ? "session_completed" : "event_unassigned",
-        details: { sessionId, matchId: session.match_id, finalStatus }
+        details: { sessionId, matchId: session.match_id, finalStatus, autoDrafted }
       });
-      return res.json({ success: true, status: finalStatus, sessionId });
+      return res.json({ success: true, status: finalStatus, sessionId, autoDrafted, muxWarning: muxWarning || void 0 });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  app.put("/api/partner/streaming/settings", authenticate2, async (req, res) => {
+    try {
+      if (!["partner", "admin"].includes(String(req.user?.role || "").toLowerCase())) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const clubId = resolveAuthorizedClubId(req.user, req.body?.clubId);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated" });
+      if (typeof req.body?.autoDraftAfterBroadcast !== "boolean") {
+        return res.status(400).json({ error: "autoDraftAfterBroadcast (boolean) is required." });
+      }
+      const clubDoc = await db2.collection("clubs").doc(String(clubId)).get();
+      if (!clubDoc.exists) return res.status(404).json({ error: "Club not found" });
+      const value = req.body.autoDraftAfterBroadcast ? 1 : 0;
+      await db2.collection("clubs").doc(String(clubId)).update({ auto_draft_after_broadcast: value });
+      cacheEngine2.invalidateCollection("clubs");
+      await recordAudit({
+        channelId: null,
+        clubId,
+        actorUser: req.user,
+        action: "auto_draft_setting_changed",
+        details: { autoDraftAfterBroadcast: Boolean(value) }
+      }).catch(() => {
+      });
+      return res.json({ success: true, autoDraftAfterBroadcast: Boolean(value) });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/partner/events/:matchId/publish", authenticate2, async (req, res) => {
+    try {
+      if (!["partner", "admin"].includes(String(req.user?.role || "").toLowerCase())) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const clubId = resolveAuthorizedClubId(req.user, req.body?.clubId);
+      if (!clubId) return res.status(400).json({ error: "No partner club associated" });
+      if (typeof req.body?.publish !== "boolean") {
+        return res.status(400).json({ error: "publish (boolean) is required." });
+      }
+      const matchId = String(req.params.matchId || "").trim();
+      const matchDoc = await db2.collection("matches").doc(matchId).get();
+      if (!matchDoc.exists) return res.status(404).json({ error: "Event not found." });
+      const match = matchDoc.data();
+      if (String(match.club_id || match.clubId || "") !== String(clubId)) {
+        return res.status(403).json({ error: "Forbidden: This Event does not belong to your club." });
+      }
+      const current = match.publish_status || match.publishStatus || "published";
+      if (current === "deleted") return res.status(400).json({ error: "Deleted Events cannot be published." });
+      const rStatus = match.revoke_status || match.revokeStatus;
+      if (req.body.publish && rStatus && rStatus !== "normal") {
+        return res.status(400).json({ error: "This Event has been taken down by administrators and cannot be published." });
+      }
+      const clubDoc = await db2.collection("clubs").doc(String(clubId)).get();
+      const club = clubDoc.exists ? clubDoc.data() : {};
+      const canPublish = club.can_publish_events !== void 0 ? Boolean(Number(club.can_publish_events)) : true;
+      const isAdmin = String(req.user?.role || "").toLowerCase() === "admin";
+      if (req.body.publish && !canPublish && !isAdmin) {
+        return res.status(403).json({ error: "Your club is not permitted to publish Events. A platform administrator will review and publish it." });
+      }
+      const updates = req.body.publish ? {
+        publish_status: "published",
+        auto_drafted_after_broadcast: 0,
+        auto_drafted_at: null,
+        pre_broadcast_publish_status: null
+      } : { publish_status: "draft" };
+      await db2.collection("matches").doc(matchId).update(updates);
+      cacheEngine2.invalidateCollection("matches");
+      await recordAudit({
+        channelId: null,
+        clubId,
+        actorUser: req.user,
+        action: req.body.publish ? "event_published" : "event_unpublished",
+        details: { matchId, previous: current }
+      }).catch(() => {
+      });
+      return res.json({ success: true, publishStatus: updates.publish_status });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
@@ -4346,6 +4981,44 @@ function createClubChannelWebhookProcessor(deps) {
       ).catch(() => []);
       if (recentCompleted && recentCompleted[0]) targetSession = recentCompleted[0];
     }
+    if (!targetSession && channel && eventType === "video.live_stream.active" && !channel.active_broadcast_session_id) {
+      const reopenRows = await query2(
+        "SELECT * FROM `broadcast_sessions` WHERE `channel_id` = ? AND `status` = 'completed' AND `ended_by` = 'mux_idle' ORDER BY `ended_at` DESC LIMIT 1",
+        [channel.id]
+      ).catch(() => []);
+      const candidate = reopenRows && reopenRows[0];
+      const endedMs = candidate?.ended_at ? new Date(candidate.ended_at).getTime() : NaN;
+      if (candidate && Number.isFinite(endedMs) && Date.now() - endedMs <= AUTO_REOPEN_WINDOW_MS) {
+        await execute2(
+          "UPDATE `broadcast_sessions` SET `status` = 'disconnected', `ended_at` = NULL, `ended_by` = NULL WHERE `id` = ?",
+          [candidate.id]
+        ).catch(() => {
+        });
+        await execute2(
+          "UPDATE `club_streaming_channels` SET `active_broadcast_session_id` = ?, `active_match_id` = ? WHERE `id` = ? AND `active_broadcast_session_id` IS NULL",
+          [candidate.id, candidate.match_id, channel.id]
+        ).catch(() => {
+        });
+        targetSession = { ...candidate, status: "disconnected", __reopened: true };
+      }
+    }
+    if (eventType === "video.asset.live_stream_completed") {
+      if (targetSession) {
+        await execute2(
+          "UPDATE `broadcast_sessions` SET `recording_completed_at` = COALESCE(`recording_completed_at`, NOW()) WHERE `id` = ?",
+          [targetSession.id]
+        ).catch(() => {
+        });
+        return {
+          handled: true,
+          matchId: targetSession.match_id,
+          sessionId: targetSession.id,
+          channelId: channel?.id || targetSession.channel_id,
+          status: targetSession.status
+        };
+      }
+      return { handled: false };
+    }
     if (!channel && !targetSession) {
       return { handled: false };
     }
@@ -4380,10 +5053,12 @@ function createClubChannelWebhookProcessor(deps) {
       if (eventType === "video.live_stream.active") {
         sessionNextStatus = "live";
         matchUpdates.status = "live";
+        if (targetSession.__reopened && targetSession.mux_asset_id) delete matchUpdates.mux_asset_id;
         if (channel?.mux_playback_id) matchUpdates.mux_playback_id = channel.mux_playback_id;
         await execute2(
           "UPDATE `broadcast_sessions` SET `status` = 'live', `mux_stream_status` = 'active', `mux_asset_id` = COALESCE(?, `mux_asset_id`), `started_at` = COALESCE(`started_at`, NOW()) WHERE `id` = ?",
-          [parsed.assetId || null, targetSession.id]
+          // Re-opened session keeps its original recording asset (the restart creates a new Mux asset)
+          [targetSession.__reopened && targetSession.mux_asset_id ? null : parsed.assetId || null, targetSession.id]
         ).catch(() => {
         });
       } else if (eventType === "video.live_stream.connected" || eventType === "video.live_stream.recording") {
@@ -4408,6 +5083,11 @@ function createClubChannelWebhookProcessor(deps) {
           [durSec, targetSession.id]
         ).catch(() => {
         });
+        await execute2(
+          "UPDATE `broadcast_sessions` SET `ended_by` = 'mux_idle' WHERE `id` = ?",
+          [targetSession.id]
+        ).catch(() => {
+        });
         if (channel) {
           await execute2(
             "UPDATE `club_streaming_channels` SET `active_broadcast_session_id` = NULL, `active_match_id` = NULL WHERE `id` = ? AND `active_broadcast_session_id` = ?",
@@ -4426,12 +5106,16 @@ function createClubChannelWebhookProcessor(deps) {
         ).catch(() => {
         });
         delete matchUpdates.status;
+        if (parsed.assetId && targetSession.mux_asset_id && String(targetSession.mux_asset_id) !== String(parsed.assetId) && targetSession.mux_asset_playback_id) {
+          delete matchUpdates.mux_asset_id;
+          delete matchUpdates.mux_asset_playback_id;
+        }
       }
       if (targetSession.match_id && Object.keys(matchUpdates).length > 0) {
         const mDoc = await db2.collection("matches").doc(String(targetSession.match_id)).get();
         if (mDoc.exists) {
           const curMatch = mDoc.data();
-          if (matchUpdates.status === "live" && ["full_match", "completed", "highlights"].includes(String(curMatch?.status || "").toLowerCase()) && String(curMatch?.status_mode || "").toLowerCase() === "manual") {
+          if (!targetSession.__reopened && matchUpdates.status === "live" && ["full_match", "completed", "highlights"].includes(String(curMatch?.status || "").toLowerCase()) && String(curMatch?.status_mode || "").toLowerCase() === "manual") {
             delete matchUpdates.status;
           }
           await db2.collection("matches").doc(String(targetSession.match_id)).update(matchUpdates);
@@ -4457,7 +5141,7 @@ function createClubChannelWebhookProcessor(deps) {
 }
 
 // securityManager.ts
-var import_crypto4 = __toESM(require("crypto"), 1);
+var import_crypto5 = __toESM(require("crypto"), 1);
 var DEFAULT_CONFIG = {
   trusted_device_expiry_days: 60,
   max_login_attempts: 5,
@@ -4526,12 +5210,12 @@ function generateDeviceFingerprint(req, clientFingerprint) {
     if (clientFingerprint.length === 64 && /^[0-9a-f]{64}$/i.test(clientFingerprint)) {
       return clientFingerprint.toLowerCase();
     }
-    return import_crypto4.default.createHash("sha256").update(clientFingerprint).digest("hex");
+    return import_crypto5.default.createHash("sha256").update(clientFingerprint).digest("hex");
   }
   const ua = req.headers["user-agent"] || "";
   const acceptLang = req.headers["accept-language"] || "";
   const raw = `${ua}|${acceptLang}`;
-  return import_crypto4.default.createHash("sha256").update(raw).digest("hex");
+  return import_crypto5.default.createHash("sha256").update(raw).digest("hex");
 }
 async function getSecurityConfig() {
   try {
@@ -4579,7 +5263,7 @@ async function checkRateLimit(email, ip) {
 }
 async function recordLoginAttempt(email, ip, ua, success, reason = "") {
   try {
-    const id = "att_" + import_crypto4.default.randomBytes(12).toString("hex");
+    const id = "att_" + import_crypto5.default.randomBytes(12).toString("hex");
     await execute(
       "INSERT INTO `login_attempts` (`id`, `email`, `ip_address`, `user_agent`, `success`, `reason`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, NOW())",
       [id, email, ip, ua, success ? 1 : 0, reason]
@@ -4643,7 +5327,7 @@ async function detectRiskSignals(userId, req, currentCountry, fingerprint) {
 }
 async function createVerificationCode(userId, fingerprint, ip, browserInfo, locationInfo) {
   const code = Math.floor(1e5 + Math.random() * 9e5).toString();
-  const id = "vc_" + import_crypto4.default.randomBytes(12).toString("hex");
+  const id = "vc_" + import_crypto5.default.randomBytes(12).toString("hex");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1e3).toISOString().slice(0, 19).replace("T", " ");
   await execute(
     "UPDATE `verification_codes` SET `used` = 1 WHERE `user_id` = ? AND `used` = 0",
@@ -4668,7 +5352,7 @@ async function saveOrUpdateTrustedDevice(userId, fingerprint, deviceName, ip, co
     );
     return devId;
   } else {
-    const devId = "dev_" + import_crypto4.default.randomBytes(12).toString("hex");
+    const devId = "dev_" + import_crypto5.default.randomBytes(12).toString("hex");
     await execute(
       "INSERT INTO `trusted_devices` (`id`, `user_id`, `device_fingerprint`, `device_name`, `ip_address`, `country`, `city`, `last_used_at`, `created_at`, `is_active`) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)",
       [devId, String(userId), fingerprint, deviceName, ip, country, city]
@@ -4827,7 +5511,7 @@ var JWT_SECRET = process.env.JWT_SECRET || (() => {
   if (process.env.NODE_ENV === "production") {
     console.error("\u26A0\uFE0F Warning: JWT_SECRET environment variable is missing in production environment.");
   }
-  return import_crypto5.default.randomBytes(32).toString("hex");
+  return import_crypto6.default.randomBytes(32).toString("hex");
 })();
 var db = new MySQLAdapter();
 async function ensureIncrementalColumns() {
@@ -4951,7 +5635,15 @@ async function ensureIncrementalColumns() {
     "CREATE TABLE IF NOT EXISTS `broadcast_sessions` (`id` VARCHAR(100) PRIMARY KEY, `channel_id` VARCHAR(100) NOT NULL, `club_id` VARCHAR(100) NOT NULL, `match_id` VARCHAR(100) NOT NULL, `sport` VARCHAR(100) DEFAULT 'football', `competition_id` VARCHAR(100) DEFAULT NULL, `mux_live_stream_id` VARCHAR(150) NOT NULL, `mux_asset_id` VARCHAR(150) DEFAULT NULL, `mux_asset_playback_id` VARCHAR(150) DEFAULT NULL, `mux_playback_policy` VARCHAR(20) DEFAULT 'public', `status` VARCHAR(50) DEFAULT 'assigned', `mux_stream_status` VARCHAR(50) DEFAULT 'idle', `mux_error_message` TEXT DEFAULT NULL, `assigned_by` VARCHAR(100) DEFAULT NULL, `assigned_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `started_at` DATETIME DEFAULT NULL, `disconnected_at` DATETIME DEFAULT NULL, `ended_at` DATETIME DEFAULT NULL, `duration_seconds` INT DEFAULT 0, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_bs_channel` (`channel_id`), INDEX `idx_bs_club` (`club_id`), INDEX `idx_bs_match` (`match_id`), INDEX `idx_bs_live_stream` (`mux_live_stream_id`), INDEX `idx_bs_asset` (`mux_asset_id`), INDEX `idx_bs_status` (`status`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "CREATE TABLE IF NOT EXISTS `mux_webhook_events` (`event_id` VARCHAR(150) PRIMARY KEY, `event_type` VARCHAR(100) NOT NULL, `mux_object_id` VARCHAR(150) DEFAULT NULL, `payload_created_at` VARCHAR(64) DEFAULT NULL, `processed_status` VARCHAR(50) DEFAULT 'processed', `processed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     "CREATE TABLE IF NOT EXISTS `mux_channel_audit_logs` (`id` VARCHAR(100) PRIMARY KEY, `channel_id` VARCHAR(100) DEFAULT NULL, `club_id` VARCHAR(100) NOT NULL, `actor_user_id` VARCHAR(100) DEFAULT NULL, `actor_role` VARCHAR(50) DEFAULT NULL, `action` VARCHAR(80) NOT NULL, `details` JSON DEFAULT NULL, `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX `idx_mcal_club` (`club_id`), INDEX `idx_mcal_channel` (`channel_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-    "INSERT IGNORE INTO `features` (`id`, `key_name`, `label`, `enabled`) VALUES ('5', 'partner_mux_streaming', 'Partner Club Live Streaming (Mux)', 1)"
+    "INSERT IGNORE INTO `features` (`id`, `key_name`, `label`, `enabled`) VALUES ('5', 'partner_mux_streaming', 'Partner Club Live Streaming (Mux)', 1)",
+    // Post-broadcast review workflow (opt-in per club; off by default)
+    "ALTER TABLE `clubs` ADD COLUMN `auto_draft_after_broadcast` TINYINT(1) DEFAULT 0",
+    "ALTER TABLE `matches` ADD COLUMN `auto_drafted_after_broadcast` TINYINT(1) DEFAULT 0",
+    "ALTER TABLE `matches` ADD COLUMN `auto_drafted_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `matches` ADD COLUMN `pre_broadcast_publish_status` VARCHAR(50) DEFAULT NULL",
+    "ALTER TABLE `broadcast_sessions` ADD COLUMN `recording_completed_at` DATETIME DEFAULT NULL",
+    "ALTER TABLE `broadcast_sessions` ADD COLUMN `ended_by` VARCHAR(20) DEFAULT NULL",
+    ...GEO_MIGRATIONS
   ];
   for (const sql of migrations) {
     try {
@@ -5091,6 +5783,7 @@ async function warmCriticalCaches() {
     for (const coll of collectionsToWarm) {
       const snapshot = await db.collection(coll).get();
       const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (coll === "matches") continue;
       cacheEngine.set("database", `db::${coll}::all`, docs, 18e4);
       cacheEngine.set("fragment", `fragment::/api/${coll}`, docs, 18e4);
       cacheEngine.set("cdn", `cdn::/api/${coll}`, docs, 3e5);
@@ -6307,7 +7000,7 @@ async function startServer() {
           {
             id: "kb5",
             title: "What is the refund policy?",
-            content: "All transactions on WatchWDS are final. Points unlocked for Pay-Per-View matches or active subscriptions cannot be refunded to your standard financial accounts, owing to support of direct local sports creators.",
+            content: "For questions about refunds or a payment, please contact our support team.",
             tags: ["refund", "policy", "billing", "cancel"],
             category: "Billing & Wallet",
             createdAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -6346,6 +7039,7 @@ async function startServer() {
       const pStatus = match.publish_status || match.publishStatus;
       if (rStatus && rStatus !== "normal" || pStatus === "draft" || pStatus === "deleted") {
         let isStaff = false;
+        let isOwningPartner = false;
         const authHeader = req.headers.authorization;
         if (authHeader && authHeader.startsWith("Bearer ")) {
           try {
@@ -6353,10 +7047,14 @@ async function startServer() {
             if (decoded && (decoded.role === "admin" || decoded.role === "operator")) {
               isStaff = true;
             }
+            const matchClubId = match.club_id || match.clubId;
+            if (decoded && decoded.role === "partner" && decoded.club_id && matchClubId && String(decoded.club_id) === String(matchClubId) && pStatus === "draft" && !(rStatus && rStatus !== "normal")) {
+              isOwningPartner = true;
+            }
           } catch (e) {
           }
         }
-        if (!isStaff) {
+        if (!isStaff && !isOwningPartner) {
           return res.status(404).json({ error: "Match not found" });
         }
       }
@@ -6364,6 +7062,19 @@ async function startServer() {
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
+  });
+  const geoPlaybackGate = createGeoPlaybackGate({ query, getMuxConfig, getPlaybackIdPolicy: getMuxPlaybackIdPolicy });
+  const geoPurchaseGate = createGeoPurchaseGate({ query, getMuxConfig });
+  registerGeoRestrictionRoutes({
+    app,
+    db,
+    query,
+    transaction,
+    authenticate,
+    requireRole,
+    getMuxConfig,
+    loadMuxSettings: getMuxPlatformSettings,
+    muxApi: { getLiveStream: getMuxLiveStream, getAsset: getMuxAsset }
   });
   app.post("/api/matches/:id/stream", optionalAuthenticate, async (req, res) => {
     try {
@@ -6381,6 +7092,16 @@ async function startServer() {
           isRevoked: true,
           hasAccess: false
         });
+      }
+      const pubStatus = match.publish_status || match.publishStatus;
+      if (pubStatus === "draft" || pubStatus === "deleted") {
+        const isStaffViewer = userRole === "admin" || userRole === "operator";
+        const viewerClubId = req.user?.club_id || req.user?.clubId || null;
+        const draftMatchClubId = match.club_id || match.clubId || null;
+        const isOwningPartner = userRole === "partner" && pubStatus === "draft" && viewerClubId && draftMatchClubId && String(viewerClubId) === String(draftMatchClubId);
+        if (!isStaffViewer && !isOwningPartner) {
+          return res.status(404).json({ error: "match_unpublished", message: "This event is not currently published.", hasAccess: false });
+        }
       }
       let hasAccess = false;
       let matchingPurchase = null;
@@ -6509,6 +7230,11 @@ async function startServer() {
         return res.status(403).json({ error: "Access denied. Purchase or valid subscription required.", hasAccess: false });
       }
       const muxSettings = await getMuxPlatformSettings().catch(() => null);
+      const geo = await geoPlaybackGate(match, req);
+      if (geo.denied) {
+        res.setHeader("Cache-Control", "no-store, private");
+        return res.status(geo.denied.status).json(geo.denied.body);
+      }
       const effectiveWatermark = resolveEffectiveWatermarkConfig(
         match,
         muxSettings?.defaultWatermark || getMuxConfig().defaultWatermark || null
@@ -6520,6 +7246,9 @@ async function startServer() {
         if (Number.isFinite(remainingSec) && remainingSec > 0) {
           tokenTtlSeconds = Math.max(300, Math.min(7200, remainingSec));
         }
+      }
+      if (geo.maxTokenSeconds !== null) {
+        tokenTtlSeconds = Math.min(tokenTtlSeconds, geo.maxTokenSeconds);
       }
       const resolvedStream = resolveMatchStreamResponse(match, {
         expirationSeconds: tokenTtlSeconds,
@@ -6824,6 +7553,15 @@ async function startServer() {
         const canSelectCats = clubData.can_select_categories !== void 0 ? Boolean(Number(clubData.can_select_categories)) : clubData.canSelectCategories !== void 0 ? Boolean(clubData.canSelectCategories) : true;
         matchData.club_id = String(partnerClubId);
         matchData.stream_provider = "mux";
+        if (matchData.sport) {
+          const sportRows = await query(
+            "SELECT is_active FROM sports WHERE id = ? OR slug = ? LIMIT 1",
+            [String(matchData.sport), String(matchData.sport)]
+          ).catch(() => null);
+          if (sportRows && sportRows[0] && Number(sportRows[0].is_active) !== 1) {
+            return res.status(400).json({ error: "This sport is currently unavailable. Please choose another sport." });
+          }
+        }
         if (!canSetPricing) {
           matchData.access = "free";
           matchData.access_type = "free";
@@ -6905,6 +7643,13 @@ async function startServer() {
           matchData.publish_status = "draft";
         }
       }
+      if (await hasEnforceableGeo(query, req.params.id)) {
+        const geoDoc = await db.collection("matches").doc(req.params.id).get();
+        const before = geoDoc.exists ? geoDoc.data() : {};
+        const already = new Set(getLocalGeoRequirements(before, getMuxConfig()).map((r) => r.code));
+        const weakened = getLocalGeoRequirements({ ...before, ...matchData }, getMuxConfig()).some((r) => !already.has(r.code));
+        if (weakened) return res.status(409).json({ error: GEO_DOWNGRADE_ERROR });
+      }
       await db.collection("matches").doc(req.params.id).update(matchData);
       if (matchData.status === "live") {
         try {
@@ -6967,6 +7712,8 @@ async function startServer() {
         }
       }
       await execute("DELETE FROM `saved_matches` WHERE `match_id` = ?", [String(matchId)]).catch(() => {
+      });
+      await execute("DELETE FROM `event_geo_exclusions` WHERE `match_id` = ?", [String(matchId)]).catch(() => {
       });
       await db.collection("matches").doc(matchId).delete();
       cacheEngine.invalidateCollection("matches");
@@ -7035,7 +7782,7 @@ async function startServer() {
         return res.status(400).json({ error: "Uploaded image file signature does not match valid PNG or JPEG format." });
       }
       const ext = mimeType === "image/png" ? "png" : "jpg";
-      const id = "wm_" + Date.now().toString(36) + "_" + import_crypto5.default.randomBytes(4).toString("hex");
+      const id = "wm_" + Date.now().toString(36) + "_" + import_crypto6.default.randomBytes(4).toString("hex");
       try {
         await execute(
           "INSERT INTO `mux_watermarks` (`id`, `mime_type`, `image_base64`) VALUES (?, ?, ?)",
@@ -7264,6 +8011,9 @@ async function startServer() {
           error: "Signed Playback requires Mux Signing Keys (MUX_SIGNING_KEY_ID / MUX_SIGNING_PRIVATE_KEY). Configure signing keys in Admin Settings > Mux Streaming first."
         });
       }
+      if (playbackPolicy !== "signed" && await hasEnforceableGeo(query, matchId)) {
+        return res.status(409).json({ error: GEO_DOWNGRADE_ERROR });
+      }
       const incomingWm = req.body?.watermarkConfig !== void 0 ? req.body.watermarkConfig : match?.mux_watermark_config ?? match?.muxWatermarkConfig ?? null;
       const normalizedWm = resolveEffectiveWatermarkConfig(
         { mux_watermark_config: incomingWm },
@@ -7374,6 +8124,9 @@ async function startServer() {
         return res.status(404).json({ error: "Event not found" });
       }
       const match = matchDoc.data();
+      if (targetPolicy !== "signed" && await hasEnforceableGeo(query, matchId)) {
+        return res.status(409).json({ error: GEO_DOWNGRADE_ERROR });
+      }
       await getMuxPlatformSettings().catch(() => null);
       const cfg = getMuxConfig();
       if (targetPolicy === "signed" && !cfg.isSigningConfigured) {
@@ -7495,7 +8248,12 @@ async function startServer() {
         const previewTargetPb = status !== "active" && ["completed", "full_match", "highlights"].includes(String(match?.status || "").toLowerCase()) && assetPlaybackId ? assetPlaybackId : playbackId || assetPlaybackId;
         if (previewTargetPb) {
           try {
-            previewPlaybackToken = signMuxPlaybackTokens(previewTargetPb, { expirationSeconds: 900 }).playback_token;
+            const geo = await geoPlaybackGate({ ...match, id: matchId }, req);
+            if (!geo.denied) {
+              previewPlaybackToken = signMuxPlaybackTokens(previewTargetPb, {
+                expirationSeconds: Math.min(900, geo.maxTokenSeconds ?? 900)
+              }).playback_token;
+            }
           } catch (_) {
           }
         }
@@ -7808,7 +8566,7 @@ async function startServer() {
       const matchIds = snap.docs.map((d) => d.data().match_id);
       if (matchIds.length === 0) return res.json([]);
       const matchSnap = await db.collection("matches").where("id", "in", matchIds.slice(0, 30)).get();
-      res.json(matchSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      res.json(matchSnap.docs.map((d) => sanitizeMatchForPublic({ id: d.id, ...d.data() })));
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -9385,6 +10143,13 @@ async function startServer() {
       const origin = (req.headers.origin || (req.headers.host ? `${req.protocol || "https"}://${req.headers.host}` : null) || "https://watchwds.com").replace(/\/+$/, "");
       let connectedAccountId = null;
       let platformFeePercent = 20;
+      if (type !== "plan" && metadata?.matchId) {
+        const geoDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
+        if (geoDoc.exists) {
+          const geoDenied = await geoPurchaseGate({ ...geoDoc.data(), id: String(metadata.matchId) }, req);
+          if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
+        }
+      }
       if (type === "watch" && metadata?.matchId) {
         const matchDoc = await db.collection("matches").doc(String(metadata.matchId)).get();
         if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
@@ -10055,6 +10820,8 @@ async function startServer() {
         return res.status(404).json({ error: "Match not found" });
       }
       const matchData = matchDoc.data() || {};
+      const geoDenied = await geoPurchaseGate({ ...matchData, id: String(match_id) }, req);
+      if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
       const deductAmount = Number(matchData.price ?? matchData.ppv_price ?? 0);
       const existingPurchases = await db.collection("purchases").where("userId", "==", userId).where("matchId", "==", match_id).where("type", "==", "watch").get();
       const activePurchases = (existingPurchases.docs || []).filter((d) => {
@@ -10124,6 +10891,8 @@ async function startServer() {
         return res.status(404).json({ error: "Match not found" });
       }
       const matchData = matchDoc.data() || {};
+      const geoDenied = await geoPurchaseGate({ ...matchData, id: String(match_id) }, req);
+      if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
       const deductAmount = Number(matchData.embedPrice ?? Number(matchData.price || 0) * 10);
       const existingEmbeds = await db.collection("purchases").where("userId", "==", userId).where("matchId", "==", match_id).where("type", "==", "embed").get();
       if (!existingEmbeds.empty) {
@@ -11040,12 +11809,35 @@ async function startServer() {
       console.error("Failed to ensure and seed sports table:", err);
     }
   }
+  let sportsSortColumnReady = false;
+  async function ensureSportsSortColumn() {
+    if (sportsSortColumnReady) return;
+    try {
+      const cols = await query("SHOW COLUMNS FROM `sports` LIKE 'sort_order'").catch(() => null);
+      if (cols && cols.length > 0) {
+        sportsSortColumnReady = true;
+        return;
+      }
+      if (cols) {
+        await execute("ALTER TABLE `sports` ADD COLUMN `sort_order` INT DEFAULT 0").catch(() => {
+        });
+        clearTableColumnsCache();
+        sportsSortColumnReady = true;
+      }
+    } catch (_) {
+    }
+  }
+  async function listSportsOrdered(activeOnly) {
+    await ensureSportsSortColumn();
+    const where = activeOnly ? "WHERE is_active = 1" : "";
+    return query(`SELECT * FROM sports ${where} ORDER BY sort_order ASC, name ASC`).catch(() => query(`SELECT * FROM sports ${where} ORDER BY name ASC`)).catch(() => null);
+  }
   app.get("/api/sports", async (_req, res) => {
     try {
-      let rows = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC").catch(() => null);
+      let rows = await listSportsOrdered(true);
       if (!rows || rows.length === 0) {
         await ensureAndSeedSportsTable();
-        rows = await query("SELECT * FROM sports WHERE is_active = 1 ORDER BY name ASC").catch(() => []);
+        rows = await listSportsOrdered(true) || [];
       }
       res.json(rows || []);
     } catch (e) {
@@ -11054,10 +11846,10 @@ async function startServer() {
   });
   app.get("/api/admin/sports", authenticate, requireRole(["admin"]), async (_req, res) => {
     try {
-      let rows = await query("SELECT * FROM sports ORDER BY name ASC").catch(() => null);
+      let rows = await listSportsOrdered(false);
       if (!rows || rows.length === 0) {
         await ensureAndSeedSportsTable();
-        rows = await query("SELECT * FROM sports ORDER BY name ASC").catch(() => []);
+        rows = await listSportsOrdered(false) || [];
       }
       res.json(rows || []);
     } catch (e) {
@@ -11083,6 +11875,8 @@ async function startServer() {
       } = req.body;
       if (!name || !slug) return res.status(400).json({ error: "Name and slug are required" });
       const id = slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const existedRows = await query("SELECT id FROM sports WHERE id = ? LIMIT 1", [id]).catch(() => []);
+      const isNewSport = !existedRows || existedRows.length === 0;
       await execute(`
         INSERT INTO sports (
           id, name, slug, description, icon, is_active, 
@@ -11113,6 +11907,14 @@ async function startServer() {
         time_label || "Start time",
         requires_club ? 1 : 0
       ]);
+      if (isNewSport) {
+        try {
+          await ensureSportsSortColumn();
+          const maxRows = await query("SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM sports");
+          await execute("UPDATE sports SET sort_order = ? WHERE id = ?", [Number(maxRows?.[0]?.max_order || 0) + 1, id]);
+        } catch (_) {
+        }
+      }
       cacheEngine.invalidateCollection("sports");
       res.json({ success: true, id, name, slug });
     } catch (e) {
@@ -11170,6 +11972,20 @@ async function startServer() {
         id,
         id
       ]);
+      cacheEngine.invalidateCollection("sports");
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/admin/sports/reorder", authenticate, requireRole(["admin"]), async (req, res) => {
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x)).filter(Boolean) : null;
+      if (!ids || ids.length === 0) return res.status(400).json({ error: "ids array is required" });
+      await ensureSportsSortColumn();
+      for (let i = 0; i < ids.length; i++) {
+        await execute("UPDATE sports SET sort_order = ? WHERE id = ?", [i + 1, ids[i]]);
+      }
       cacheEngine.invalidateCollection("sports");
       res.json({ success: true });
     } catch (e) {
@@ -11243,38 +12059,8 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.get("/api/settings/:key", async (req, res) => {
-    try {
-      const data = await getSecureDocument("settings", req.params.key);
-      if (req.params.key === "site_colors") {
-        return res.json({
-          primaryColor: "#3B82F6",
-          secondaryColor: "#10B981",
-          buttonTextColor: "#FFFFFF",
-          ...data || {}
-        });
-      }
-      res.json(data || {});
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-  app.get("/api/admin/settings/:key", async (req, res) => {
-    try {
-      const data = await getSecureDocument("settings", req.params.key);
-      if (req.params.key === "site_colors") {
-        return res.json({
-          primaryColor: "#3B82F6",
-          secondaryColor: "#10B981",
-          buttonTextColor: "#FFFFFF",
-          ...data || {}
-        });
-      }
-      res.json(data || {});
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
+  registerSettingsReadRoutes({ app, getSecureDocument, authenticate, requireRole });
+  registerHelpArticleRoutes({ app, db, authenticate, requireRole });
   app.put("/api/admin/settings/:key", authenticate, requireRole(["admin"]), async (req, res) => {
     try {
       await saveSecureDocument("settings", req.params.key, req.body);
@@ -11852,6 +12638,78 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       } else {
         res.status(404).json({ error: "Competition not found" });
       }
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/clubs/:clubId/plans", authenticate, async (req, res) => {
+    try {
+      const { clubId } = req.params;
+      const userClubId = String(req.user?.club_id || req.user?.clubId || "");
+      if (req.user?.role !== "admin" && userClubId !== String(clubId)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const plansSnap = await db.collection("plans").get();
+      const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => {
+        const scope = p.plan_scope || p.planScope || "platform";
+        const pid = p.club_id || p.clubId || null;
+        return scope === "club" && pid && String(pid) === String(clubId) && Number(p.is_active ?? 1) !== 0;
+      }).map((p) => ({
+        id: p.id,
+        name: p.name || "",
+        price: Number(p.price) || 0,
+        duration_days: Number(p.duration_days) || 30,
+        description: p.description || ""
+      }));
+      res.json(plans);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  async function ensureCustomCompColumns() {
+    await execute(`ALTER TABLE \`competitions\` ADD COLUMN \`club_id\` VARCHAR(100) DEFAULT NULL`).catch(() => {
+    });
+    await execute(`ALTER TABLE \`competitions\` ADD COLUMN \`is_custom\` TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {
+    });
+  }
+  app.get("/api/clubs/:clubId/custom-competitions", authenticate, async (req, res) => {
+    try {
+      const { clubId } = req.params;
+      const userClubId = String(req.user?.club_id || req.user?.clubId || "");
+      if (req.user?.role !== "admin" && userClubId !== String(clubId)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      await ensureCustomCompColumns();
+      const rows = await query(`
+        SELECT id, name, slug, COALESCE(sport,'football') as sport, season
+        FROM \`competitions\`
+        WHERE club_id = ? AND is_custom = 1 AND (is_active = 1 OR is_active IS NULL)
+        ORDER BY name ASC
+      `, [String(clubId)]).catch(() => []);
+      res.json(rows || []);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.post("/api/clubs/:clubId/custom-competitions", authenticate, async (req, res) => {
+    try {
+      const { clubId } = req.params;
+      const userClubId = String(req.user?.club_id || req.user?.clubId || "");
+      if (req.user?.role !== "admin" && userClubId !== String(clubId)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const name = String(req.body.name || "").trim();
+      if (!name) return res.status(400).json({ error: "Competition name is required." });
+      const sport = String(req.body.sport || "football").toLowerCase();
+      await ensureCustomCompColumns();
+      const id = `custom_${clubId}_${Date.now()}`;
+      const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const slug = `${baseSlug}-${Date.now()}`;
+      await execute(`
+        INSERT INTO \`competitions\` (id, name, slug, sport, is_active, club_id, is_custom)
+        VALUES (?, ?, ?, ?, 1, ?, 1)
+      `, [id, name, slug, sport, String(clubId)]);
+      res.json({ id, name, slug, sport, club_id: clubId, is_custom: 1 });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -13040,7 +13898,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
           logo: club.logo,
           contactEmail: club.contact_email || club.contactEmail,
           stripeAccountId: club.stripe_account_id || club.stripeAccountId,
-          stripeOnboardingComplete: club.stripe_onboarding_complete || club.stripeOnboardingComplete
+          stripeOnboardingComplete: club.stripe_onboarding_complete || club.stripeOnboardingComplete,
+          canPublishEvents: club.can_publish_events !== void 0 ? Boolean(Number(club.can_publish_events)) : true
         },
         balance: balanceData,
         matchesCount,
@@ -13441,6 +14300,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const matchDoc = await db.collection("matches").doc(String(matchId)).get();
       if (!matchDoc.exists) return res.status(404).json({ error: "Match not found" });
       const match = matchDoc.data();
+      const geoDenied = await geoPurchaseGate({ ...match, id: String(matchId) }, req);
+      if (geoDenied) return res.status(geoDenied.status).json(geoDenied.body);
       if (match.access === "free" || match.access_type !== "ppv") {
         return res.status(400).json({ error: "This match is not a PPV event" });
       }
@@ -14207,7 +15068,7 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   }, 6e4);
   app.post("/api/captcha/generate", async (_req, res) => {
     try {
-      const token = import_crypto5.default.randomBytes(32).toString("hex");
+      const token = import_crypto6.default.randomBytes(32).toString("hex");
       const CANVAS_WIDTH = 320;
       const CANVAS_HEIGHT = 180;
       const PIECE_SIZE = 48;
@@ -14250,8 +15111,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       const diff = Math.abs(Number(sliderX) - challenge.targetX);
       if (diff <= tolerance) {
         challenge.used = true;
-        const verifiedToken = import_crypto5.default.randomBytes(24).toString("hex");
-        const hmac = import_crypto5.default.createHmac("sha256", JWT_SECRET).update(verifiedToken).digest("hex");
+        const verifiedToken = import_crypto6.default.randomBytes(24).toString("hex");
+        const hmac = import_crypto6.default.createHmac("sha256", JWT_SECRET).update(verifiedToken).digest("hex");
         const verifiedKey = `captcha_verified_${hmac}`;
         captchaStore.set(verifiedKey, { targetX: 0, createdAt: Date.now(), used: false });
         captchaStore.delete(token);
@@ -14910,21 +15771,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
         `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
         ogImage ? `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />` : "",
         `<script type="application/ld+json">${JSON.stringify(orgSchema)}</script>`,
-        pageConfig?.jsonLdSchema ? `<script type="application/ld+json">${pageConfig.jsonLdSchema}</script>` : "",
-        seo.googleAnalyticsId ? `
-<script async src="https://www.googletagmanager.com/gtag/js?id=${escapeHtml(seo.googleAnalyticsId)}"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', '${escapeHtml(seo.googleAnalyticsId)}');
-</script>` : "",
-        seo.googleTagManagerId ? `
-<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','${escapeHtml(seo.googleTagManagerId)}');</script>` : ""
+        pageConfig?.jsonLdSchema ? `<script type="application/ld+json">${pageConfig.jsonLdSchema}</script>` : ""
+        // Google Analytics / GTM are NOT injected here: they need consent, so the client
+        // loads them only after the visitor opts in (src/utils/consent.ts + SEOHeadManager).
       ].filter(Boolean).join("\n  ");
       let output = html.replace(/<title>.*?<\/title>/i, `<title>${escapeHtml(title)}</title>`);
       if (output.includes("</head>")) {
